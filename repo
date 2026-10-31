@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Local Git metadata lives in .repo because this workspace protects .git.
+set -e
+repo_root="$(cd -- "$(dirname -- "$0")" && pwd)"
+exec git --git-dir="$repo_root/.repo" --work-tree="$repo_root" "$@"

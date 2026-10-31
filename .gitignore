@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.repo/
+.agents/
+.aws/
+.codex/
+playwright-report/
+test-results/
+*.log
