@@ -42,7 +42,7 @@ test('mouse swipe turns one slice without orbit; background drag orbits without 
  await expect.poll(async()=>(await snapshot(page)).orbit).not.toEqual(before.orbit);expect((await snapshot(page)).history).toHaveLength(0);
 });
 test('old 4×4 storage migrates without losing the solve',async({page})=>{
- await page.evaluate(()=>localStorage.setItem('master-fto-v1',JSON.stringify({history:[{normal:[1,1,1],layer:'inner',dir:1,name:'U'}],redo:[]})));
+ await page.addInitScript(()=>{if(!sessionStorage.getItem('legacy-seeded')){localStorage.setItem('master-fto-v1',JSON.stringify({history:[{normal:[1,1,1],layer:'inner',dir:1,name:'U'}],redo:[]}));sessionStorage.setItem('legacy-seeded','yes');}});
  await page.reload();await idle(page);expect((await snapshot(page)).history).toHaveLength(1);expect((await snapshot(page)).solved).toBe(false);
  await withSettings(page,()=>page.getByLabel('FTO size',{exact:true}).selectOption('2'));await page.reload();await idle(page);
  await withSettings(page,()=>page.getByLabel('FTO size',{exact:true}).selectOption('4'));expect((await snapshot(page)).history).toHaveLength(1);

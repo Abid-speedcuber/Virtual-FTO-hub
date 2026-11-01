@@ -1,9 +1,17 @@
 import {test,expect} from '@playwright/test';
-import {withSettings} from './helpers.js';
+import {withSettings,scramble} from './helpers.js';
+import {defaultConfig,FACE_NAMES} from '../../src/keyboard-engine.js';
 const snapshot=page=>page.evaluate(()=>window.fto.snapshot());
 const idle=page=>page.waitForFunction(()=>window.fto&&!window.fto.snapshot().busy&&!window.fto.snapshot().queued);
 const signature=state=>state.map(s=>`${s.color}:${s.vertices.map(v=>v.join(',')).sort().join(';')}`).sort().join('|');
-test.beforeEach(async({page})=>{await page.goto('/');await page.waitForFunction(()=>window.fto);await withSettings(page,async()=>{await page.getByLabel('Pointer controls',{exact:true}).selectOption('legacy');await page.getByRole('switch',{name:'Show move buttons',exact:true}).check();});});
+// Exercise the original key conventions as an explicitly configured map.
+// The default map now uses digits for one-shot depths and Shift for slices.
+const classic=defaultConfig();
+classic.modes[0].bindings=classic.modes[0].bindings.filter(b=>!['move','depth','hold-slice','hold-wide','hold-reverse'].includes(b.action.type));
+for(const [i,key] of ['U','R','F','J','L','B','K','D'].entries())for(const trigger of [key,String(i+1)]){
+ for(const [prefix,kind,depth] of [['','default',1],['Shift+','wide',2],['Ctrl+','slice',2],['Ctrl+Shift+','wide',3]])classic.modes[0].bindings.push({id:`classic-${prefix}${trigger}`,trigger:prefix+trigger,action:{type:'move',face:FACE_NAMES[i],dir:1,kind,depth,followDirection:true}});
+}
+test.beforeEach(async({page})=>{await page.addInitScript(config=>{if(!localStorage.getItem('master-fto-keyboard-v1'))localStorage.setItem('master-fto-keyboard-v1',JSON.stringify(config));},classic);await page.goto('/');await page.waitForFunction(()=>window.fto);await withSettings(page,async()=>{await page.getByLabel('Pointer controls',{exact:true}).selectOption('legacy');await page.getByRole('switch',{name:'Show move buttons',exact:true}).check();});});
 test('rapid keyboard input queues, undo restores, redo and reload retain the solve',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));const initial=signature((await snapshot(page)).state);
  for(const key of ['u','r','f','j','l','b','k','d','Control+u','Shift+r','Shift+f','k'])await page.keyboard.press(key);
@@ -78,7 +86,9 @@ test('vertical orbit crosses both poles, repeats past 360 degrees and Home resto
  let previous=before.orbit,total=0;
  for(let i=0;i<4;i++){
   await page.mouse.move(box.x+box.width*.5,box.y+90);await page.mouse.down();
-  await page.mouse.move(box.x+box.width*.5,box.y+box.height-40,{steps:15});await page.mouse.up();
+  // Sample less than half a revolution per drag, so the quaternion's
+  // shortest-arc angle measures actual travel on a taller square canvas.
+  await page.mouse.move(box.x+box.width*.5,box.y+330,{steps:15});await page.mouse.up();
   const current=(await snapshot(page)).orbit;
   total+=2*Math.acos(Math.min(1,Math.abs(current.reduce((v,n,i)=>v+n*previous[i],0))));previous=current;
  }
@@ -271,7 +281,7 @@ test('input immediately after orbit uses the displayed label frame before the ne
 });
 test('Reset to solved cancels queued animations, preserves the view, and persists after reload',async({page})=>{
  const initial=await snapshot(page);
- await page.getByRole('button',{name:'Scramble',exact:false}).click();
+ await withSettings(page,()=>page.locator('#animate-scrambling').check());await scramble(page);
  await page.waitForFunction(()=>window.fto.snapshot().busy&&window.fto.snapshot().queued>0);
  page.once('dialog',d=>d.dismiss());await withSettings(page,()=>page.getByRole('button',{name:'Reset to solved',exact:false}).click());
  const cancelled=await snapshot(page);expect(cancelled.history.length+cancelled.queued+Number(cancelled.busy)).toBe(50);
