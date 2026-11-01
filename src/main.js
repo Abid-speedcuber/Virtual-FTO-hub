@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {ViewControls} from './view-controls.js';
+import {bodyGeometry} from './body-geometry.js';
 import {swipeMove} from './swipe.js';
 import {pickSurface,pickFaceNormal} from './picking.js';
 import {FACES,solvedState,selected,applyMove,inverse,isSolved,scrambleMoves} from './puzzle.js';
@@ -29,10 +30,16 @@ const controls=new ViewControls(camera,renderer.domElement);
 const displayedCamera=camera.clone();
 const puzzle=new THREE.Group();scene.add(puzzle);
 const materials=FACES.map(f=>new THREE.MeshBasicMaterial({color:f.color,side:THREE.DoubleSide}));
-const core=new THREE.Mesh(new THREE.OctahedronGeometry(1.976),new THREE.MeshBasicMaterial({color:'#080e11'}));scene.add(core);
+const bodyMaterial=new THREE.MeshBasicMaterial({color:'#080e11'});
 const batches=[];
 function build(move=null,turnGroup=null){
  for(const mesh of batches){mesh.removeFromParent();mesh.geometry.dispose();}batches.length=0;
+ const body=bodyGeometry(size,move);
+ for(const [part,pos] of Object.entries(body)){
+  if(!pos.length)continue;
+  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  const mesh=new THREE.Mesh(geometry,bodyMaterial);(part==='turning'?turnGroup:puzzle).add(mesh);batches.push(mesh);
+ }
  const positions=Array.from({length:16},()=>[]);
  for(const sticker of state){
   const points=sticker.vertices.map(v=>new THREE.Vector3(...v).multiplyScalar(2/size));
