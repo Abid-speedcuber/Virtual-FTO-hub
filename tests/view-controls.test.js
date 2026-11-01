@@ -8,7 +8,7 @@ class Surface extends EventTarget{
  hasPointerCapture(id){return this.captured.has(id);}
  releasePointerCapture(id){this.captured.delete(id);}
 }
-const setup=()=>{const camera=new THREE.PerspectiveCamera();camera.position.set(6,4.8,7);return {camera,controls:new ViewControls(camera,new Surface())};};
+const setup=()=>{const camera=new THREE.PerspectiveCamera();camera.position.set(6,4.8,7);return {camera,controls:new ViewControls(camera,new Surface(),{mode:'legacy'})};};
 const event=(x,y,extra={})=>({pointerId:1,button:0,clientX:x,clientY:y,preventDefault(){},...extra});
 const drag=(controls,dx,dy)=>{controls.down(event(100,100));controls.move(event(100+dx,100+dy));controls.up(event(100+dx,100+dy));};
 test('both axes permit repeated full revolutions without clamps',()=>{
@@ -64,4 +64,17 @@ test('held wheel rolls 3 degrees per step on Z without zoom or a face tap',()=>{
  controls.wheel({deltaY:3,preventDefault(){}});assert.ok(controls.rotation.angleTo(before)<1e-7);
  controls.up(event(100,100));assert.equal(taps.length,0);
  controls.wheel({deltaY:120,preventDefault(){}});assert.ok(controls.radius>radius);assert.ok(controls.rotation.angleTo(before)<1e-7);
+});
+
+test('swipe mode separates face turns, background orbit, taps and multi-touch',()=>{
+ const {controls}=setup();controls.mode='swipe';controls.pick=(x)=>x<50?{point:'face'}:null;
+ const swipes=[],taps=[];controls.addEventListener('swipe',e=>swipes.push(e));controls.addEventListener('tap',e=>taps.push(e));
+ const initial=controls.rotation.clone();
+ controls.down(event(20,20));controls.move(event(50,30));controls.up(event(50,30));
+ assert.equal(swipes.length,1);assert.equal(swipes[0].dx,30);assert.ok(controls.rotation.angleTo(initial)<1e-7);
+ controls.down(event(20,20));controls.up(event(20,20));assert.equal(taps.length,0);
+ controls.down(event(100,100));controls.move(event(150,100));controls.up(event(150,100));assert.ok(controls.rotation.angleTo(initial)>.1);
+ controls.down(event(20,20));controls.down(event(80,20,{pointerId:2}));controls.move(event(100,40,{pointerId:2}));controls.up(event(20,20));controls.up(event(100,40,{pointerId:2}));
+ assert.equal(swipes.length,1);
+ controls.down(event(20,20));controls.move(event(50,30));controls.cancelAll();controls.up(event(50,30));assert.equal(swipes.length,1);
 });

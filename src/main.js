@@ -1,38 +1,50 @@
 import * as THREE from 'three';
 import {ViewControls} from './view-controls.js';
-import {pickFaceNormal} from './picking.js';
+import {swipeMove} from './swipe.js';
+import {pickSurface,pickFaceNormal} from './picking.js';
 import {FACES,solvedState,selected,applyMove,inverse,isSolved,scrambleMoves} from './puzzle.js';
 import {HOME_POSITION,FIXED_FRAME,frameForCamera,transformedNormal} from './orientation.js';
-import './style.css';
 const $=id=>document.getElementById(id);
 const storageKey='master-fto-v1';
+let size=4,solves={},pointerMode='swipe';
 let state=solvedState(),history=[],redo=[],queue=[],active=null,layer='outer',reverse=false,frame,scheduled=false;
 let storageOK=true;
 try{const saved=JSON.parse(localStorage.getItem(storageKey)||'null');if(saved){
- const valid=m=>m&&FACES.some(f=>f.normal.every((v,i)=>v===m.normal?.[i]))&&['outer','inner','wide','ultra'].includes(m.layer)&&[1,-1].includes(m.dir)&&typeof m.name==='string';
- if(!Array.isArray(saved.history)||!Array.isArray(saved.redo)||!saved.history.every(valid)||!saved.redo.every(valid))throw Error('Invalid saved state');
- history=saved.history;redo=saved.redo;state=history.reduce(applyMove,state);
-}}catch{storageOK=false;}
+ const valid=m=>m&&FACES.some(f=>f.normal.every((v,i)=>v===m.normal?.[i]))&&['outer','inner','wide','ultra','slice'].includes(m.layer)&&[1,-1].includes(m.dir)&&typeof m.name==='string'&&(m.layer!=='slice'||(Number.isInteger(m.depth)&&m.depth>=1&&m.depth<=20&&Number.isInteger(m.count)&&m.count>=1&&m.count<=21-m.depth));
+ if(saved.solves){
+  if(!Number.isInteger(saved.size)||saved.size<2||saved.size>20)throw Error('Invalid size');
+  solves=saved.solves;size=saved.size;pointerMode=saved.pointerMode==='legacy'?'legacy':'swipe';
+ }else solves[4]=saved;
+ for(const [key,solve] of Object.entries(solves)){
+  if(!Number.isInteger(+key)||+key<2||+key>20||!Array.isArray(solve.history)||!Array.isArray(solve.redo)||!solve.history.every(valid)||!solve.redo.every(valid))throw Error('Invalid saved solve');
+ }
+ history=solves[size]?.history??[];redo=solves[size]?.redo??[];state=history.reduce(applyMove,solvedState(size));
+}}catch{storageOK=false;size=4;solves={};history=[];redo=[];state=solvedState();}
 const viewport=$('viewport');
 const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(36,1,.1,100);camera.position.copy(HOME_POSITION);camera.lookAt(0,0,0);
 const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0x000000,0);renderer.outputColorSpace=THREE.SRGBColorSpace;viewport.prepend(renderer.domElement);
-renderer.domElement.setAttribute('aria-label','Interactive Master FTO. Drag to orbit; click a face to turn.');
+renderer.domElement.setAttribute('aria-label','Interactive FTO. Drag a sticker to turn a slice; drag the background to orbit.');
 const controls=new ViewControls(camera,renderer.domElement);
 const displayedCamera=camera.clone();
 const puzzle=new THREE.Group();scene.add(puzzle);
 const materials=FACES.map(f=>new THREE.MeshBasicMaterial({color:f.color,side:THREE.DoubleSide}));
 const core=new THREE.Mesh(new THREE.OctahedronGeometry(1.976),new THREE.MeshBasicMaterial({color:'#080e11'}));scene.add(core);
-const meshes=[];
-function build(){
- for(const mesh of meshes){mesh.removeFromParent();mesh.geometry.dispose();}meshes.length=0;
+const batches=[];
+function build(move=null,turnGroup=null){
+ for(const mesh of batches){mesh.removeFromParent();mesh.geometry.dispose();}batches.length=0;
+ const positions=Array.from({length:16},()=>[]);
  for(const sticker of state){
-  const points=sticker.vertices.map(v=>new THREE.Vector3(...v).multiplyScalar(.5));
+  const points=sticker.vertices.map(v=>new THREE.Vector3(...v).multiplyScalar(2/size));
   const center=points.reduce((a,v)=>a.add(v),new THREE.Vector3()).multiplyScalar(1/3);
-  const pos=points.flatMap(p=>p.clone().sub(center).multiplyScalar(.935).add(center).toArray());
-  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geometry.computeVertexNormals();
-  const mesh=new THREE.Mesh(geometry,materials[sticker.color]);mesh.userData.sticker=sticker;puzzle.add(mesh);meshes.push(mesh);
+  const target=sticker.color+(move&&selected(sticker,move)?8:0);
+  positions[target].push(...points.flatMap(p=>p.clone().sub(center).multiplyScalar(.935).add(center).toArray()));
  }
+ positions.forEach((pos,i)=>{
+  if(!pos.length)return;
+  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  const mesh=new THREE.Mesh(geometry,materials[i%8]);(i>=8?turnGroup:puzzle).add(mesh);batches.push(mesh);
+ });
 }
 build();
 const labels=FACES.map(f=>{const el=document.createElement('span');el.className='face-label';el.textContent=f.name;$('labels').append(el);return el;});
@@ -64,18 +76,18 @@ function draw(){
 function requestDraw(){if(!scheduled){scheduled=true;requestAnimationFrame(draw);}}
 controls.addEventListener('change',requestDraw);
 new ResizeObserver(()=>{const {width,height}=viewport.getBoundingClientRect();camera.aspect=width/height;camera.updateProjectionMatrix();renderer.setSize(width,height);requestDraw();}).observe(viewport);
-function save(){try{localStorage.setItem(storageKey,JSON.stringify({history,redo}));storageOK=true;}catch{storageOK=false;}$('save-status').textContent=storageOK?'Saved on this device':'Autosave unavailable';}
+function save(){try{localStorage.setItem(storageKey,JSON.stringify({size,solves:{...solves,[size]:{history,redo}},pointerMode}));storageOK=true;}catch{storageOK=false;}$('save-status').textContent=storageOK?'Saved on this device':'Autosave unavailable';}
 function update(){
  const solved=isSolved(state);$('puzzle-status').textContent=solved?'Solved':'In progress';$('state-dot').style.background=solved?'#c7edb2':'#ffbb62';
  $('move-count').textContent=`${history.length} move${history.length===1?'':'s'}`;$('history-total').textContent=history.length;
  $('undo').disabled=!history.length&&!active;$('redo').disabled=!redo.length;
  $('queue-status').textContent=queue.length?`· ${queue.length} queued`:'';
  const h=$('history');h.replaceChildren();if(!history.length){const empty=document.createElement('span');empty.className='history-empty';empty.textContent='A fresh start. Make your first move.';h.append(empty);}
- history.slice(-100).forEach(m=>{const el=document.createElement('span');el.className='history-move';el.textContent=`${m.layer==='inner'?'2':m.layer==='ultra'?'3':''}${m.name}${m.layer==='wide'||m.layer==='ultra'?'w':''}${m.dir<0?"′":''}`;el.title=`${m.name} ${m.layer} ${m.dir<0?'counterclockwise':'clockwise'} (notation at input)`;h.append(el);});h.scrollTop=h.scrollHeight;
+ history.slice(-100).forEach(m=>{const el=document.createElement('span');el.className='history-move';el.textContent=moveNotation(m.name,m.layer,m.dir<0,m).replace("'","′");el.title=`${m.name} ${m.layer} ${m.dir<0?'counterclockwise':'clockwise'} (notation at input)`;h.append(el);});h.scrollTop=h.scrollHeight;
 }
 function enqueue(action){if(queue.length>=500)return;queue.push(action);update();pump();}
 function requestMove(normal,name,event={}){
- enqueue({type:'move',move:{normal:[...normal],layer:inputLayer(event),dir:reverse||event.reverse?-1:1,name}});
+ enqueue({type:'move',move:{normal:[...normal],...chosenLayer(event),dir:reverse||event.reverse?-1:1,name}});
 }
 function requestFace(index,event={}){
  const f=FACES[index];requestMove(transformedNormal(f.normal,frame),f.name,event);
@@ -87,7 +99,7 @@ function pump(){
  if(action.type==='undo'){if(!history.length){pump();update();return;}move=inverse(history.at(-1));}
  if(action.type==='redo'){if(!redo.length){pump();update();return;}move=redo.at(-1);}
  const group=new THREE.Group();puzzle.add(group);
- meshes.forEach(mesh=>{if(selected(mesh.userData.sticker,move))group.add(mesh);});
+ build(move,group);
  const running={action,move,group};active=running;update();
  const finish=()=>{
   if(active!==running)return;
@@ -102,12 +114,12 @@ function pump(){
  requestAnimationFrame(tick);
 }
 $('undo').onclick=()=>enqueue({type:'undo'});$('redo').onclick=()=>enqueue({type:'redo'});
-$('scramble').onclick=()=>{for(const move of scrambleMoves())queue.push({type:'move',move,fast:true});update();pump();};
+$('scramble').onclick=()=>{for(const move of scrambleMoves(Math.max(50,size*10),Math.random,size))queue.push({type:'move',move,fast:true});update();pump();};
 $('reset').onclick=()=>{
  if((history.length||active||queue.length)&&!confirm('Reset the puzzle to solved and clear this solve’s history?'))return;
  queue=[];const previous=active;active=null;
  if(previous)previous.group.removeFromParent();
- state=solvedState();history=[];redo=[];build();save();update();requestDraw();
+ state=solvedState(size);history=[];redo=[];build();save();update();requestDraw();
 };
 
 function homeView(){controls.setPosition(HOME_POSITION);requestDraw();}
@@ -117,13 +129,18 @@ $('animate').checked=!matchMedia('(prefers-reduced-motion: reduce)').matches;
 // The selected default is independent of the temporary modifier preview.
 const heldModifiers={shiftKey:false,ctrlKey:false};
 function inputLayer(event={}){return event.ctrlKey?(event.shiftKey?'ultra':'inner'):(event.shiftKey?'wide':layer);}
-function moveNotation(name,depth,counterclockwise=reverse){
+function chosenLayer(event={}){
+ const slice=Number($('slice').value);
+ return slice&&!event.ctrlKey&&!event.shiftKey?{layer:'slice',depth:slice,count:1}:{layer:inputLayer(event)};
+}
+function moveNotation(name,depth,counterclockwise=reverse,move=chosenLayer(heldModifiers)){
+ if(depth==='slice'||move.layer==='slice')return `${move.depth===1?'':move.depth}${name}${move.count>1?`w${move.count}`:''}${counterclockwise?"'":''}`;
  return `${depth==='inner'?'2':depth==='ultra'?'3':''}${name}${depth==='wide'||depth==='ultra'?'w':''}${counterclockwise?"'":''}`;
 }
 function renderDepth(){
  const effective=inputLayer(heldModifiers);
  for(const button of $('layers').children){
-  const selected=button.dataset.layer===effective;
+  const selected=(!Number($('slice').value)||heldModifiers.shiftKey||heldModifiers.ctrlKey)&&button.dataset.layer===effective;
   button.classList.toggle('active',selected);button.setAttribute('aria-pressed',String(selected));
  }
  for(const [i,button] of [...$('move-buttons').children].entries()){
@@ -132,6 +149,27 @@ function renderDepth(){
   button.title=`${notation} · ${shortcuts[i]} or ${i+1} · Right-click: ${moveNotation(button.dataset.face,effective,true)} · Shift: wide · Ctrl: slice · Ctrl+Shift: 3 layers`;
  }
 }
+function renderSize(){
+ $('size').value=String(size);$('edition').textContent=`${size} × ${size}`;
+ $('sticker-count').textContent=String(8*size*size);
+ $('slice').replaceChildren(new Option('Use depth tabs','0'),...Array.from({length:size},(_,i)=>new Option(`Slice ${i+1}`,String(i+1))));
+ renderDepth();
+}
+$('size').onchange=()=>{
+ // Keep completed moves; discard an unfinished gesture/animation.
+ solves[size]={history,redo};queue=[];
+ if(active){active.group.removeFromParent();active=null;}
+ controls.cancelAll();size=Number($('size').value);
+ history=solves[size]?.history??[];redo=solves[size]?.redo??[];
+ state=history.reduce(applyMove,solvedState(size));build();renderSize();save();update();requestDraw();
+};
+$('slice').onchange=renderDepth;
+function renderPointerMode(){
+ controls.mode=pointerMode;$('pointer-mode').value=pointerMode;
+ document.querySelector('.orbit-hint').textContent=pointerMode==='swipe'?'Drag a sticker to turn · Drag background to orbit · Two fingers to orbit / pinch':'Drag to orbit · Hold + scroll to roll · Click a face to turn';
+}
+$('pointer-mode').onchange=()=>{controls.cancelAll();pointerMode=$('pointer-mode').value;renderPointerMode();save();};
+renderPointerMode();renderSize();
 function syncModifiers(event){
  const shiftKey=!!event.shiftKey,ctrlKey=!!event.ctrlKey;
  if(heldModifiers.shiftKey===shiftKey&&heldModifiers.ctrlKey===ctrlKey)return;
@@ -139,9 +177,9 @@ function syncModifiers(event){
 }
 function clearModifiers(){syncModifiers({});}
 for(const type of ['keydown','keyup','pointerdown','pointerup','pointermove'])window.addEventListener(type,syncModifiers,true);
-window.addEventListener('blur',clearModifiers);
-document.addEventListener('visibilitychange',()=>{if(document.hidden)clearModifiers();});
-$('layers').onclick=e=>{const b=e.target.closest('[data-layer]');if(!b)return;layer=b.dataset.layer;renderDepth();};
+window.addEventListener('blur',()=>{clearModifiers();controls.cancelAll();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){clearModifiers();controls.cancelAll();}});
+$('layers').onclick=e=>{const b=e.target.closest('[data-layer]');if(!b)return;layer=b.dataset.layer;$('slice').value='0';renderDepth();};
 renderDepth();
 $('direction').onclick=()=>{reverse=!reverse;$('direction').textContent=reverse?'↺ Counterclockwise':'↻ Clockwise';$('direction').setAttribute('aria-pressed',String(reverse));renderDepth();};
 $('help').onclick=()=>$('help-dialog').showModal();$('close-help').onclick=()=>$('help-dialog').close();
@@ -162,6 +200,19 @@ window.addEventListener('keydown',e=>{
  if(index>=0){e.preventDefault();requestFace(index,e);}
 });
 const raycaster=new THREE.Raycaster();
+controls.pick=(x,y)=>{
+ if(active)return null;
+ const rect=renderer.domElement.getBoundingClientRect();
+ raycaster.setFromCamera(new THREE.Vector2((x-rect.left)/rect.width*2-1,-(y-rect.top)/rect.height*2+1),displayedCamera);
+ return pickSurface(raycaster);
+};
+controls.addEventListener('swipe',e=>{
+ if(active)return;
+ const rect=renderer.domElement.getBoundingClientRect();
+ const move=swipeMove(e.hit,e.dx,e.dy,displayedCamera,rect.width,rect.height,size);if(!move)return;
+ const index=FACES.findIndex(f=>transformedNormal(f.normal,frame).every((v,i)=>v===move.normal[i]));
+ enqueue({type:'move',move:{...move,name:index>=0?FACES[index].name:'?'}});
+});
 controls.addEventListener('tap',e=>{
  if(active)return;
  const rect=renderer.domElement.getBoundingClientRect();
@@ -174,4 +225,4 @@ controls.addEventListener('tap',e=>{
 if(!storageOK)$('save-status').textContent='Saved solve could not be loaded';
 update();requestDraw();
 // Read-only diagnostics for verifying geometry and input behavior in a browser.
-window.fto={snapshot:()=>({state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};
+window.fto={snapshot:()=>({size,pointerMode,state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};

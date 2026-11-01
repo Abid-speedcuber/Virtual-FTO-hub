@@ -88,3 +88,26 @@ test('white-front CIF maps blue L, red R and purple D with gray U hidden',()=>{
  assert.deepEqual(physical('R'),[1,1,-1]);assert.deepEqual(physical('D'),[1,-1,1]);
  assert.ok(new THREE.Vector3(...physical('U')).dot(camera.position)<0);
 });
+
+for(let size=2;size<=20;size++)test(`${size}×${size}: every slice is a reversible surface permutation`,()=>{
+ const state=solvedState(size),initial=signature(state);
+ const geometry=s=>s.vertices.map(p=>p.join(',')).sort().join(';');
+ const surface=state.map(geometry).sort();
+ const slices=Array.from({length:size},(_,i)=>({normal:FACES[0].normal,layer:'slice',depth:i+1,count:1,dir:1}));
+ for(const sticker of state)assert.equal(slices.filter(move=>selected(sticker,move)).length,1,'every sticker belongs to exactly one slice');
+ assert.equal(signature(applyMove(state,slices.at(-1))),signature(applyMove(state,{normal:FACES[0].normal.map(v=>-v),layer:'outer',dir:-1})));
+ assert.equal(state.length,8*size*size);
+ for(let depth=1;depth<=size;depth++){
+  const move={normal:FACES[0].normal,layer:'slice',depth,count:1,dir:1};
+  const turned=applyMove(state,move);
+  assert.ok(state.some(s=>selected(s,move)));
+  assert.deepEqual(turned.map(geometry).sort(),surface);
+  assert.equal(signature(applyMove(turned,inverse(move))),initial);
+  assert.equal(signature(applyMove(applyMove(turned,move),move)),initial);
+ }
+ for(const face of FACES){
+  const move={normal:face.normal,layer:'slice',depth:1,count:Math.max(1,size-1),dir:-1};
+  assert.deepEqual(applyMove(state,move).map(geometry).sort(),surface);
+ }
+});
+test('size bounds reject invalid models',()=>{for(const size of [1,21,3.5,NaN,'4'])assert.throws(()=>solvedState(size),RangeError);});

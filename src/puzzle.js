@@ -23,7 +23,9 @@ export const FACES = [
 export const dot = (a,b) => a.reduce((s,v,i)=>s+v*b[i],0);
 export const centroid = vertices => [0,1,2].map(i=>vertices.reduce((s,v)=>s+v[i],0)/3);
 export const normalOf = sticker => centroid(sticker.vertices).map(Math.sign);
-export function solvedState() {
+export function solvedState(size=N) {
+  if(!Number.isInteger(size)||size<2||size>20)throw new RangeError("FTO size must be 2–20");
+  const N=size;
   const stickers=[];
   for (const [face,f] of FACES.entries()) {
     const point=(i,j)=>[i,j,N-i-j].map((v,k)=>v*f.normal[k]);
@@ -35,9 +37,16 @@ export function solvedState() {
   return stickers;
 }
 export function selected(sticker,move) {
-  // Multiply by three to keep comparisons integral and avoid boundary drift.
-  const level = sticker.vertices.reduce((s,v)=>s+dot(v,move.normal),0);
-  return move.layer==='inner' ? level>0 && level<6 : move.layer==='wide' ? level>0 : move.layer==='ultra' ? level>-6 : level>6;
+  const size=sticker.vertices[0].reduce((sum,v)=>sum+Math.abs(v),0);
+  const level=sticker.vertices.reduce((sum,v)=>sum+dot(v,move.normal),0);
+  const {depth,count}=moveRange(move,size);
+  // The two end slices include the parallel face itself, not only its rim.
+  return (depth+count-1===size || level>3*size-6*(depth+count-1)) && (depth===1 || level<3*size-6*(depth-1));
+}
+export function moveRange(move,size=N){
+  const depth=move.layer==='slice'?move.depth:move.layer==='inner'?2:1;
+  const count=move.layer==='slice'?(move.count??1):move.layer==='wide'?2:move.layer==='ultra'?3:1;
+  return {depth:Math.min(size,Math.max(1,depth)),count:Math.min(count,size-Math.min(size,Math.max(1,depth))+1)};
 }
 export function rotatePoint(point,normal,dir=1) {
   const p=point.map((v,i)=>v*normal[i]);
@@ -56,9 +65,9 @@ export function isSolved(state) {
 export function signature(state) {
   return state.map(s=>`${s.color}:${s.vertices.map(v=>v.join(',')).sort().join(';')}`).sort().join('|');
 }
-export function scrambleMoves(length=50,random=Math.random) {
+export function scrambleMoves(length=50,random=Math.random,size=N) {
   const moves=[];let last=-1;
   for(let i=0;i<length;i++) {let face;do{face=Math.floor(random()*8);}while(face===last);last=face;
-    moves.push({normal:[...FACES[face].normal],layer:random()<.45?'inner':'outer',dir:random()<.5?1:-1,name:FACES[face].name});}
+    moves.push({normal:[...FACES[face].normal],layer:'slice',depth:1+Math.floor(random()*(size-1)),count:1,dir:random()<.5?1:-1,name:FACES[face].name});}
   return moves;
 }

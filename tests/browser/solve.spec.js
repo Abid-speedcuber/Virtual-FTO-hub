@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 const snapshot=page=>page.evaluate(()=>window.fto.snapshot());
 const idle=page=>page.waitForFunction(()=>window.fto&&!window.fto.snapshot().busy&&!window.fto.snapshot().queued);
 const signature=state=>state.map(s=>`${s.color}:${s.vertices.map(v=>v.join(',')).sort().join(';')}`).sort().join('|');
-test.beforeEach(async({page})=>{await page.goto('/');await page.waitForFunction(()=>window.fto);});
+test.beforeEach(async({page})=>{await page.goto('/');await page.waitForFunction(()=>window.fto);await page.getByLabel('Pointer controls',{exact:true}).selectOption('legacy');});
 test('rapid keyboard input queues, undo restores, redo and reload retain the solve',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));const initial=signature((await snapshot(page)).state);
  for(const key of ['u','r','f','j','l','b','k','d','Control+u','Shift+r','Shift+f','k'])await page.keyboard.press(key);

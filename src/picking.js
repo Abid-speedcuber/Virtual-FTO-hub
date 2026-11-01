@@ -4,7 +4,9 @@ import * as THREE from 'three';
 // Sticker gaps must not let a ray hit a hidden face on the far side.
 const surface=new THREE.Mesh(new THREE.OctahedronGeometry(2),new THREE.MeshBasicMaterial({side:THREE.FrontSide}));
 surface.updateMatrixWorld(true);
-export function pickFaceNormal(raycaster){
+export function pickSurface(raycaster){
  const hit=raycaster.intersectObject(surface,false)[0];
- return hit?hit.face.normal.toArray().map(Math.sign):null;
+ return hit?{point:hit.point.clone(),normal:hit.face.normal.toArray().map(Math.sign)}:null;
 }
+
+export function pickFaceNormal(raycaster){return pickSurface(raycaster)?.normal??null;}

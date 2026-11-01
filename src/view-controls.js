@@ -4,8 +4,8 @@ import * as THREE from 'three';
 // viewer X/Y axes, never the puzzle's rotated local axes. The inverse rotation
 // orbits the camera, leaving exact puzzle geometry and move coordinates intact.
 export class ViewControls extends THREE.EventDispatcher {
- constructor(camera,element){
-  super();this.camera=camera;this.element=element;this.pointers=new Map();this.minDistance=6;this.maxDistance=20;
+ constructor(camera,element,{mode='swipe',pick=null}={}){
+  super();this.mode=mode;this.pick=pick;this.camera=camera;this.element=element;this.pointers=new Map();this.minDistance=6;this.maxDistance=20;
   this.setPosition(camera.position);
   element.addEventListener('pointerdown',e=>this.down(e));
   element.addEventListener('pointermove',e=>this.move(e));
@@ -37,7 +37,7 @@ export class ViewControls extends THREE.EventDispatcher {
   if([...this.pointers.values()].some(p=>p.button!==1)){
    // One wheel step rolls 3 degrees around the fixed viewer Z axis.
    // Releasing after a roll is an orbit gesture, not a face click.
-   for(const p of this.pointers.values())p.moved=true;
+   for(const p of this.pointers.values()){p.moved=true;p.blocked=true;}
    const delta=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-Math.sign(e.deltaY)*Math.PI/60);
    this.rotation.premultiply(delta).normalize();this.update();
   }else this.zoom(Math.exp(e.deltaY*.001));
@@ -46,8 +46,8 @@ export class ViewControls extends THREE.EventDispatcher {
  down(e){
   if(![0,1,2].includes(e.button))return;
   e.preventDefault();this.element.setPointerCapture(e.pointerId);
-  this.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY,button:e.button,moved:false});
-  if(this.pointers.size>1)for(const p of this.pointers.values())p.moved=true;
+  this.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY,button:e.button,moved:false,hit:this.mode==='swipe'&&e.button===0?this.pick?.(e.clientX,e.clientY):null,blocked:false});
+  if(this.pointers.size>1)for(const p of this.pointers.values()){p.moved=true;p.blocked=true;}
  }
  move(e){
   const p=this.pointers.get(e.pointerId);if(!p)return;
@@ -57,19 +57,36 @@ export class ViewControls extends THREE.EventDispatcher {
   if(this.pointers.size===2){
    const other=[...this.pointers.entries()].find(([id])=>id!==e.pointerId)[1];
    const before=Math.hypot(p.x-other.x,p.y-other.y),after=Math.hypot(e.clientX-other.x,e.clientY-other.y);
-   if(before>0&&after>0)this.zoom(before/after);
+   if(before>0&&after>0){
+    if(this.mode==='swipe'){
+     this.rotate(dx/2,dy/2);
+     const angleBefore=Math.atan2(p.y-other.y,p.x-other.x),angleAfter=Math.atan2(e.clientY-other.y,e.clientX-other.x);
+     const delta=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),angleBefore-angleAfter);
+     this.rotation.premultiply(delta).normalize();
+    }
+    this.zoom(before/after);
+   }
   }else if(this.pointers.size===1&&p.moved){
    const mx=wasMoved?dx:e.clientX-p.startX,my=wasMoved?dy:e.clientY-p.startY;
    if(p.button===1)this.zoom(Math.exp(my*.01));
-   else this.rotate(mx,my);
+   else if(!(this.mode==='swipe'&&p.hit&&!p.blocked))this.rotate(mx,my);
   }
   p.x=e.clientX;p.y=e.clientY;
  }
  up(e){
   const p=this.pointers.get(e.pointerId);this.pointers.delete(e.pointerId);
   if(this.element.hasPointerCapture(e.pointerId))this.element.releasePointerCapture(e.pointerId);
-  if(p&&!p.moved&&Math.hypot(e.clientX-p.startX,e.clientY-p.startY)<=5&&p.button!==1)
+  if(p&&this.mode==='swipe'&&p.hit&&!p.blocked&&Math.hypot(e.clientX-p.startX,e.clientY-p.startY)>=10)
+   this.dispatchEvent({type:'swipe',hit:p.hit,dx:e.clientX-p.startX,dy:e.clientY-p.startY,shiftKey:e.shiftKey,ctrlKey:e.ctrlKey});
+  if(this.mode==='legacy'&&p&&!p.moved&&Math.hypot(e.clientX-p.startX,e.clientY-p.startY)<=5&&p.button!==1)
    this.dispatchEvent({type:'tap',x:e.clientX,y:e.clientY,button:p.button,shiftKey:e.shiftKey,ctrlKey:e.ctrlKey});
  }
- cancel(e){this.pointers.delete(e.pointerId);}
+ cancel(e){
+  if(this.pointers.has(e.pointerId))for(const p of this.pointers.values())p.blocked=true;
+  this.pointers.delete(e.pointerId);
+ }
+ cancelAll(){
+  const ids=[...this.pointers.keys()];this.pointers.clear();
+  for(const id of ids)if(this.element.hasPointerCapture(id))this.element.releasePointerCapture(id);
+ }
 }
