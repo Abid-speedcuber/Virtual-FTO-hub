@@ -1,8 +1,9 @@
 import {test,expect} from '@playwright/test';
+import {withSettings,showMoveButtons} from './helpers.js';
 const snapshot=page=>page.evaluate(()=>window.fto.snapshot());
 const idle=page=>page.waitForFunction(()=>window.fto&&!window.fto.snapshot().busy&&!window.fto.snapshot().queued);
 const signature=state=>state.map(s=>`${s.color}:${s.vertices.map(v=>v.join(',')).sort().join(';')}`).sort().join('|');
-test.beforeEach(async({page})=>{await page.goto('/');await idle(page);});
+test.beforeEach(async({page})=>{await page.goto('/');await idle(page);await showMoveButtons(page);});
 async function facePoint(page){
  const box=await page.locator('.face-label:not([hidden])').filter({hasText:/^F$/}).boundingBox();
  return {x:box.x+box.width/2+13,y:box.y+box.height/2+8};
@@ -11,7 +12,7 @@ test('every size renders, turns its deepest slice and undoes',async({page})=>{
  test.setTimeout(90000);
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  for(let size=2;size<=20;size++){
-  await page.getByLabel('FTO size',{exact:true}).selectOption(String(size));await idle(page);
+  await withSettings(page,()=>page.getByLabel('FTO size',{exact:true}).selectOption(String(size)));await idle(page);
   const before=await snapshot(page);expect(before.size).toBe(size);expect(before.state).toHaveLength(8*size*size);
   await page.getByLabel('Slice to turn',{exact:true}).selectOption(String(size));
   await page.locator('[data-face="F"]').click();await idle(page);
@@ -23,11 +24,11 @@ test('every size renders, turns its deepest slice and undoes',async({page})=>{
 });
 test('sizes preserve independent histories and restore the selected size on reload',async({page})=>{
  await page.locator('[data-face="U"]').click();await idle(page);const four=signature((await snapshot(page)).state);
- await page.getByLabel('FTO size',{exact:true}).selectOption('20');await page.getByLabel('Slice to turn',{exact:true}).selectOption('12');
+ await withSettings(page,()=>page.getByLabel('FTO size',{exact:true}).selectOption('20'));await page.getByLabel('Slice to turn',{exact:true}).selectOption('12');
  await page.locator('[data-face="R"]').click();await idle(page);const twenty=signature((await snapshot(page)).state);
  await page.reload();await idle(page);expect((await snapshot(page)).size).toBe(20);expect(signature((await snapshot(page)).state)).toBe(twenty);
- await page.getByLabel('FTO size',{exact:true}).selectOption('4');expect(signature((await snapshot(page)).state)).toBe(four);
- await page.getByLabel('FTO size',{exact:true}).selectOption('20');expect(signature((await snapshot(page)).state)).toBe(twenty);
+ await withSettings(page,()=>page.getByLabel('FTO size',{exact:true}).selectOption('4'));expect(signature((await snapshot(page)).state)).toBe(four);
+ await withSettings(page,()=>page.getByLabel('FTO size',{exact:true}).selectOption('20'));expect(signature((await snapshot(page)).state)).toBe(twenty);
 });
 test('mouse swipe turns one slice without orbit; background drag orbits without a move',async({page})=>{
  expect((await snapshot(page)).pointerMode).toBe('swipe');
@@ -43,8 +44,8 @@ test('mouse swipe turns one slice without orbit; background drag orbits without 
 test('old 4×4 storage migrates without losing the solve',async({page})=>{
  await page.evaluate(()=>localStorage.setItem('master-fto-v1',JSON.stringify({history:[{normal:[1,1,1],layer:'inner',dir:1,name:'U'}],redo:[]})));
  await page.reload();await idle(page);expect((await snapshot(page)).history).toHaveLength(1);expect((await snapshot(page)).solved).toBe(false);
- await page.getByLabel('FTO size',{exact:true}).selectOption('2');await page.reload();await idle(page);
- await page.getByLabel('FTO size',{exact:true}).selectOption('4');expect((await snapshot(page)).history).toHaveLength(1);
+ await withSettings(page,()=>page.getByLabel('FTO size',{exact:true}).selectOption('2'));await page.reload();await idle(page);
+ await withSettings(page,()=>page.getByLabel('FTO size',{exact:true}).selectOption('4'));expect((await snapshot(page)).history).toHaveLength(1);
 });
 test('real touch swipe turns and pinch cancels the pending slice gesture',async({page,context})=>{
  const client=await context.newCDPSession(page);const point=await facePoint(page);

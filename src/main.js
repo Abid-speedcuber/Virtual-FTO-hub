@@ -21,12 +21,34 @@ try{const saved=JSON.parse(localStorage.getItem(storageKey)||'null');if(saved){
  }
  history=solves[size]?.history??[];redo=solves[size]?.redo??[];state=history.reduce(applyMove,solvedState(size));
 }}catch{storageOK=false;size=4;solves={};history=[];redo=[];state=solvedState();}
+const settingsKey='master-fto-settings-v1';
+let preferences={},settingsOK=true,settingsTimer;
+try{const value=JSON.parse(localStorage.getItem(settingsKey)||'{}');if(value&&typeof value==='object')preferences=value;}catch{settingsOK=false;}
+if(['outer','inner','wide','ultra'].includes(preferences.layer))layer=preferences.layer;
+reverse=preferences.reverse===true;
+let selectedSlice=Number.isInteger(preferences.slice)&&preferences.slice>=0&&preferences.slice<=size?preferences.slice:0;
+for(const [id,key,fallback] of [['follow','follow',true],['animate','animate',!matchMedia('(prefers-reduced-motion: reduce)').matches],['show-move-buttons','showMoveButtons',false],['show-labels','showLabels',true]]){
+ $(id).checked=typeof preferences[key]==='boolean'?preferences[key]:fallback;
+}
+function renderSaveStatus(){ $('save-status').textContent=storageOK&&settingsOK?'Saved on this device':'Local storage unavailable'; }
+function saveSettings(){
+ clearTimeout(settingsTimer);
+ try{
+  localStorage.setItem(settingsKey,JSON.stringify({layer,slice:selectedSlice,reverse,follow:$('follow').checked,animate:$('animate').checked,showMoveButtons:$('show-move-buttons').checked,showLabels:$('show-labels').checked,view:{rotation:controls.rotation.toArray(),radius:controls.radius}}));settingsOK=true;
+ }catch{settingsOK=false;}
+ renderSaveStatus();
+}
+function queueSettingsSave(){clearTimeout(settingsTimer);settingsTimer=setTimeout(saveSettings,150);}
 const viewport=$('viewport');
 const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(36,1,.1,100);camera.position.copy(HOME_POSITION);camera.lookAt(0,0,0);
 const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0x000000,0);renderer.outputColorSpace=THREE.SRGBColorSpace;viewport.prepend(renderer.domElement);
 renderer.domElement.setAttribute('aria-label','Interactive FTO. Drag a sticker to turn a slice; drag the background to orbit.');
 const controls=new ViewControls(camera,renderer.domElement);
+const view=preferences.view;
+if(view&&Array.isArray(view.rotation)&&view.rotation.length===4&&view.rotation.every(Number.isFinite)&&Number.isFinite(Math.hypot(...view.rotation))&&Math.hypot(...view.rotation)>1e-9&&Number.isFinite(view.radius)){
+ controls.rotation.fromArray(view.rotation).normalize();controls.radius=THREE.MathUtils.clamp(view.radius,controls.minDistance,controls.maxDistance);controls.update();
+}
 const displayedCamera=camera.clone();
 const puzzle=new THREE.Group();scene.add(puzzle);
 const materials=FACES.map(f=>new THREE.MeshBasicMaterial({color:f.color,side:THREE.DoubleSide}));
@@ -81,9 +103,11 @@ function draw(){
  renderer.render(scene,camera);displayedCamera.copy(camera);
 }
 function requestDraw(){if(!scheduled){scheduled=true;requestAnimationFrame(draw);}}
-controls.addEventListener('change',requestDraw);
-new ResizeObserver(()=>{const {width,height}=viewport.getBoundingClientRect();camera.aspect=width/height;camera.updateProjectionMatrix();renderer.setSize(width,height);requestDraw();}).observe(viewport);
-function save(){try{localStorage.setItem(storageKey,JSON.stringify({size,solves:{...solves,[size]:{history,redo}},pointerMode}));storageOK=true;}catch{storageOK=false;}$('save-status').textContent=storageOK?'Saved on this device':'Autosave unavailable';}
+controls.addEventListener('change',()=>{requestDraw();queueSettingsSave();});
+new ResizeObserver(()=>{const {width,height}=viewport.getBoundingClientRect();camera.aspect=width/height;
+ // Keep the same viewing angle on the shorter axis, including tall phones.
+ camera.fov=360/Math.PI*Math.atan(Math.tan(Math.PI/10)/Math.min(1,camera.aspect));camera.updateProjectionMatrix();renderer.setSize(width,height);requestDraw();}).observe(viewport);
+function save(){try{localStorage.setItem(storageKey,JSON.stringify({size,solves:{...solves,[size]:{history,redo}},pointerMode}));storageOK=true;}catch{storageOK=false;}renderSaveStatus();}
 function update(){
  const solved=isSolved(state);$('puzzle-status').textContent=solved?'Solved':'In progress';$('state-dot').style.background=solved?'#c7edb2':'#ffbb62';
  $('move-count').textContent=`${history.length} move${history.length===1?'':'s'}`;$('history-total').textContent=history.length;
@@ -131,8 +155,8 @@ $('reset').onclick=()=>{
 
 function homeView(){controls.setPosition(HOME_POSITION);requestDraw();}
 $('home').onclick=homeView;$('fit').onclick=()=>{controls.radius=HOME_POSITION.length();controls.update();requestDraw();};
-$('follow').onchange=()=>{$('frame-status').textContent=$('follow').checked?'View-relative controls':'Fixed face controls';requestDraw();};
-$('animate').checked=!matchMedia('(prefers-reduced-motion: reduce)').matches;
+$('follow').onchange=()=>{renderDisplay();saveSettings();};
+$('animate').onchange=saveSettings;
 // The selected default is independent of the temporary modifier preview.
 const heldModifiers={shiftKey:false,ctrlKey:false};
 function inputLayer(event={}){return event.ctrlKey?(event.shiftKey?'ultra':'inner'):(event.shiftKey?'wide':layer);}
@@ -160,6 +184,7 @@ function renderSize(){
  $('size').value=String(size);$('edition').textContent=`${size} × ${size}`;
  $('sticker-count').textContent=String(8*size*size);
  $('slice').replaceChildren(new Option('Use depth tabs','0'),...Array.from({length:size},(_,i)=>new Option(`Slice ${i+1}`,String(i+1))));
+ selectedSlice=Math.min(size,selectedSlice);$('slice').value=String(selectedSlice);
  renderDepth();
 }
 $('size').onchange=()=>{
@@ -168,15 +193,15 @@ $('size').onchange=()=>{
  if(active){active.group.removeFromParent();active=null;}
  controls.cancelAll();size=Number($('size').value);
  history=solves[size]?.history??[];redo=solves[size]?.redo??[];
- state=history.reduce(applyMove,solvedState(size));build();renderSize();save();update();requestDraw();
+ state=history.reduce(applyMove,solvedState(size));build();renderSize();save();saveSettings();update();requestDraw();
 };
-$('slice').onchange=renderDepth;
+$('slice').onchange=()=>{selectedSlice=Number($('slice').value);renderDepth();saveSettings();};
 function renderPointerMode(){
  controls.mode=pointerMode;$('pointer-mode').value=pointerMode;
- document.querySelector('.orbit-hint').textContent=pointerMode==='swipe'?'Drag a sticker to turn · Drag background to orbit · Two fingers to orbit / pinch':'Drag to orbit · Hold + scroll to roll · Click a face to turn';
+ renderer.domElement.setAttribute('aria-label',pointerMode==='swipe'?'Interactive FTO. Drag a sticker to turn a slice; drag the background to orbit.':'Interactive FTO. Drag to orbit; click a face to turn.');
 }
 $('pointer-mode').onchange=()=>{controls.cancelAll();pointerMode=$('pointer-mode').value;renderPointerMode();save();};
-renderPointerMode();renderSize();
+renderPointerMode();renderSize();renderDirection();renderDisplay();
 function syncModifiers(event){
  const shiftKey=!!event.shiftKey,ctrlKey=!!event.ctrlKey;
  if(heldModifiers.shiftKey===shiftKey&&heldModifiers.ctrlKey===ctrlKey)return;
@@ -185,13 +210,26 @@ function syncModifiers(event){
 function clearModifiers(){syncModifiers({});}
 for(const type of ['keydown','keyup','pointerdown','pointerup','pointermove'])window.addEventListener(type,syncModifiers,true);
 window.addEventListener('blur',()=>{clearModifiers();controls.cancelAll();});
-document.addEventListener('visibilitychange',()=>{if(document.hidden){clearModifiers();controls.cancelAll();}});
-$('layers').onclick=e=>{const b=e.target.closest('[data-layer]');if(!b)return;layer=b.dataset.layer;$('slice').value='0';renderDepth();};
+document.addEventListener('visibilitychange',()=>{if(document.hidden){clearModifiers();controls.cancelAll();saveSettings();}});
+$('layers').onclick=e=>{const b=e.target.closest('[data-layer]');if(!b)return;layer=b.dataset.layer;selectedSlice=0;$('slice').value='0';renderDepth();saveSettings();};
 renderDepth();
-$('direction').onclick=()=>{reverse=!reverse;$('direction').textContent=reverse?'↺ Counterclockwise':'↻ Clockwise';$('direction').setAttribute('aria-pressed',String(reverse));renderDepth();};
+function renderDirection(){
+ $('direction').textContent=reverse?'↺ Counterclockwise':'↻ Clockwise';$('direction').setAttribute('aria-pressed',String(reverse));renderDepth();
+}
+$('direction').onclick=()=>{reverse=!reverse;renderDirection();saveSettings();};
+function renderDisplay(){
+ $('solve-controls').hidden=!$('show-move-buttons').checked;$('labels').hidden=!$('show-labels').checked;
+ $('frame-status').textContent=$('follow').checked?'View-relative controls':'Fixed face controls';requestDraw();
+}
+for(const id of ['show-move-buttons','show-labels'])$(id).onchange=()=>{renderDisplay();saveSettings();};
+$('settings').onclick=()=>{controls.cancelAll();clearModifiers();$('settings-dialog').showModal();};
+$('close-settings').onclick=()=>$('settings-dialog').close();
+$('settings-dialog').addEventListener('close',()=>{clearModifiers();saveSettings();});
+window.addEventListener('pagehide',saveSettings);
+
 $('help').onclick=()=>$('help-dialog').showModal();$('close-help').onclick=()=>$('help-dialog').close();
 window.addEventListener('keydown',e=>{
- if($('help-dialog').open||e.target.matches('input:not([type=checkbox]):not([type=range]),select,textarea,[contenteditable=true]'))return;
+ if($('settings-dialog').open||$('help-dialog').open||e.target.matches('input:not([type=checkbox]):not([type=range]),select,textarea,[contenteditable=true]'))return;
  const key=e.key.toLowerCase();
  if((e.ctrlKey||e.metaKey)&&(key==='z'||key==='y')){
   e.preventDefault();enqueue({type:key==='y'||e.shiftKey?'redo':'undo'});return;

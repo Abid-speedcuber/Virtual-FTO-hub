@@ -1,8 +1,9 @@
 import {test,expect} from '@playwright/test';
+import {withSettings} from './helpers.js';
 const snapshot=page=>page.evaluate(()=>window.fto.snapshot());
 const idle=page=>page.waitForFunction(()=>window.fto&&!window.fto.snapshot().busy&&!window.fto.snapshot().queued);
 const signature=state=>state.map(s=>`${s.color}:${s.vertices.map(v=>v.join(',')).sort().join(';')}`).sort().join('|');
-test.beforeEach(async({page})=>{await page.goto('/');await page.waitForFunction(()=>window.fto);await page.getByLabel('Pointer controls',{exact:true}).selectOption('legacy');});
+test.beforeEach(async({page})=>{await page.goto('/');await page.waitForFunction(()=>window.fto);await withSettings(page,async()=>{await page.getByLabel('Pointer controls',{exact:true}).selectOption('legacy');await page.getByRole('switch',{name:'Show move buttons',exact:true}).check();});});
 test('rapid keyboard input queues, undo restores, redo and reload retain the solve',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));const initial=signature((await snapshot(page)).state);
  for(const key of ['u','r','f','j','l','b','k','d','Control+u','Shift+r','Shift+f','k'])await page.keyboard.press(key);
@@ -23,8 +24,8 @@ test('inner and wide selectors, modifiers and numeric keys work',async({page})=>
  expect((await snapshot(page)).history.at(-1)).toMatchObject({layer:'inner',name:'R'});
 });
 test('keyboard remains usable after toggling settings',async({page})=>{
- await page.getByRole('switch',{name:'Animate turns'}).uncheck();await page.keyboard.press('u');await idle(page);expect((await snapshot(page)).history).toHaveLength(1);
- await page.getByRole('switch',{name:'Follow the view'}).uncheck();await page.keyboard.press('r');await idle(page);expect((await snapshot(page)).history).toHaveLength(2);
+ await withSettings(page,()=>page.getByRole('switch',{name:'Animate turns'}).uncheck());await page.keyboard.press('u');await idle(page);expect((await snapshot(page)).history).toHaveLength(1);
+ await withSettings(page,()=>page.getByRole('switch',{name:'Follow the view'}).uncheck());await page.keyboard.press('r');await idle(page);expect((await snapshot(page)).history).toHaveLength(2);
 });
 test('orbit changes mapping and undo remains physical',async({page})=>{
  const before=await snapshot(page);const canvas=page.locator('canvas');const box=await canvas.boundingBox();
@@ -32,7 +33,7 @@ test('orbit changes mapping and undo remains physical',async({page})=>{
  await expect.poll(async()=>JSON.stringify((await snapshot(page)).frame)).not.toBe(JSON.stringify(before.frame));
  expect((await snapshot(page)).history).toHaveLength(0);
  await page.keyboard.press('u');await idle(page);expect((await snapshot(page)).history).toHaveLength(1);
- await page.getByRole('button',{name:'Home view'}).click();await page.keyboard.press('Control+z');await idle(page);expect(signature((await snapshot(page)).state)).toBe(signature(before.state));
+ await withSettings(page,()=>page.getByRole('button',{name:'Home view'}).click());await page.keyboard.press('Control+z');await idle(page);expect(signature((await snapshot(page)).state)).toBe(signature(before.state));
 });
 test('mobile viewport fits without horizontal scrolling',async({page})=>{
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'test-results/mobile.png',fullPage:true});
@@ -48,7 +49,7 @@ async function facePoint(page){
 }
 test('mouse face turns, right-click, Shift, Control and undo work before and after orbiting',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.getByRole('switch',{name:'Animate turns'}).uncheck();
+ await withSettings(page,()=>page.getByRole('switch',{name:'Animate turns'}).uncheck());
  const initial=signature((await snapshot(page)).state);
  let point=await facePoint(page);
  await page.mouse.click(point.x,point.y);await idle(page);
@@ -85,14 +86,14 @@ test('vertical orbit crosses both poles, repeats past 360 degrees and Home resto
  expect(total).toBeGreaterThan(2*Math.PI);
  expect(after.history).toHaveLength(0);
  expect(after.labels).toContain('F');expect(after.labels.length).toBeGreaterThanOrEqual(3);
- await page.getByRole('button',{name:'Home view'}).click();
+ await withSettings(page,()=>page.getByRole('button',{name:'Home view'}).click());
  const restored=await snapshot(page);
  restored.camera.forEach((v,i)=>expect(v).toBeCloseTo(before.camera[i],10));
  expect(restored.frame).toEqual(before.frame);
 });
 
 async function orbitTo(page,yaw,pitch){
- await page.getByRole('button',{name:'Home view'}).click();
+ await withSettings(page,()=>page.getByRole('button',{name:'Home view'}).click());
  const box=await page.locator('canvas').boundingBox(),home=(await snapshot(page)).camera;
  const homeYaw=Math.atan2(home[0],home[2]),homePitch=Math.atan2(home[1],Math.hypot(home[0],home[2]));
  async function drag(dx,dy){
@@ -109,7 +110,9 @@ async function orbitTo(page,yaw,pitch){
 }
 
 test('square and EIF screenshot orientations show U/F/L/R on the expected physical faces',async({page})=>{
- await orbitTo(page,-Math.PI/4,Math.PI/2);
+ // A tiny tilt avoids the undefined yaw at an exact pole and fractional
+ // pointer-coordinate rounding when the canvas dimensions change.
+ await orbitTo(page,-Math.PI/4,Math.PI/2-.001);
  await expect.poll(async()=>(await snapshot(page)).hold).toEqual({up:'R',front:'L',notation:'CIF'});
  let s=await snapshot(page);
  expect(s.frame.slice(0,3)).toEqual([1,1,-1]); // red U
@@ -158,7 +161,7 @@ test('both drag axes follow the pointer after arbitrary mixed rotations and roll
 test('all modifier combinations select the same depths for keyboard, buttons and mouse; ultra wide persists',async({page})=>{
  test.setTimeout(60000);
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.getByRole('switch',{name:'Animate turns'}).uncheck();
+ await withSettings(page,()=>page.getByRole('switch',{name:'Animate turns'}).uncheck());
  const initial=signature((await snapshot(page)).state);
  // Select a conflicting default to verify that each modifier overrides it.
  await page.getByRole('button',{name:'Inner slice',exact:true}).click();
@@ -192,8 +195,8 @@ test('all modifier combinations select the same depths for keyboard, buttons and
 
 
 test('white-front CIF shows purple D and red R while the true U face stays hidden',async({page})=>{
- await page.getByRole('switch',{name:'Animate turns'}).uncheck();
- await page.getByRole('button',{name:'Home view'}).click();
+ await withSettings(page,()=>page.getByRole('switch',{name:'Animate turns'}).uncheck());
+ await withSettings(page,()=>page.getByRole('button',{name:'Home view'}).click());
  await expect.poll(async()=>(await snapshot(page)).hold).toEqual({up:'B',front:'U',notation:'CIF'});
  const before=await snapshot(page);
  expect(before.labels).toEqual(expect.arrayContaining(['F','L','R','D']));
@@ -210,7 +213,7 @@ test('white-front CIF shows purple D and red R while the true U face stays hidde
 });
 
 test('Ctrl and Ctrl+Shift face-letter shortcuts turn slices and ultra-wide layers',async({page})=>{
- await page.getByRole('switch',{name:'Animate turns'}).uncheck();
+ await withSettings(page,()=>page.getByRole('switch',{name:'Animate turns'}).uncheck());
  const initial=signature((await snapshot(page)).state);
  for(const [modifier,layer] of [['Control','inner'],['Control+Shift','ultra']]){
   for(const [key,name] of [['u','U'],['r','R'],['f','F'],['j','BR'],['l','L'],['b','B'],['k','BL'],['d','D']]){
@@ -229,7 +232,7 @@ function screenPoint(point,s,box){
  return {x:box.x+box.width/2+dot(v,right)*f*box.height/(2*depth),y:box.y+box.height/2-dot(v,up)*f*box.height/(2*depth)};
 }
 test('FDLR front-face seams turn F rather than the hidden U face',async({page})=>{
- await page.getByRole('switch',{name:'Animate turns'}).uncheck();
+ await withSettings(page,()=>page.getByRole('switch',{name:'Animate turns'}).uncheck());
  const before=await snapshot(page),box=await page.locator('canvas').boundingBox();
  for(const point of [[.5,1,.5],[1,.5,.5],[.5,.5,1]]){
   const p=screenPoint(point,before,box);
@@ -252,7 +255,7 @@ test('wheel while holding rolls 3 degrees per step, without zoom or a release tu
  await expect.poll(async()=>Math.hypot(...(await snapshot(page)).camera)).toBeGreaterThan(Math.hypot(...before.camera));
 });
 test('input immediately after orbit uses the displayed label frame before the next render',async({page})=>{
- await page.getByRole('switch',{name:'Animate turns'}).uncheck();
+ await withSettings(page,()=>page.getByRole('switch',{name:'Animate turns'}).uncheck());
  const before=await snapshot(page),box=await page.locator('canvas').boundingBox();
  await page.mouse.move(box.x+box.width*.5,box.y+box.height*.5);await page.mouse.down();
  const move=await page.evaluate(()=>{
@@ -270,9 +273,9 @@ test('Reset to solved cancels queued animations, preserves the view, and persist
  const initial=await snapshot(page);
  await page.getByRole('button',{name:'Scramble',exact:false}).click();
  await page.waitForFunction(()=>window.fto.snapshot().busy&&window.fto.snapshot().queued>0);
- page.once('dialog',d=>d.dismiss());await page.getByRole('button',{name:'Reset to solved',exact:false}).click();
+ page.once('dialog',d=>d.dismiss());await withSettings(page,()=>page.getByRole('button',{name:'Reset to solved',exact:false}).click());
  const cancelled=await snapshot(page);expect(cancelled.history.length+cancelled.queued+Number(cancelled.busy)).toBe(50);
- page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'Reset to solved',exact:false}).click();await idle(page);
+ page.once('dialog',d=>d.accept());await withSettings(page,()=>page.getByRole('button',{name:'Reset to solved',exact:false}).click());await idle(page);
  // Allow pending animation callbacks to run; they must not restore old state.
  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
  const reset=await snapshot(page);
@@ -282,7 +285,7 @@ test('Reset to solved cancels queued animations, preserves the view, and persist
 });
 
 test('right-click face buttons issue one CCW move at every depth and prevent the context menu',async({page})=>{
- await page.getByRole('switch',{name:'Animate turns'}).uncheck();
+ await withSettings(page,()=>page.getByRole('switch',{name:'Animate turns'}).uncheck());
  await page.evaluate(()=>{
   window.buttonMenus=[];
   document.addEventListener('contextmenu',e=>{if(e.target.closest('.move-button'))window.buttonMenus.push(e.defaultPrevented);});
@@ -306,7 +309,7 @@ test('right-click face buttons issue one CCW move at every depth and prevent the
 });
 test('depth tabs preview modifiers, restore the selected depth, and clear on focus loss',async({page})=>{
  const selected=()=>page.locator('#layers [aria-pressed="true"]');
- await page.getByRole('switch',{name:'Animate turns'}).uncheck();
+ await withSettings(page,()=>page.getByRole('switch',{name:'Animate turns'}).uncheck());
  await page.getByRole('button',{name:'Inner slice',exact:true}).click();
  await expect(selected()).toHaveAttribute('data-layer','inner');
  await page.keyboard.down('Shift');await expect(selected()).toHaveAttribute('data-layer','wide');
@@ -330,7 +333,7 @@ test('depth tabs preview modifiers, restore the selected depth, and clear on foc
 });
 
 test('face-button notation follows selected depth, direction, and temporary modifiers',async({page})=>{
- await page.getByRole('switch',{name:'Animate turns'}).uncheck();
+ await withSettings(page,()=>page.getByRole('switch',{name:'Animate turns'}).uncheck());
  const names=['U','R','F','BR','L','B','BL','D'];
  const labels=()=>page.locator('#move-buttons .name');
  for(const [depth,prefix,suffix] of [['Outer','',''],['Inner slice','2',''],['Wide','','w'],['Ultra wide','3','w']]){
