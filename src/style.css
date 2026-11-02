@@ -32,3 +32,7 @@ main.solve-layout.panel-below{grid-template-columns:minmax(0,1fr)}.panel-below #
 #pause-message{position:absolute;left:20px;right:20px;bottom:76px;z-index:2;text-align:center;font-size:14px;color:#dce6df;margin:0;pointer-events:none}
 
 @media(max-aspect-ratio:1/1){#solve-panel{height:max(360px,calc(100dvh - var(--solve-side)))}}
+
+.preset-buttons{display:flex;flex-wrap:wrap;gap:8px}.preset-buttons button{font-size:12px}
+
+.license-note{font-size:10px;color:var(--muted);line-height:1.6}.license-note a{color:inherit}

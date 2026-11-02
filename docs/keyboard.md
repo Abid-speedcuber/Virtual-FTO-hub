@@ -58,3 +58,15 @@ TPS measures accepted manual turn input in a trailing 1-, 3-, or 5-second window
 Move audio uses locally bundled Gateron Black Ink recordings from tplai/kbsim (MIT; license and attribution accompany the samples). Suffixes use a soft tone. Disable sounds is saved separately from keymaps.
 
 Size-specific profiles live in `master-fto-keyboard-v2` local storage. Overlay preferences are shared. Untouched legacy defaults upgrade; customized keyboards retain their moves. Shipped Escape-cancel bindings migrate to Pause, and redo gains Shift+Backspace where applicable. Temporary keys, suffix selections, and TPS do not survive reloads. Export/import applies to the current size and validates the entire configuration before replacing it.
+
+## Switching default presets
+
+The two reset buttons replace bindings and modes for the current size only. They keep puzzle progress, timer, TPS counters, overlay layout/visibility/size, and the sequence timeout. Resets select CIF and clear transient key/suffix state. Both presets include EIF-R/EIF-L on every size and Abid's E– cntr moves only on 3×3.
+
+**Abid:** Backquote rotates nUw; Minus (-) rotates nUw′. These independent rotations ignore width/slice suffixes and leave them selected for the next turn. Tab/C select EIF-R/EIF-L; M selects centers on 3×3.
+
+**csTimer:** I/K = R/R′, D/E = L/L′, J/F = U/U′, H/G = F/F′, S/L = D/D′, W/O = B/B′, 8/Comma = BR/BR′, C/3 = BL/BL′. U/M = Rw/Rw′; R/V = Lw′/Lw. Y/N rotate [R]/[R′]; T/B rotate [L′]/[L]; Semicolon/A rotate [U]/[U′]; P/Q rotate T/T′ by 90° about the top/front vertex. These are independent view rotations and remain unchanged in EIF modes. Turn faces cycle as usual.
+
+For csTimer, Tab selects EIF-R (or returns to CIF), Shift+Tab selects EIF-L (or returns), and Space selects centers on 3×3. Centers retain Abid's moves and return via Space or M. The native C/M/3/8 actions take priority over Abid's shortcuts, so 3/8 and their shifted variants are not width suffixes. Other number suffixes, Shift for Slice, pause, and undo/redo remain available.
+
+Source and GPLv3 attribution for the adapted csTimer mapping are recorded in [NOTICE.md](../NOTICE.md). Presets and edits save per size and export through the existing JSON controls.

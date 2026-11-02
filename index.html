@@ -40,7 +40,7 @@
 <button id="edit-keyboard">Keyboard & bindings</button>
 
 </section>
-<p id="save-status" role="status">Saved on this device</p>
+<p id="save-status" role="status">Saved on this device</p><p class="license-note">© 2026 Master FTO contributors · <a href="./licenses/GPL-3.0.txt" target="_blank" rel="noopener">GPLv3</a> · <a href="https://github.com/Abid-speedcuber/Virtual-FTO-hub" target="_blank" rel="noopener">Source</a> · <a href="./licenses/NOTICE.md" target="_blank" rel="noopener">Credits</a>. No warranty.</p>
 </dialog>
 <dialog id="keyboard-dialog" aria-labelledby="keyboard-title">
 <div class="dialog-heading"><h1 id="keyboard-title">Keyboard & bindings</h1><button id="close-keyboard" aria-label="Close keyboard settings">✕</button></div>
@@ -55,6 +55,7 @@
 <label class="setting">TPS window<select id="keyboard-window"><option value="1">1 second</option><option value="3">3 seconds</option><option value="5">5 seconds</option></select></label>
 <button id="keyboard-reset-tps">Reset input stats</button><label class="setting">Sequence timeout (ms)<input id="keyboard-sequence-timeout" type="number" min="200" max="10000" step="100" value="1400"></label>
 </div></details>
+<section class="settings-section"><h2>Default bindings</h2><div class="preset-buttons"><button id="keyboard-reset-abid">Reset to Abid's Default</button><button id="keyboard-reset-cstimer">Reset to csTimer's Default</button></div><p>Replaces bindings and modes for this puzzle size. Overlay preferences and puzzle progress are preserved.</p></section>
 <section class="settings-section"><h2>Keyboard modes</h2>
 <label class="setting">Active mode<select id="keyboard-active-mode"></select></label>
 <p>Switch modes with a binding, or use a held key/chord for a temporary mode. Modes have independent bindings; the same action can have several keys.</p>
@@ -66,7 +67,8 @@
 <h2>Binding editor</h2>
 <label>Key, chord, or sequence<input id="binding-trigger" placeholder="F, Shift+F, A+F, or A F" required autocomplete="off" spellcheck="false"></label><button type="button" id="binding-record">Record chord</button>
 <label>Action<select id="binding-type"><option value="move">Turn a face</option><option value="rotate">Rot (face axis)</option><option value="depth">Next move depth</option><option value="suffix-slice">Next move: slice suffix</option><option value="hold-slice">Hold: slice</option><option value="hold-wide">Hold: wide</option><option value="hold-reverse">Hold: reverse</option><option value="hold-mode">Hold: keyboard mode</option><option value="mode">Switch keyboard mode</option><option value="next-mode">Cycle keyboard modes</option><option value="command">Command</option></select></label>
-<div id="binding-move-fields"><label>Face<select id="binding-face"><option>U</option><option>R</option><option>F</option><option>BR</option><option>L</option><option>B</option><option>BL</option><option>D</option></select></label><label>Direction<select id="binding-direction"><option value="1">Clockwise</option><option value="-1">Counterclockwise (′)</option></select></label><label id="binding-kind-field">Turn type<select id="binding-kind"><option value="outer">Outer</option><option value="slice">Single slice at depth</option><option value="wide">Wide, from the outside</option><option value="default">Outer (with suffixes)</option></select></label></div>
+<div id="binding-move-fields"><label id="binding-face-field">Face<select id="binding-face"><option>U</option><option>R</option><option>F</option><option>BR</option><option>L</option><option>B</option><option>BL</option><option>D</option></select></label><label>Direction<select id="binding-direction"><option value="1">Clockwise</option><option value="-1">Counterclockwise (′)</option></select></label><label id="binding-kind-field">Turn type<select id="binding-kind"><option value="outer">Outer</option><option value="slice">Single slice at depth</option><option value="wide">Wide, from the outside</option><option value="default">Outer (with suffixes)</option></select></label></div>
+<label id="binding-rotation-field" hidden>Rotation axis<select id="binding-rotation-axis"><option value="face">Face axis · 120°</option><option value="vertex">Top/front vertex (T) · 90°</option></select></label>
 <label id="binding-depth-field">Depth / layer count<input id="binding-depth" type="number" min="1" max="20" value="2"></label>
 <label id="binding-mode-field" hidden>Target mode<select id="binding-target-mode"></select></label>
 <label id="binding-command-field" hidden>Command<select id="binding-command"><option value="undo">Undo</option><option value="redo">Redo</option><option value="scramble">Scramble</option><option value="home">Home view</option><option value="fit">Fit puzzle</option><option value="reset">Reset to solved</option><option value="pause">Pause solve</option><option value="cancel">Cancel depth / queued input</option><option value="reset-tps">Reset input stats</option></select></label>

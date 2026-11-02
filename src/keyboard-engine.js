@@ -43,6 +43,7 @@ export function validateConfig(config,{legacyNames=false}={}){
    const a=binding.action;
    if(!a||!['move','rotate','depth','suffix-slice','hold-slice','hold-wide','hold-reverse','hold-mode','mode','next-mode','command'].includes(a.type))throw Error('Unknown binding action.');
    if(['move','rotate'].includes(a.type)&&(!FACE_NAMES.includes(a.face)||![1,-1].includes(a.dir)||!['default','outer','slice','wide'].includes(a.kind)||!Number.isInteger(a.depth)||a.depth<1||a.depth>20))throw Error('Move bindings need a face, direction, and depth from 1–20.');
+   if(a.type==='rotate'&&a.vertex!==undefined&&typeof a.vertex!=='boolean')throw Error('Invalid rotation axis.');
    if(a.type==='depth'&&(!Number.isInteger(a.depth)||a.depth<1||a.depth>20))throw Error('Next-move depth must be 1–20.');
    if(['hold-mode','mode'].includes(a.type)&&!ids.has(a.mode))throw Error('Select an existing target mode.');
    if(a.type==='command'&&!['undo','redo','scramble','home','fit','reset','pause','cancel','reset-tps'].includes(a.command))throw Error('Unknown command.');
@@ -73,6 +74,7 @@ export function defaultConfig(size=4){
  add('NumpadMultiply',{type:'depth',depth:18});
  for(const [trigger,command] of [['Ctrl+Z','undo'],['Meta+Z','undo'],['Backspace','undo'],['Shift+Backspace','redo'],['Ctrl+Shift+Z','redo'],['Meta+Shift+Z','redo'],['Ctrl+Y','redo'],['Home','home'],['Escape','pause']])add(trigger,{type:'command',command});
  add('Shift',{type:'hold-slice'});
+ add('Backquote',{type:'rotate',face:'U',dir:1,kind:'outer',depth:1});add('Minus',{type:'rotate',face:'U',dir:-1,kind:'outer',depth:1});
  let modes=[{id:'cif',name:'CIF',bindings}];
  if(size===3){
   add('Space',{type:'depth',depth:2});
@@ -88,9 +90,9 @@ export function defaultConfig(size=4){
   }
  if(size===3){
   const center=[['F','U',-1,'outer',1],['H','U',1,'outer',1],['K','R',1,'outer',1],['D','R',-1,'outer',1],['S','R',-1,'wide',2],['L','R',1,'wide',2],['E','R',-1,'slice',2],['I','R',1,'slice',2]].map(([trigger,face,dir,kind,depth])=>({id:`center-${trigger}`,trigger,action:move(face,dir,kind,depth)}));
-  center.push({id:'center-slice',trigger:'Shift',action:{type:'hold-slice'}},{id:'center-pause',trigger:'Escape',action:{type:'command',command:'pause'}},{id:'center-redo',trigger:'Shift+Backspace',action:{type:'command',command:'redo'}},{id:'center-exit',trigger:'M',action:{type:'mode',mode:'cif'}});modes.push({id:'e-center',name:'E– cntr',bindings:center});
+  center.push({id:'center-rot-u',trigger:'Backquote',action:{type:'rotate',face:'U',dir:1,kind:'outer',depth:1}},{id:'center-rot-ui',trigger:'Minus',action:{type:'rotate',face:'U',dir:-1,kind:'outer',depth:1}},{id:'center-slice',trigger:'Shift',action:{type:'hold-slice'}},{id:'center-pause',trigger:'Escape',action:{type:'command',command:'pause'}},{id:'center-redo',trigger:'Shift+Backspace',action:{type:'command',command:'redo'}},{id:'center-exit',trigger:'M',action:{type:'mode',mode:'cif'}});modes.push({id:'e-center',name:'E– cntr',bindings:center});
  }
- return {version:1,eifVersion:1,sliceVersion:1,suffixMode:'one-shot',activeMode:'cif',modes,display:{show:false,layout:'ansi',numpad:false,width:900,cornerVersion:3,opacity:100,showTPS:true,window:1},sequenceTimeout:1400};
+ return {version:1,preset:'abid',rotationVersion:1,eifVersion:1,sliceVersion:1,suffixMode:'one-shot',activeMode:'cif',modes,display:{show:false,layout:'ansi',numpad:false,width:900,cornerVersion:3,opacity:100,showTPS:true,window:1},sequenceTimeout:1400};
 }
 // Upgrade existing CIF profiles once. User-owned modes and occupied keys win.
 export function upgradeEIFDefaults(config){
@@ -114,7 +116,7 @@ export function upgradeEIFDefaults(config){
  config.eifVersion=1;return config;
 }
 export function actionLabel(action){
- if(action.type==='rotate')return `Rot ${action.face}${action.dir<0?'′':''}`;
+ if(action.type==='rotate')return `Rot ${action.vertex?'T':action.face}${action.dir<0?'′':''}`;
  if(action.type==='move')return `${action.kind==='slice'?action.depth:action.kind==='wide'&&action.depth>2?action.depth:''}${action.face}${action.kind==='wide'?'w':''}${action.dir<0?'′':''}`;
  return ({depth:action.depth===2?'Wide':`${action.depth}w`,'suffix-slice':'Slice next','hold-slice':'Slice','hold-wide':'Wide','hold-reverse':'Reverse','hold-mode':'Hold mode',mode:'Mode','next-mode':'Next mode',command:{undo:'Undo',redo:'Redo',scramble:'Scramble',home:'Home',fit:'Fit',reset:'Reset',pause:'Pause',cancel:'Clear','reset-tps':'Reset TPS'}[action.command]})[action.type]??'';
 }
@@ -197,6 +199,7 @@ export class KeyboardEngine{
   return {handled:true,action,binding};
  }
  resolve(action,context){
+  if(action.type==='rotate')return {face:action.face,layer:'slice',depth:1,count:context.size,dir:action.dir,label:actionLabel(action),valid:true,rotation:true,...(action.vertex?{vertex:true}:{})};
   const holds=this.effectiveHolds.map(h=>h.action.type),depth=this.pending;
   let start=1,count=1,dir=action.dir;
   if(action.kind==='default'){const base=context.defaultMove??{depth:1,count:1,dir:1};start=base.depth;count=base.count;dir=base.dir*action.dir;}

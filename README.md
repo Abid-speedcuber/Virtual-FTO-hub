@@ -33,3 +33,13 @@ Every sticker vertex uses an integer lattice. A turn is an exact signed coordina
 - `npm run preview`: serve the production build.
 
 Dependencies, generated builds, test reports, caches, and local environment/credential files are ignored. No commits are made automatically.
+
+## Keyboard presets and license
+
+In **Keyboard & bindings**, use **Reset to Abid's Default** or **Reset to csTimer's Default** to replace the current size's bindings/modes. Puzzle progress, timing, overlay preferences, and other sizes' profiles are preserved.
+
+Abid's preset adds independent U-axis rotations: **Backquote** = nUw and **Minus (-)** = nUw′ for an n×n puzzle. They do not start timing, count toward TPS, or consume a selected move suffix.
+
+The csTimer preset retains its FTO muscle-memory keys, including C = BL, M = Rw′, 3 = BL′, 8 = BR, and its independent rotations. Additional mode keys are **Tab** for EIF-R, **Shift+Tab** for EIF-L, and **Space** for E– cntr on 3×3. The center mode retains Abid's moves; Space or M returns to CIF. Native rotations retain their axes in EIF modes. csTimer's P/Q keys perform opposite 90° T rotations about the top/front vertex. Since 3 and 8 are face keys, their shifted number-suffix aliases are omitted; the remaining suffixes stay editable.
+
+This project is distributed under **GPL-3.0-only**; see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md). The csTimer preset adapts the GPLv3 FTO mapping from cs0x7f/cstimer. The prior project MIT notice and the keyboard recordings' original MIT attribution/license remain included.

@@ -1,4 +1,5 @@
 import {KeyboardEngine,TurnMeter,defaultConfig,validateConfig,parseTrigger,displayTrigger,displayCode,modifierOf,actionLabel,validModeName,upgradeEIFDefaults} from './keyboard-engine.js';
+import {cstimerConfig} from './keyboard-presets.js';
 import {keyboardLayout} from './keyboard-layout.js';
 const $=id=>document.getElementById(id),NS='http://www.w3.org/2000/svg';
 const uid=()=>globalThis.crypto?.randomUUID?.()??`key-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -35,9 +36,12 @@ function migrateNames(config){
     for(const trigger of bound.length?sides.filter(code=>!shifts.includes(code)):['Shift'])mode.bindings.push({id:uid(),trigger,action:{type:'hold-slice'}});
    }
   }
+  if(config.rotationVersion!==1&&config.preset!=='cstimer'&&['cif','eif-r','eif-l','e-center'].includes(mode.id)){
+   for(const [trigger,dir] of [['Backquote',1],['Minus',-1]])if(!mode.bindings.some(b=>parseTrigger(b.trigger)[0].includes(trigger)))mode.bindings.push({id:uid(),trigger,action:{type:'rotate',face:'U',dir,kind:'outer',depth:1}});
+  }
   mode.name=name;used.add(name.toLowerCase());
  }
- config.commandVersion=1;config.sliceVersion=1;return upgradeEIFDefaults(config);
+ config.commandVersion=1;config.sliceVersion=1;config.rotationVersion=1;return upgradeEIFDefaults(config);
 }
 export class KeyboardUI{
  constructor({context,move,command,status,suffix}){
@@ -82,6 +86,8 @@ export class KeyboardUI{
     this.sanitizeDisplay();if(['layout','numpad'].includes(key))this.renderLayout();this.renderSettings();this.render();this.save();
    };
   }
+  $('keyboard-reset-abid').onclick=()=>this.resetPreset('abid');
+  $('keyboard-reset-cstimer').onclick=()=>this.resetPreset('cstimer');
   $('keyboard-reset-tps').onclick=()=>{this.meter.reset();this.renderMeter();};
   $('keyboard-active-mode').onchange=()=>{this.engine.setMode($('keyboard-active-mode').value);this.render();this.save();};
   $('binding-mode').onchange=()=>{this.editMode=$('binding-mode').value;this.editId=null;this.renderEditor();};
@@ -96,7 +102,7 @@ export class KeyboardUI{
    for(const mode of next.modes)mode.bindings=mode.bindings.filter(b=>!['mode','hold-mode'].includes(b.action.type)||b.action.mode!==deleted);
    if(next.activeMode===deleted)next.activeMode=next.modes[0].id;this.editMode=next.modes[0].id;this.editId=null;this.commit(next);this.renderModes();this.renderEditor();
   };
-  $('binding-type').onchange=()=>this.renderActionFields();$('binding-kind').onchange=()=>this.renderActionFields();
+  $('binding-type').onchange=()=>this.renderActionFields();$('binding-kind').onchange=()=>this.renderActionFields();$('binding-rotation-axis').onchange=()=>this.renderActionFields();
   $('keyboard-sequence-timeout').onchange=()=>{this.config.sequenceTimeout=Math.round(Math.max(200,Math.min(10000,Number($('keyboard-sequence-timeout').value)||1400)));this.engine.config.sequenceTimeout=this.config.sequenceTimeout;this.save();};
   $('binding-record').onclick=()=>{
    this.capture={pressed:new Set(),all:new Set()};$('binding-record').textContent='Press a chord…';this.message('Press and release the keys together. Use the text field for tap sequences.');
@@ -121,6 +127,12 @@ export class KeyboardUI{
   validateConfig(next);migrateNames(next);next.suffixMode='one-shot';
   if(!next.modes.some(m=>m.id===next.activeMode))next.activeMode=next.modes[0].id;
   this.config=next;this.engine.configure(next);this.save();this.renderModes();this.render();
+ }
+ resetPreset(preset){
+  const next=preset==='cstimer'?cstimerConfig(this.size):defaultConfig(this.size);
+  next.display=structuredClone(this.config.display);next.sequenceTimeout=this.config.sequenceTimeout;
+  this.clear({selection:true});this.lastMove='';this.capture=null;$('binding-search').value='';this.editId=null;this.editMode=next.modes[0].id;
+  this.commit(next);this.renderEditor();this.message(`${preset==='cstimer'?'csTimer':"Abid"} defaults restored for ${this.size} × ${this.size}.`);
  }
  addMode(copy){
   if(this.config.modes.length>=40)return this.message('The maximum is 40 modes.');
@@ -154,7 +166,7 @@ export class KeyboardUI{
   if(['move','rotate'].includes(action?.type)){
    const move=this.engine.resolve(action,this.context());
    if(!move.valid)this.notice(`${move.label} needs at least ${move.depth+move.count-1} layers. Press the selected suffix again to clear it.`);
-   else if(this.move(move)!==false){this.engine.consume();this.lastMove=move.label;}else this.notice(this.context().scrambling?'Wait for the scramble to finish.':'Input queue full. Wait for turns to finish, or press Escape.');
+   else if(this.move(move)!==false){if(action.type!=='rotate')this.engine.consume();this.lastMove=move.label;}else this.notice(this.context().scrambling?'Wait for the scramble to finish.':'Input queue full. Wait for turns to finish, or press Escape.');
   }else if(['depth','suffix-slice'].includes(action?.type)){this.suffix?.();
   }else if(action?.type==='command'){
    if(action.command==='reset-tps')this.meter.reset();else this.command(action.command);
@@ -263,18 +275,18 @@ export class KeyboardUI{
  renderForm(){
   this.capture=null;$('binding-record').textContent='Record chord';const binding=this.config.modes.find(m=>m.id===this.editMode).bindings.find(b=>b.id===this.editId);
   $('binding-trigger').value=binding?displayTrigger(binding.trigger):'';const a=binding?.action??{type:'move',face:'U',dir:1,kind:'outer',depth:1};
-  $('binding-type').value=a.type;$('binding-face').value=a.face??'U';$('binding-direction').value=String(a.dir??1);$('binding-kind').value=a.kind??'outer';$('binding-depth').value=String(a.depth??2);$('binding-target-mode').value=a.mode??this.config.modes[0].id;$('binding-command').value=a.command??'undo';
+  $('binding-type').value=a.type;$('binding-face').value=a.face??'U';$('binding-direction').value=String(a.dir??1);$('binding-kind').value=a.kind??'outer';$('binding-rotation-axis').value=a.vertex?'vertex':'face';$('binding-depth').value=String(a.depth??2);$('binding-target-mode').value=a.mode??this.config.modes[0].id;$('binding-command').value=a.command??'undo';
   $('binding-save').textContent=binding?'Save changes':'Add binding';this.renderActionFields();this.message('');
  }
  renderActionFields(){
   const type=$('binding-type').value;
-  for(const [id,show] of [['binding-move-fields',['move','rotate'].includes(type)],['binding-kind-field',type==='move'],['binding-depth-field',type==='depth'||(type==='move'&&['slice','wide'].includes($('binding-kind').value))],['binding-mode-field',['mode','hold-mode'].includes(type)],['binding-command-field',type==='command']])$(id).hidden=!show;
+  for(const [id,show] of [['binding-move-fields',['move','rotate'].includes(type)],['binding-kind-field',type==='move'],['binding-rotation-field',type==='rotate'],['binding-face-field',type!=='rotate'||$('binding-rotation-axis').value!=='vertex'],['binding-depth-field',type==='depth'||(type==='move'&&['slice','wide'].includes($('binding-kind').value))],['binding-mode-field',['mode','hold-mode'].includes(type)],['binding-command-field',type==='command']])$(id).hidden=!show;
  }
  saveBinding(){
   try{
    const trigger=$('binding-trigger').value.trim();parseTrigger(trigger);const type=$('binding-type').value;let action={type};
    if(['move','rotate'].includes(type))action={...action,face:$('binding-face').value,dir:['-1','follow-reverse'].includes($('binding-direction').value)?-1:1,followDirection:$('binding-direction').value.startsWith('follow'),kind:$('binding-kind').value,depth:Number($('binding-depth').value)};
-   if(type==='rotate'){action.kind='outer';action.depth=1;}
+   if(type==='rotate'){action.kind='outer';action.depth=1;if($('binding-rotation-axis').value==='vertex'){action.vertex=true;action.face='U';}}
    if(type==='depth')action.depth=Number($('binding-depth').value);
    if(['mode','hold-mode'].includes(type))action.mode=$('binding-target-mode').value;
    if(type==='command')action.command=$('binding-command').value;

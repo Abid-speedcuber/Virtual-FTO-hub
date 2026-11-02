@@ -311,8 +311,10 @@ function executeMove(move){
   const face=FACES.find(f=>f.name===move.face);
   if(move.rotation){
    if(['scrambling','paused'].includes(session.status))return false;
-   const axis=new THREE.Vector3(...transformedNormal(face.normal,frame)).normalize();
-   controls.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(axis,-move.dir*2*Math.PI/3)).normalize();controls.update();sounds.play();draw();save();return true;
+   const axis=new THREE.Vector3(...transformedNormal(face.normal,frame));
+   if(move.vertex)axis.add(new THREE.Vector3(...transformedNormal(FACES.find(f=>f.name==='F').normal,frame)));
+   axis.normalize();
+   controls.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(axis,-move.dir*(move.vertex?Math.PI/2:2*Math.PI/3))).normalize();controls.update();sounds.play();draw();save();return true;
   }
   const notation={'1,1':'outer','2,1':'inner','1,2':'wide','1,3':'ultra'}[`${move.depth},${move.count}`]??'slice';
   return enqueue({type:'move',move:{normal:transformedNormal(face.normal,frame),name:face.name,layer:notation,depth:move.depth,count:move.count,dir:move.dir}});
