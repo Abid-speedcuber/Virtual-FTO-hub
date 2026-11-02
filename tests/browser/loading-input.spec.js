@@ -21,13 +21,13 @@ test('nothing paints before the puzzle renders, including while the main script 
  await page.screenshot({path:'test-results/blank-before-scene.png'});release();await ready(page);
  await expect(page.locator('#settings')).toBeVisible();expect(await page.evaluate(()=>window.sceneDraws)).toBeGreaterThan(0);await page.screenshot({path:'test-results/first-complete-frame.png'});
 });
-test('animation speeds up with cadence and a burst has no multi-turn visual backlog',async({page})=>{
+test('a burst snaps nonparallel turns and leaves only the newest normal-speed animation',async({page})=>{
  await page.clock.install();await page.goto('/');await ready(page);await freeze(page);
- const initial=await snap(page);await page.keyboard.press('KeyF');await page.clock.runFor(40);await page.keyboard.press('KeyR');expect((await snap(page)).animationMs).toBeLessThan(40);
- await page.clock.runFor(16);expect((await snap(page)).queued).toBe(0);expect((await snap(page)).busy).toBe(false);expect((await snap(page)).history).toHaveLength(2);
+ const initial=await snap(page);await page.keyboard.press('KeyF');await page.clock.runFor(40);await page.keyboard.press('KeyR');expect((await snap(page)).animationMs).toBe(145);
+ await page.clock.runFor(16);expect((await snap(page)).queued).toBe(0);expect((await snap(page)).busy).toBe(true);expect((await snap(page)).history).toHaveLength(1);
  const codes=['KeyU','KeyR','KeyF','KeyJ','KeyL','KeyB','KeyK','KeyD'];
  await page.evaluate(codes=>{for(let i=0;i<120;i++)for(const type of ['keydown','keyup'])document.body.dispatchEvent(new KeyboardEvent(type,{code:codes[i%codes.length],bubbles:true,cancelable:true}));},codes);
- await page.clock.runFor(16);const after=await snap(page);expect(after.history).toHaveLength(122);expect(after.queued).toBe(0);expect(after.busy).toBe(false);expect(after.keyboard.stats.total).toBe(122);expect(after.renderedMoves).toBe(122);
+ expect((await snap(page)).queued).toBe(0);expect((await snap(page)).animating).toHaveLength(1);await page.clock.runFor(160);const after=await snap(page);expect(after.history).toHaveLength(122);expect(after.queued).toBe(0);expect(after.busy).toBe(false);expect(after.keyboard.stats.total).toBe(122);expect(after.renderedMoves).toBe(122);
  const moves=[2,1,...Array.from({length:120},(_,i)=>i%8)].map(i=>({normal:initial.frame.slice(i*3,i*3+3),layer:'outer',dir:1}));expect(signature(after.state)).toBe(signature(moves.reduce(applyMove,solvedState())));
  await page.clock.runFor(500);await page.keyboard.press('KeyF');expect((await snap(page)).animationMs).toBe(145);
 });
@@ -49,7 +49,7 @@ test('switching sizes parks state, redo, view, and timer, even across reload',as
 });
 test('switching away mid-animation preserves all accepted pending turns',async({page})=>{
  await page.clock.install();await page.goto('/');await ready(page);await freeze(page);const initial=await snap(page);
- for(const code of ['KeyF','KeyR','KeyU'])await page.keyboard.press(code);await setSize(page,7);expect((await snap(page)).history).toHaveLength(0);await setSize(page,4);await page.clock.runFor(16);
+ for(const code of ['KeyF','KeyR','KeyU'])await page.keyboard.press(code);await setSize(page,7);expect((await snap(page)).history).toHaveLength(0);await setSize(page,4);await page.clock.runFor(160);
  const after=await snap(page);expect(after.history).toHaveLength(3);expect(after.queued).toBe(0);expect(after.busy).toBe(false);
  const moves=[2,1,0].map(i=>({normal:initial.frame.slice(i*3,i*3+3),layer:'outer',dir:1}));expect(signature(after.state)).toBe(signature(moves.reduce(applyMove,solvedState())));
 });

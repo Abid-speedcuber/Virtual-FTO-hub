@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {PuzzleSounds} from './sounds.js';
 import {TurnPacing} from './turn-pacing.js';
+import {TURN_ANIMATION_MS,parallelMoves,parallelBands,bandAngle} from './parallel-turns.js';
 import {SolveTimer,formatTime} from './solve-timer.js';
 import {KeyboardUI} from './keyboard-ui.js';
 import {ViewControls} from './view-controls.js';
@@ -72,27 +73,40 @@ let viewTween=null,viewFramePending=false;
 const puzzle=new THREE.Group();scene.add(puzzle);
 const materials=FACES.map(f=>new THREE.MeshBasicMaterial({color:f.color,side:THREE.DoubleSide}));
 const bodyMaterial=new THREE.MeshBasicMaterial({color:'#080e11'});
-const batches=[];
-function build(move=null,turnGroup=null){
+const batches=[],animationGroups=[];
+function build(){
  for(const mesh of batches){mesh.removeFromParent();mesh.geometry.dispose();}batches.length=0;
- const body=bodyGeometry(size,move);
- for(const [part,pos] of Object.entries(body)){
-  if(!pos.length)continue;
-  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-  const mesh=new THREE.Mesh(geometry,bodyMaterial);(part==='turning'?turnGroup:puzzle).add(mesh);batches.push(mesh);
- }
- const positions=Array.from({length:16},()=>[]);
+ for(const {group} of animationGroups)group.removeFromParent();animationGroups.length=0;
+ const turns=active?.turns??[],bands=parallelBands(size,turns.map(turn=>turn.move));
+ const sections=bands.length?bands:[{move:null,turns:[]}];
+ const groups=sections.map(band=>{
+  if(!band.turns.length)return puzzle;
+  const group=new THREE.Group();puzzle.add(group);animationGroups.push({group,band});return group;
+ });
+ sections.forEach((band,i)=>{
+  const body=bodyGeometry(size,band.move),positions=band.move?body.turning:body.stationary;
+  if(positions.length){
+   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+   const mesh=new THREE.Mesh(geometry,bodyMaterial);groups[i].add(mesh);batches.push(mesh);
+  }
+ });
+ const positions=sections.map(()=>Array.from({length:8},()=>[]));
  for(const sticker of state){
   const points=sticker.vertices.map(v=>new THREE.Vector3(...v).multiplyScalar(2/size));
   const center=points.reduce((a,v)=>a.add(v),new THREE.Vector3()).multiplyScalar(1/3);
-  const target=sticker.color+(move&&selected(sticker,move)?8:0);
-  positions[target].push(...points.flatMap(p=>p.clone().sub(center).multiplyScalar(.935).add(center).toArray()));
+  const section=bands.length?bands.findIndex(band=>selected(sticker,band.move)):0;
+  positions[section][sticker.color].push(...points.flatMap(p=>p.clone().sub(center).multiplyScalar(.935).add(center).toArray()));
  }
- positions.forEach((pos,i)=>{
+ positions.forEach((colors,section)=>colors.forEach((pos,color)=>{
   if(!pos.length)return;
   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-  const mesh=new THREE.Mesh(geometry,materials[i%8]);(i>=8?turnGroup:puzzle).add(mesh);batches.push(mesh);
- });
+  const mesh=new THREE.Mesh(geometry,materials[color]);groups[section].add(mesh);batches.push(mesh);
+ }));
+}
+function renderTurns(now=performance.now()){
+ if(!active)return;
+ const axis=new THREE.Vector3(...active.turns[0].move.normal).normalize();
+ for(const {group,band} of animationGroups)group.quaternion.setFromAxisAngle(axis,bandAngle(band,active.turns,now));
 }
 build();
 const labels=FACES.map(f=>{const el=document.createElement('span');el.className='face-label';el.textContent=f.name;$('labels').append(el);return el;});
@@ -132,7 +146,7 @@ function resizeViewport(){
  camera.aspect=width/height;camera.fov=360/Math.PI*Math.atan(Math.tan(Math.PI/10)/Math.min(1,camera.aspect));camera.updateProjectionMatrix();renderer.setSize(width,height);requestDraw();
 }
 new ResizeObserver(resizeViewport).observe(viewport);
-function currentSolve(){return {history,redo,undoFloor,view:{rotation:controls.rotation.toArray(),radius:controls.radius},manualPaused,timer:session.serialize(),pending:[...(active?[active.action]:[]),...queue]};}
+function currentSolve(){return {history,redo,undoFloor,view:{rotation:controls.rotation.toArray(),radius:controls.radius},manualPaused,timer:session.serialize(),pending:[...(active?.turns.map(turn=>turn.action)??[]),...queue]};}
 function save(){try{localStorage.setItem(storageKey,JSON.stringify({size,solves:{...solves,[size]:currentSolve()},pointerMode}));storageOK=true;}catch{storageOK=false;}renderSaveStatus();}
 let timesKey='';
 function renderTimes(){
@@ -157,7 +171,7 @@ function resumeSession(){if(!manualPaused&&!document.hidden&&!document.querySele
 function toggleManualPause(){
  if(manualPaused){resumeManualPause();return;}
  if(session.status!=='running')return;
- if(active){const running=active;active=null;commitAction(running.action,running.move);running.group.removeFromParent();}
+ snapActive();
  while(queue.length){const action=queue.shift(),move=actionMove(action);if(move)commitAction(action,move);}
  build();if(session.status==='running'){manualPaused=true;keyboard?.clear({selection:true});controls.cancelAll();pauseSession();}else{save();update();draw();}
 }
@@ -183,18 +197,28 @@ function update(){
 
 }
 function enqueue(action){
- if(queue.length>=500||['scrambling','paused'].includes(session.status))return false;
+ if(queue.length+(active?.turns.length??0)>=500||['scrambling','paused'].includes(session.status))return false;
  if(session.status==='finished'&&['undo','redo'].includes(action.type))return false;
- if(action.type==='undo'&&history.length<=undoFloor&&!active)return false;if(action.type==='redo'&&!redo.length&&active?.action.type!=='undo'&&!queue.some(a=>a.type==='undo'))return false;
+ if(['undo','redo'].includes(action.type)&&!actionMove(action,true))return false;
  const now=performance.now();pacing.input(now);if(viewTween)viewTween.deadline=Math.min(viewTween.deadline,now+pacing.duration());session.start();queue.push(action);if(action.type==='move')keyboard?.recordTurn();sounds.play();save();update();pump();return true;
 }
-function actionMove(action){
+function actionMove(action,includeActive=false){
  if(session.status==='finished'&&['undo','redo'].includes(action.type))return null;
- if(action.type==='undo')return history.length>undoFloor?inverse(history.at(-1)):null;
- if(action.type==='redo')return redo.length?redo.at(-1):null;
+ let past=history,future=redo;
+ if(includeActive&&active){
+  past=history.slice();future=redo.slice();
+  for(const turn of active.turns){
+   if(turn.action.type==='undo')future.push(past.pop());
+   else if(turn.action.type==='redo')past.push(future.pop());
+   else{past.push(turn.move);future=[];}
+  }
+ }
+ if(action.type==='undo')return past.length>undoFloor?inverse(past.at(-1)):null;
+ if(action.type==='redo')return future.length?future.at(-1):null;
  return action.move;
 }
 function commitAction(action,move){
+ if(session.status==='finished'&&['undo','redo'].includes(action.type))return;
  state=applyMove(state,move);
  if(action.type==='undo')redo.push(history.pop());
  else if(action.type==='redo')history.push(redo.pop());
@@ -204,36 +228,50 @@ function commitAction(action,move){
   if(!queue.some(a=>a.source==='scramble'))session.arm();
  }else if(isSolved(state))session.finish();
 }
-function pump(){
- if(active||!queue.length)return;
- const action=queue.shift(),move=actionMove(action);
- if(!move){pump();update();return;}
- const group=new THREE.Group();puzzle.add(group);build(move,group);
- const running={action,move,group};active=running;update();
- const finish=(catchUp=false)=>{
-  if(active!==running)return;
-  commitAction(action,move);group.removeFromParent();active=null;
-  if(catchUp){
-   // Preserve every logical turn/undo/redo, but skip obsolete intermediate
-   // visual frames. Render the exact latest state once after a burst.
-   while(queue.length&&queue[0].source!=='scramble'){
-    const next=queue.shift(),turn=actionMove(next);if(turn)commitAction(next,turn);
-   }
-  }
-  if(!queue.length)build();save();update();pump();if(catchUp)draw();else requestDraw();
- };
- const animated=action.source==='scramble'?$('animate-scrambling').checked:$('animate').checked;
- if(!animated){finish();return;}
- let previous=performance.now(),progress=0;const axis=new THREE.Vector3(...move.normal).normalize();
- function tick(now){
-  if(active!==running)return;
-  if(action.source!=='scramble'&&queue.some(a=>a.source!=='scramble')){finish(true);return;}
-  const duration=action.source==='scramble'?65:pacing.duration();
-  progress=Math.min(1,progress+Math.max(0,now-previous)/duration);previous=now;
-  group.quaternion.setFromAxisAngle(axis,-move.dir*2*Math.PI/3*(progress*progress*(3-2*progress)));draw();
-  if(progress<1)requestAnimationFrame(tick);else finish();
+function snapActive(){
+ if(!active)return false;
+ const turns=active.turns;active=null;
+ for(const turn of turns)commitAction(turn.action,turn.move);
+ return true;
+}
+function finishCompleted(now){
+ let changed=false;
+ while(active?.turns.length&&now-active.turns[0].started>=active.turns[0].duration){
+  const turn=active.turns.shift();commitAction(turn.action,turn.move);changed=true;
+  if(session.status==='finished')active.turns=active.turns.filter(next=>!['undo','redo'].includes(next.action.type));
  }
- requestAnimationFrame(tick);
+ if(active&&!active.turns.length)active=null;
+ return changed;
+}
+let turnFramePending=false;
+function scheduleTurns(){
+ if(active&&!turnFramePending){turnFramePending=true;requestAnimationFrame(tickTurns);}
+}
+function tickTurns(now){
+ turnFramePending=false;
+ pump(finishCompleted(now));
+ renderTurns(now);draw();scheduleTurns();
+}
+function pump(changed=false){
+ const now=performance.now();changed=finishCompleted(now)||changed;
+ while(queue.length){
+  // Computer scrambling stays sequential and uses its own animation setting.
+  if(active?.turns[0].action.source==='scramble')break;
+  const action=queue[0];let move=actionMove(action,true);
+  if(!move){queue.shift();changed=true;continue;}
+  if(active&&(action.source==='scramble'||!parallelMoves(active.turns[0].move,move))){
+   snapActive();changed=true;move=actionMove(action);
+   if(!move){queue.shift();continue;}
+  }
+  queue.shift();
+  const animated=action.source==='scramble'?$('animate-scrambling').checked:$('animate').checked;
+  if(!animated){snapActive();commitAction(action,move);changed=true;continue;}
+  if(!active)active={turns:[]};
+  active.turns.push({action,move,started:now,duration:action.source==='scramble'?65:TURN_ANIMATION_MS});changed=true;
+  if(action.source==='scramble')break;
+ }
+ if(changed){build();renderTurns(now);save();update();requestDraw();}
+ scheduleTurns();
 }
 async function confirmPaused(message,label){
  const dialog=$('confirm-dialog');if(dialog.open)return false;
@@ -246,7 +284,7 @@ $('undo').onclick=()=>enqueue({type:'undo'});$('redo').onclick=()=>enqueue({type
 $('scramble').onclick=async()=>{
  if(!await confirmPaused(`Scramble this ${size} × ${size} FTO? This replaces the current solve and starts a new timed attempt.`,'Scramble'))return;
  viewTween=null;controls.cancelAll();keyboard?.clear({selection:true});queue=[];
- if(active){active.group.removeFromParent();active=null;}
+ active=null;
  state=solvedState(size);history=[];redo=[];undoFloor=0;manualPaused=false;pacing.reset();session.scramble();
  let moves=scrambleMoves(Math.max(50,size*10),Math.random,size);
  while(isSolved(moves.reduce(applyMove,state)))moves=scrambleMoves(Math.max(50,size*10),Math.random,size);
@@ -255,8 +293,7 @@ $('scramble').onclick=async()=>{
 };
 async function resetSolve(){
  if((history.length||active||queue.length)&&!await confirmPaused('Reset the puzzle to solved and clear this solve’s history?','Reset'))return;
- viewTween=null;keyboard?.clear({selection:true});queue=[];const previous=active;active=null;manualPaused=false;
- if(previous)previous.group.removeFromParent();
+ viewTween=null;keyboard?.clear({selection:true});queue=[];active=null;manualPaused=false;
  state=solvedState(size);history=[];redo=[];undoFloor=0;pacing.reset();session.reset();build();save();update();requestDraw();
 }
 $('freeplay-reset').onclick=resetSolve;
@@ -277,7 +314,7 @@ function renderSize(){$('size').value=String(size);keyboard?.render();}
 $('size').onchange=()=>{
  // Save completed and pending turns before switching to another puzzle size.
  session.pause();solves[size]=structuredClone(currentSolve());queue=[];viewTween=null;pacing.reset();
- if(active){active.group.removeFromParent();active=null;}
+ active=null;
  controls.cancelAll();keyboard?.clear({selection:true});size=Number($('size').value);keyboard?.setSize(size);
  const saved=structuredClone(solves[size]??{});
  history=saved.history??[];redo=saved.redo??[];undoFloor=saved.undoFloor??0;session=new SolveTimer(saved.timer);manualPaused=saved.manualPaused===true&&session.status==='paused';queue=saved.pending??[];
@@ -334,7 +371,7 @@ controls.addEventListener('tap',e=>{
 if(!storageOK)$('save-status').textContent='Saved solve could not be loaded';
 update();requestDraw();
 // Read-only diagnostics for verifying geometry and input behavior in a browser.
-window.fto={snapshot:()=>({size,pointerMode,undoFloor,manualPaused,ready:document.documentElement.hasAttribute('data-app-ready'),animationMs:pacing.duration(),renderedMoves,rotating:!!viewTween,viewOrbit:displayedCamera.quaternion.clone().invert().toArray(),stickerColors:materials.map(m=>m.color.getHexString()),keyboard:keyboard?.snapshot(),timer:session.snapshot(),state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};
+window.fto={snapshot:()=>({size,pointerMode,undoFloor,manualPaused,ready:document.documentElement.hasAttribute('data-app-ready'),animationMs:TURN_ANIMATION_MS,animating:active?.turns.map(turn=>({move:structuredClone(turn.move),progress:Math.min(1,Math.max(0,(performance.now()-turn.started)/turn.duration))}))??[],renderedMoves,rotating:!!viewTween,viewOrbit:displayedCamera.quaternion.clone().invert().toArray(),stickerColors:materials.map(m=>m.color.getHexString()),keyboard:keyboard?.snapshot(),timer:session.snapshot(),state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};
 
 function executeMove(move){
   const face=FACES.find(f=>f.name===move.face);

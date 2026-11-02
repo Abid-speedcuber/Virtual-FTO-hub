@@ -1,5 +1,5 @@
-// Animation time follows input cadence. A burst is drained on the next frame
-// instead of accumulating a sequence of full-length visual transitions.
+// View-rotation transitions follow input cadence. Layer turns instead use
+// fixed-duration concurrent animations from parallel-turns.js.
 export class TurnPacing{
  constructor(){this.reset();}
  reset(){this.last=null;this.interval=145;}
