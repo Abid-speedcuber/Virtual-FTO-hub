@@ -45,7 +45,7 @@ export function validateConfig(config,{legacyNames=false}={}){
    if(['move','rotate'].includes(a.type)&&(!FACE_NAMES.includes(a.face)||![1,-1].includes(a.dir)||!['default','outer','slice','wide'].includes(a.kind)||!Number.isInteger(a.depth)||a.depth<1||a.depth>20))throw Error('Move bindings need a face, direction, and depth from 1–20.');
    if(a.type==='depth'&&(!Number.isInteger(a.depth)||a.depth<1||a.depth>20))throw Error('Next-move depth must be 1–20.');
    if(['hold-mode','mode'].includes(a.type)&&!ids.has(a.mode))throw Error('Select an existing target mode.');
-   if(a.type==='command'&&!['undo','redo','scramble','home','fit','reset','cancel','reset-tps'].includes(a.command))throw Error('Unknown command.');
+   if(a.type==='command'&&!['undo','redo','scramble','home','fit','reset','pause','cancel','reset-tps'].includes(a.command))throw Error('Unknown command.');
    if(a.type.startsWith('hold-')&&parseTrigger(binding.trigger).length!==1)throw Error('Held actions need a single key or chord, not a tap sequence.');
   }
   // A tap sequence may start with a held-action key, but never an immediate
@@ -71,27 +71,52 @@ export function defaultConfig(size=4){
   add(`Shift+${n}`,{type:'depth',depth:n?n+10:20});
  }
  add('NumpadMultiply',{type:'depth',depth:18});
- for(const [trigger,command] of [['Ctrl+Z','undo'],['Meta+Z','undo'],['Backspace','undo'],['Ctrl+Shift+Z','redo'],['Meta+Shift+Z','redo'],['Ctrl+Y','redo'],['Home','home'],['Escape','cancel']])add(trigger,{type:'command',command});
+ for(const [trigger,command] of [['Ctrl+Z','undo'],['Meta+Z','undo'],['Backspace','undo'],['Shift+Backspace','redo'],['Ctrl+Shift+Z','redo'],['Meta+Shift+Z','redo'],['Ctrl+Y','redo'],['Home','home'],['Escape','pause']])add(trigger,{type:'command',command});
+ add('Shift',{type:'hold-slice'});
  let modes=[{id:'cif',name:'CIF',bindings}];
  if(size===3){
-  add('Shift',{type:'hold-slice'});add('Space',{type:'depth',depth:2});
+  add('Space',{type:'depth',depth:2});
   for(const [key,face,dir] of [['Y','R',1],['T','L',-1],['B','R',-1],['V','L',1]])add(key,move(face,dir,'wide',2));
-  add('Tab',{type:'mode',mode:'eif-r'});add('C',{type:'mode',mode:'eif-l'});add('M',{type:'mode',mode:'e-center'});
-  const cycle=['F','R','BR','B','BL','L'];
+  add('M',{type:'mode',mode:'e-center'});
+ }
+ add('Tab',{type:'mode',mode:'eif-r'});add('C',{type:'mode',mode:'eif-l'});
+ const cycle=['F','R','BR','B','BL','L'];
   for(const [mode,name,offset] of [['eif-r','EIF-R',1],['eif-l','EIF-L',-1]]){
    const copy=structuredClone(bindings).map(b=>{b.id=`${mode}-${b.id}`;if(b.action.type==='move'&&cycle.includes(b.action.face))b.action.face=cycle[(cycle.indexOf(b.action.face)+offset+6)%6];return b;});
    copy.find(b=>b.trigger===(mode==='eif-r'?'Tab':'C')).action={type:'mode',mode:'cif'};
    modes.push({id:mode,name,bindings:copy});
   }
+ if(size===3){
   const center=[['F','U',-1,'outer',1],['H','U',1,'outer',1],['K','R',1,'outer',1],['D','R',-1,'outer',1],['S','R',-1,'wide',2],['L','R',1,'wide',2],['E','R',-1,'slice',2],['I','R',1,'slice',2]].map(([trigger,face,dir,kind,depth])=>({id:`center-${trigger}`,trigger,action:move(face,dir,kind,depth)}));
-  center.push({id:'center-exit',trigger:'M',action:{type:'mode',mode:'cif'}});modes.push({id:'e-center',name:'E Center',bindings:center});
+  center.push({id:'center-slice',trigger:'Shift',action:{type:'hold-slice'}},{id:'center-pause',trigger:'Escape',action:{type:'command',command:'pause'}},{id:'center-redo',trigger:'Shift+Backspace',action:{type:'command',command:'redo'}},{id:'center-exit',trigger:'M',action:{type:'mode',mode:'cif'}});modes.push({id:'e-center',name:'E– cntr',bindings:center});
  }
- return {version:1,suffixMode:'one-shot',activeMode:'cif',modes,display:{show:false,layout:'ansi',numpad:false,width:900,cornerVersion:3,opacity:100,showTPS:true,window:1},sequenceTimeout:1400};
+ return {version:1,eifVersion:1,sliceVersion:1,suffixMode:'one-shot',activeMode:'cif',modes,display:{show:false,layout:'ansi',numpad:false,width:900,cornerVersion:3,opacity:100,showTPS:true,window:1},sequenceTimeout:1400};
+}
+// Upgrade existing CIF profiles once. User-owned modes and occupied keys win.
+export function upgradeEIFDefaults(config){
+ if(config.eifVersion===1)return config;
+ const cif=config.modes.find(m=>m.id==='cif');
+ if(cif){
+  const ring=['F','R','BR','B','BL','L'];
+  const occupied=(mode,key)=>mode.bindings.some(b=>parseTrigger(b.trigger)[0].includes(key));
+  for(const [id,name,offset,key] of [['eif-r','EIF-R',1,'Tab'],['eif-l','EIF-L',-1,'KeyC']]){
+   let mode=config.modes.find(m=>m.id===id)||config.modes.find(m=>m.name.toLowerCase()===name.toLowerCase());
+   if(!mode&&config.modes.length<40){
+    const bindings=structuredClone(cif.bindings).map(b=>{b.id=`${id}-${b.id}`;if(b.action.type==='move'&&ring.includes(b.action.face))b.action.face=ring[(ring.indexOf(b.action.face)+offset+6)%6];return b;});
+    mode={id,name,bindings};config.modes.push(mode);
+    const back=mode.bindings.find(b=>triggerKey(b.trigger)===key&&b.action.type==='mode'&&b.action.mode===id);
+    if(back)back.action.mode=cif.id;
+    else if(!occupied(mode,key))mode.bindings.push({id:`${id}-return`,trigger:key,action:{type:'mode',mode:cif.id}});
+   }
+   if(mode&&!occupied(cif,key))cif.bindings.push({id:`${id}-switch`,trigger:key,action:{type:'mode',mode:mode.id}});
+  }
+ }
+ config.eifVersion=1;return config;
 }
 export function actionLabel(action){
- if(action.type==='rotate')return `Cube rotation ${action.face}${action.dir<0?'′':''}`;
+ if(action.type==='rotate')return `Rot ${action.face}${action.dir<0?'′':''}`;
  if(action.type==='move')return `${action.kind==='slice'?action.depth:action.kind==='wide'&&action.depth>2?action.depth:''}${action.face}${action.kind==='wide'?'w':''}${action.dir<0?'′':''}`;
- return ({depth:`${action.depth}w`,'suffix-slice':'Slice next','hold-slice':'Slice','hold-wide':'Wide','hold-reverse':'Reverse','hold-mode':'Hold mode',mode:'Mode','next-mode':'Next mode',command:{undo:'Undo',redo:'Redo',scramble:'Scramble',home:'Home',fit:'Fit',reset:'Reset',cancel:'Clear','reset-tps':'Reset TPS'}[action.command]})[action.type]??'';
+ return ({depth:action.depth===2?'Wide':`${action.depth}w`,'suffix-slice':'Slice next','hold-slice':'Slice','hold-wide':'Wide','hold-reverse':'Reverse','hold-mode':'Hold mode',mode:'Mode','next-mode':'Next mode',command:{undo:'Undo',redo:'Redo',scramble:'Scramble',home:'Home',fit:'Fit',reset:'Reset',pause:'Pause',cancel:'Clear','reset-tps':'Reset TPS'}[action.command]})[action.type]??'';
 }
 export class KeyboardEngine{
  constructor(config=defaultConfig()){
@@ -184,7 +209,7 @@ export class KeyboardEngine{
   if(holds.includes('hold-reverse'))dir*=-1;
   const valid=start>=1&&count>=1&&start+count-1<=context.size;
   const rotation=action.type==='rotate'||(start===1&&count===context.size);
-  const label=rotation?`Cube rotation ${action.face}${dir<0?'′':''}`:`${count>1?(count>2?count:''):start>1?start:''}${action.face}${count>1?'w':''}${dir<0?'′':''}`;
+  const label=rotation?`Rot ${action.face}${dir<0?'′':''}`:`${count>1?(count>2?count:''):start>1?start:''}${action.face}${count>1?'w':''}${dir<0?'′':''}`;
   return {face:action.face,layer:'slice',depth:start,count,dir,label,valid,...(rotation?{rotation:true}:{})};
  }
  actionText(action){
@@ -196,8 +221,9 @@ export class KeyboardEngine{
   const pressed=new Set(this.pressed);pressed.add(code);
   const binding=this.find(code,this.sequence,pressed);
   if(binding){
+   if(binding.action.type==='command'&&binding.action.command==='pause')return context.canPause?(context.manualPaused?'Resume':'Pause'):'';
    if(binding.action.type==='depth'&&binding.action.depth>context.size)return '';
-   return ['move','rotate'].includes(binding.action.type)?(this.resolve(binding.action,context).valid?this.resolve(binding.action,context).label:''):binding.action.type==='depth'&&binding.action.depth===context.size?'Cube rotation':this.actionText(binding.action);
+   return ['move','rotate'].includes(binding.action.type)?(this.resolve(binding.action,context).valid?this.resolve(binding.action,context).label:''):binding.action.type==='depth'&&binding.action.depth===context.size?'Rot':this.actionText(binding.action);
   }
   const partial=this.compiled.get(this.mode.id).find(b=>(b.action.type!=='depth'||b.action.depth<=context.size)&&(b.steps.length>1||b.steps[0].length>1)&&b.steps[0].some(k=>k===code||k===modifierOf(code)));
   return partial?.steps.length>1?`${this.actionText(partial.action)} …`:'';
@@ -209,7 +235,7 @@ export class KeyboardEngine{
   const selected=selectedSlice||this.pending!==null&&this.pending<=context.size&&((this.pendingSource?.code===code&&this.pendingSource.mode===this.mode.id)||(binding?.action.type==='depth'&&binding.action.depth===this.pending));
   const move=binding?.action.type==='move'?this.resolve(binding.action,context):null;
   const affected=(this.pending!==null||this.slicePending)&&!!move?.valid;
-  return {selected,affected,label:selectedSlice?'Slice next':selected?(this.pending===context.size?'Cube rotation':`${this.pending}w`):this.label(code,context)};
+  return {selected,affected,label:selectedSlice?'Slice next':selected?(this.pending===context.size?'Rot':this.pending===2?'Wide':`${this.pending}w`):this.label(code,context)};
  }
  expire(now=Date.now()){
   if(this.sequence.length&&now-this.lastStroke>(this.config.sequenceTimeout??1400)){this.sequence=[];return true;}return false;

@@ -66,7 +66,7 @@ test('recording a binding never turns the puzzle; repeated keys and focus loss l
 
 test('on-screen keys and manual moves count, automatic scramble and undo do not',async({page})=>{
  await setup(page,'4');await page.locator('[data-code="KeyF"]').click();expect((await snapshot(page)).keyboard.stats.total).toBe(1);
- await withSettings(page,()=>page.locator('#show-move-buttons').check());await page.locator('[data-face="R"]').click();expect((await snapshot(page)).keyboard.stats.total).toBe(2);
+ await withSettings(page,()=>page.locator('#pointer-mode').selectOption('legacy'));const face=await page.locator('.face-label:not([hidden])').filter({hasText:/^F$/}).boundingBox();await page.mouse.click(face.x+face.width/2,face.y+face.height/2);expect((await snapshot(page)).keyboard.stats.total).toBe(2);
  await page.locator('#undo').click();expect((await snapshot(page)).keyboard.stats.total).toBe(2);
  await scramble(page);await page.waitForFunction(()=>!window.fto.snapshot().busy&&!window.fto.snapshot().queued);expect((await snapshot(page)).keyboard.stats.total).toBe(2);
  await page.keyboard.press('Digit8');await expect(page.locator('[data-code="Digit8"] text')).toHaveText('');expect((await snapshot(page)).keyboard.pending).toBe(null);expect((await snapshot(page)).keyboard.stats.total).toBe(2);
@@ -144,7 +144,7 @@ test('unrelated suffix keys stay blank, including shifted and custom bindings',a
  await setup(page,'7');await editor(page);await bind(page,'A',{type:'depth',depth:'8'});await closeEditor(page);
  await expect(page.locator('[data-code="KeyA"] text')).toHaveText('');await page.keyboard.press('Digit6');await page.keyboard.press('Digit8');expect((await snapshot(page)).keyboard.pending).toBe(6);
  await page.keyboard.press('KeyA');expect((await snapshot(page)).keyboard.pending).toBe(6);await page.keyboard.down('Shift');await expect(page.locator('[data-code="Digit1"] text')).toHaveText('');await page.keyboard.press('Digit1');await page.keyboard.up('Shift');expect((await snapshot(page)).keyboard.pending).toBe(6);
- await page.keyboard.press('Escape');expect((await snapshot(page)).keyboard.pending).toBe(null);expect((await snapshot(page)).keyboard.stats.total).toBe(0);
+ await page.keyboard.press('Digit6');expect((await snapshot(page)).keyboard.pending).toBe(null);expect((await snapshot(page)).keyboard.stats.total).toBe(0);
 });
 test('shifted suffix keeps its selected label after modifier release and cancels on the same chord',async({page})=>{
  await setup(page);await page.keyboard.press('Shift+Digit8');await page.waitForTimeout(200);

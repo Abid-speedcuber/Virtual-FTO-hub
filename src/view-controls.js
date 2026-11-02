@@ -77,9 +77,9 @@ export class ViewControls extends THREE.EventDispatcher {
   const p=this.pointers.get(e.pointerId);this.pointers.delete(e.pointerId);
   if(this.element.hasPointerCapture(e.pointerId))this.element.releasePointerCapture(e.pointerId);
   if(p&&this.mode==='swipe'&&p.hit&&!p.blocked&&Math.hypot(e.clientX-p.startX,e.clientY-p.startY)>=10)
-   this.dispatchEvent({type:'swipe',hit:p.hit,dx:e.clientX-p.startX,dy:e.clientY-p.startY,shiftKey:e.shiftKey,ctrlKey:e.ctrlKey});
+   this.dispatchEvent({type:'swipe',hit:p.hit,dx:e.clientX-p.startX,dy:e.clientY-p.startY,shiftKey:e.shiftKey,ctrlKey:e.ctrlKey,altKey:e.altKey,metaKey:e.metaKey});
   if(this.mode==='legacy'&&p&&!p.moved&&Math.hypot(e.clientX-p.startX,e.clientY-p.startY)<=5&&p.button!==1)
-   this.dispatchEvent({type:'tap',x:e.clientX,y:e.clientY,button:p.button,shiftKey:e.shiftKey,ctrlKey:e.ctrlKey});
+   this.dispatchEvent({type:'tap',x:e.clientX,y:e.clientY,button:p.button,shiftKey:e.shiftKey,ctrlKey:e.ctrlKey,altKey:e.altKey,metaKey:e.metaKey});
  }
  cancel(e){
   if(this.pointers.has(e.pointerId))for(const p of this.pointers.values())p.blocked=true;

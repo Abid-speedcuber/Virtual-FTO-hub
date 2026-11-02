@@ -48,7 +48,7 @@ test('finishing records a per-size PB; reset preserves it and a faster attempt i
  };
  await finishWithMoves(2500);expect((await snap(page)).timer).toMatchObject({status:'finished',bestMs:2500,completed:1});await expect(page.locator('#solve-times li')).toHaveCount(1);await expect(page.locator('#solve-times li time')).toHaveText('2.50');await page.reload();await ready(page);expect((await snap(page)).timer.bestMs).toBe(2500);
  await setSize(page,3);expect((await snap(page)).timer.bestMs).toBe(null);await setSize(page,4);expect((await snap(page)).timer.bestMs).toBe(2500);
- await click(page,'#settings');await confirmAction(page,()=>click(page,'#reset'));await click(page,'#close-settings');expect((await snap(page)).timer).toMatchObject({status:'idle',bestMs:2500});
+ await confirmAction(page,()=>click(page,'#freeplay-reset'));expect((await snap(page)).timer).toMatchObject({status:'idle',bestMs:2500});
  await confirmAction(page,()=>click(page,'#scramble'));await finishWithMoves(2000);expect((await snap(page)).timer).toMatchObject({status:'finished',bestMs:2000,completed:2,newBest:true});await expect(page.locator('#solve-times li')).toHaveCount(2);await expect(page.locator('#solve-times li time').first()).toHaveText('2.00');
 });
 test('animated scrambling is independent, blocks turns, and restores an interrupted sequence',async({page})=>{

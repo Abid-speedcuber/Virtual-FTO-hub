@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {KeyboardEngine,TurnMeter,defaultConfig,validateConfig,parseTrigger,triggerKey,displayTrigger} from '../src/keyboard-engine.js';
+import {KeyboardEngine,TurnMeter,defaultConfig,validateConfig,parseTrigger,triggerKey,displayTrigger,upgradeEIFDefaults} from '../src/keyboard-engine.js';
 import {keyboardLayout} from '../src/keyboard-layout.js';
 const ctx={size:20,defaultMove:{depth:1,count:1,dir:1}};
 const tap=(e,code)=>{const result=e.keyDown(code);e.keyUp(code);return result;};
@@ -38,7 +38,7 @@ test('repeat, blur/cancel and unknown OS modifiers do not create extra moves or 
  const e=new KeyboardEngine();assert.equal(e.keyDown('KeyF').action.type,'move');assert.equal(e.keyDown('KeyF',{repeat:true}).action,undefined);e.keyUp('KeyF');
  e.keyDown('MetaLeft');assert.equal(tap(e,'KeyF').action,undefined);e.keyUp('MetaLeft');
  tap(e,'Digit8');e.keyDown('ShiftLeft');e.clear();assert.equal(e.pending,null);assert.equal(e.pressed.size,0);assert.equal(e.holds.length,0);
- tap(e,'Digit8');tap(e,'Escape');assert.equal(e.pending,null);
+ const custom=defaultConfig();custom.modes[0].bindings.find(b=>b.trigger==='Escape').action.command='cancel';e.configure(custom);tap(e,'Digit8');tap(e,'Escape');assert.equal(e.pending,null);
 });
 test('tap sequence timeout does not execute stale sequences',()=>{
  const e=new KeyboardEngine(config([['A F',action('U')]]));e.keyDown('KeyA',{now:1000});e.keyUp('KeyA');assert.equal(e.keyDown('KeyF',{now:5000}).action,undefined);
@@ -126,25 +126,52 @@ test('3x3 defaults contain all requested CIF moves and clockwise/counterclockwis
  assert.equal(get('cif','Space').depth,2);assert.equal(get('cif','2').depth,2);assert.equal(get('cif','1').depth,11);assert.equal(get('cif','0').depth,10);assert.equal(get('cif','Shift+1').depth,11);
  assert.equal(get('cif','Ctrl'),undefined);assert.equal(get('cif','Alt'),undefined);assert.equal(get('cif',"'"),undefined);
  for(const [key,face,dir,kind,depth] of [['F','U',-1,'outer',1],['H','U',1,'outer',1],['K','R',1,'outer',1],['D','R',-1,'outer',1],['S','R',-1,'wide',2],['L','R',1,'wide',2],['E','R',-1,'slice',2],['I','R',1,'slice',2]])assert.deepEqual(get('e-center',key),{type:'move',face,dir,kind,depth});
- for(let size=2;size<=20;size++){const config=defaultConfig(size);validateConfig(config);if(size!==3){assert.equal(config.modes.length,1);assert.equal(config.modes[0].bindings.filter(b=>b.action.type==='move').length,16);assert.ok(!config.modes[0].bindings.some(b=>b.action.type.startsWith('hold-')));}}
+ for(let size=2;size<=20;size++){const config=defaultConfig(size);validateConfig(config);if(size!==3){assert.equal(config.modes.length,3);assert.equal(config.modes[0].bindings.filter(b=>b.action.type==='move').length,16);assert.deepEqual(config.modes[0].bindings.filter(b=>b.action.type.startsWith('hold-')).map(b=>b.action.type),['hold-slice']);}}
 });
 test('full width is a cube rotation; slice suffix stacks in either order and clears after one move',()=>{
  const c=defaultConfig(3);c.modes[0].bindings.push({id:'slice-suffix',trigger:"'",action:{type:'suffix-slice'}},{id:'rotation',trigger:'Q',action:{type:'rotate',face:'R',dir:-1,kind:'outer',depth:1}});
- const e=new KeyboardEngine(c),context={size:3};assert.equal(e.label('Digit3',context),'Cube rotation');tap(e,'Digit3');assert.equal(e.resolve(tap(e,'KeyF').action,context).rotation,true);e.consume();
+ const e=new KeyboardEngine(c),context={size:3};assert.equal(e.label('Digit3',context),'Rot');tap(e,'Digit3');assert.equal(e.resolve(tap(e,'KeyF').action,context).rotation,true);e.consume();
  for(const codes of [['Digit2','Quote'],['Quote','Digit2']]){for(const code of codes)tap(e,code);tap(e,'KeyQ');const move=e.resolve(tap(e,'KeyF').action,context);assert.equal(move.depth,2);assert.equal(move.count,1);assert.equal(move.label,'2U′');assert.equal(move.rotation,undefined);assert.equal(e.keyState('Quote',context).selected,true);e.consume();assert.equal(e.slicePending,false);assert.equal(e.pending,null);}
  assert.equal(e.resolve(tap(e,'KeyQ').action,context).rotation,true);
- assert.equal(new KeyboardEngine(defaultConfig(2)).label('Digit2',{size:2}),'Cube rotation');
+ assert.equal(new KeyboardEngine(defaultConfig(2)).label('Digit2',{size:2}),'Rot');
 });
 
 test('mode labels name their destinations and unbound shortcut modifiers stay blank',()=>{
- const e=new KeyboardEngine(defaultConfig(3));assert.equal(e.label('Tab',ctx),'EIF-R');assert.equal(e.label('KeyC',ctx),'EIF-L');assert.equal(e.label('KeyM',ctx),'E Center');
+ const e=new KeyboardEngine(defaultConfig(3));assert.equal(e.label('Tab',ctx),'EIF-R');assert.equal(e.label('KeyC',ctx),'EIF-L');assert.equal(e.label('KeyM',ctx),'E– cntr');
  for(const code of ['ControlLeft','ControlRight','MetaLeft','AltLeft','KeyZ'])assert.equal(e.label(code,ctx),'');
  assert.equal(e.label('ShiftLeft',ctx),'Slice');tap(e,'Tab');assert.equal(e.label('Tab',ctx),'CIF');
 });
 test('mode names allow at most two six-character words and a single space',()=>{
- for(const name of ['CIF','EIF-R','E Center','ABCDEF GHIJKL']){const c=config([]);c.modes[0].name=name;assert.doesNotThrow(()=>validateConfig(c));}
+ for(const name of ['CIF','EIF-R','E– cntr','ABCDEF GHIJKL']){const c=config([]);c.modes[0].name=name;assert.doesNotThrow(()=>validateConfig(c));}
  for(const name of ['1234567','a  b','one two three','a\tb','a\nb',' space','space ']){const c=config([]);c.modes[0].name=name;assert.throws(()=>validateConfig(c),/6 characters/);}
 });
 test('60 percent geometry contains only the main block and ignores optional numpad',()=>{
  for(const numpad of [false,true]){const board=keyboardLayout({layout:'60',numpad}),codes=board.keys.map(k=>k.code);assert.equal(board.width,15);assert.equal(board.height,5);assert.equal(board.keys.length,61);assert.ok(codes.includes('Escape'));assert.ok(codes.includes('Enter'));for(const code of ['F1','ArrowUp','Home','Delete','Numpad0','Backquote'])assert.ok(!codes.includes(code));assert.equal(new Set(codes).size,codes.length);}
+});
+
+test('Escape pauses timed solves only, Shift+Backspace redoes, and two-wide labels say Wide',()=>{
+ for(const size of [3,4]){const e=new KeyboardEngine(defaultConfig(size)),context={size,canPause:true};assert.equal(e.label('Escape',{...context,canPause:false}),'');assert.equal(e.label('Escape',context),'Pause');assert.equal(tap(e,'Escape').action.command,'pause');assert.equal(e.label('Digit2',context),'Wide');tap(e,'Digit2');assert.equal(e.keyState('Digit2',context).label,'Wide');e.consume();e.keyDown('ShiftLeft');assert.equal(tap(e,'Backspace').action.command,'redo');}
+});
+
+test('every size defaults Shift to Slice, using the selected depth for exactly one turn',()=>{
+ for(let size=2;size<=20;size++){
+  const config=defaultConfig(size);for(const mode of config.modes){const e=new KeyboardEngine({...config,activeMode:mode.id});assert.equal(e.label('ShiftLeft',{size}),'Slice');assert.equal(e.label('ShiftRight',{size}),'Slice');}
+  const e=new KeyboardEngine(config),depth=Math.min(6,size),context={size};tap(e,`Digit${depth}`);e.keyDown('ShiftLeft');const move=e.resolve(tap(e,'KeyF').action,context);assert.equal(move.depth,depth);assert.equal(move.count,1);assert.equal(move.rotation,undefined);e.consume();e.keyUp('ShiftLeft');const outer=e.resolve(tap(e,'KeyF').action,context);assert.equal(outer.depth,1);assert.equal(outer.count,1);
+ }
+});
+
+test('all sizes have both EIF directions with unchanged U/D, and only 3x3 has centers',()=>{
+ const ring=['F','R','BR','B','BL','L'];
+ for(let size=2;size<=20;size++){
+  const c=defaultConfig(size);validateConfig(c);assert.equal(c.modes.some(m=>m.id==='e-center'),size===3);
+  for(const [id,offset,key] of [['eif-r',1,'Tab'],['eif-l',-1,'C']]){
+   const mode=c.modes.find(m=>m.id===id);assert.equal(mode.bindings.find(b=>b.trigger===key).action.mode,'cif');
+   for(const binding of c.modes[0].bindings.filter(b=>b.action.type==='move')){const target=mode.bindings.find(b=>b.trigger===binding.trigger).action,source=binding.action;assert.equal(target.face,ring.includes(source.face)?ring[(ring.indexOf(source.face)+offset+6)%6]:source.face);assert.equal(target.dir,source.dir);}
+  }
+ }
+});
+test('saved EIF upgrades preserve custom keys/modes and do not restore deleted defaults',()=>{
+ const c=defaultConfig(20);delete c.eifVersion;c.modes=c.modes.filter(m=>m.id==='cif');c.modes[0].bindings=c.modes[0].bindings.filter(b=>!['Tab','C'].includes(b.trigger));c.modes[0].bindings.push({id:'custom-c',trigger:'C',action:action('U',-1)});
+ upgradeEIFDefaults(c);validateConfig(c);assert.equal(c.modes.length,3);assert.deepEqual(c.modes[0].bindings.find(b=>b.trigger==='C').action,action('U',-1));assert.equal(c.modes[0].bindings.find(b=>b.trigger==='Tab').action.mode,'eif-r');
+ c.modes=c.modes.filter(m=>m.id!=='eif-l');upgradeEIFDefaults(c);assert.equal(c.modes.length,2);
 });

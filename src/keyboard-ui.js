@@ -1,4 +1,4 @@
-import {KeyboardEngine,TurnMeter,defaultConfig,validateConfig,parseTrigger,displayTrigger,displayCode,modifierOf,actionLabel,validModeName} from './keyboard-engine.js';
+import {KeyboardEngine,TurnMeter,defaultConfig,validateConfig,parseTrigger,displayTrigger,displayCode,modifierOf,actionLabel,validModeName,upgradeEIFDefaults} from './keyboard-engine.js';
 import {keyboardLayout} from './keyboard-layout.js';
 const $=id=>document.getElementById(id),NS='http://www.w3.org/2000/svg';
 const uid=()=>globalThis.crypto?.randomUUID?.()??`key-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -18,14 +18,26 @@ function untouchedLegacy(config){
  return canonical(config.modes[0].bindings)===canonical(expected);
 }
 function migrateNames(config){
- const used=new Set();
+ const used=new Set(),upgradeCommands=config.commandVersion!==1;
  for(const mode of config.modes){
-  let name=mode.name==='E-Center'?'E Center':mode.name.trim().split(/\s+/u).slice(0,2).map(word=>Array.from(word).slice(0,6).join('')).join(' ');
+  let name=upgradeCommands&&mode.id==='e-center'&&['E-Center','E Center'].includes(mode.name)?'E– cntr':mode.name.trim().split(/\s+/u).slice(0,2).map(word=>Array.from(word).slice(0,6).join('')).join(' ');
   const base=name;let i=2;
   while(used.has(name.toLowerCase())){const words=base.split(' '),last=words.length-1,suffix=String(i++);words[last]=words[last].slice(0,6-suffix.length)+suffix;name=words.join(' ');}
+  if(upgradeCommands){
+  for(const binding of mode.bindings)if(binding.trigger.toLowerCase()==='escape'&&binding.action.type==='command'&&binding.action.command==='cancel')binding.action.command='pause';
+  if((mode.id==='e-center'||mode.bindings.some(b=>b.action.type==='command'&&b.action.command==='undo'))&&!mode.bindings.some(b=>JSON.stringify(parseTrigger(b.trigger))===JSON.stringify(parseTrigger('Shift+Backspace'))))mode.bindings.push({id:uid(),trigger:'Shift+Backspace',action:{type:'command',command:'redo'}});
+  if(mode.id==='e-center'&&!mode.bindings.some(b=>b.trigger.toLowerCase()==='escape'))mode.bindings.push({id:uid(),trigger:'Escape',action:{type:'command',command:'pause'}});
+  }
+  if(config.sliceVersion!==1&&mode.bindings.some(b=>b.action.type==='move')){
+   const shifts=mode.bindings.map(b=>parseTrigger(b.trigger)).filter(steps=>steps.length===1&&steps[0].length===1).map(steps=>steps[0][0]);
+   if(!shifts.includes('Shift')){
+    const sides=['ShiftLeft','ShiftRight'],bound=sides.filter(code=>shifts.includes(code));
+    for(const trigger of bound.length?sides.filter(code=>!shifts.includes(code)):['Shift'])mode.bindings.push({id:uid(),trigger,action:{type:'hold-slice'}});
+   }
+  }
   mode.name=name;used.add(name.toLowerCase());
  }
- return config;
+ config.commandVersion=1;config.sliceVersion=1;return upgradeEIFDefaults(config);
 }
 export class KeyboardUI{
  constructor({context,move,command,status,suffix}){
@@ -42,7 +54,7 @@ export class KeyboardUI{
   if(size===this.size)return;
   this.save();const display=structuredClone(this.config.display);this.size=size;
   this.config=structuredClone(this.profiles[size]??defaultConfig(size));this.config.display=display;
-  this.sanitizeDisplay();this.engine.configure(this.config);this.editMode=this.engine.baseMode;this.editId=null;this.clear({selection:true});
+  migrateNames(this.config);this.sanitizeDisplay();this.engine.configure(this.config);this.editMode=this.engine.baseMode;this.editId=null;this.clear({selection:true});
   this.renderSettings();this.renderModes();this.renderEditor();this.render();this.save();
  }
  sanitizeDisplay(){
@@ -106,7 +118,7 @@ export class KeyboardUI{
   $('settings').addEventListener('click',()=>this.clear());
  }
  commit(next){
-  validateConfig(next);next.suffixMode='one-shot';
+  validateConfig(next);migrateNames(next);next.suffixMode='one-shot';
   if(!next.modes.some(m=>m.id===next.activeMode))next.activeMode=next.modes[0].id;
   this.config=next;this.engine.configure(next);this.save();this.renderModes();this.render();
  }
@@ -129,17 +141,19 @@ export class KeyboardUI{
    if(event.code==='Escape'){this.capture=null;$('binding-record').textContent='Record chord';this.message('Recording cancelled.');return;}
    this.capture.pressed.add(event.code);this.capture.all.add(event.code);return;
   }
+  if(this.context().manualPaused){if(this.blocked(event)||event.repeat)return;event.preventDefault();event.stopPropagation?.();this.command('resume');return;}
   if(this.blocked(event))return;
   this.syncModifiers(event);
   const result=this.engine.keyDown(event.code,{repeat:event.repeat,size:this.context().size});
   if(result.handled)event.preventDefault();
   const action=result.action;
+  if(action?.type==='command'&&action.command==='pause'&&!this.context().canPause){this.pressedLabels.set(event.code,'');this.render();return;}
   if(!result.repeat)this.pressedLabels.set(event.code,['move','rotate'].includes(action?.type)?this.engine.resolve(action,this.context()).label:result.prefix?`${this.engine.actionText(result.prefix.action)} …`:this.engine.label(event.code,this.context()));
   if(this.keycaps.has(event.code))this.paintKey(event.code);
   this.renderLights();
   if(['move','rotate'].includes(action?.type)){
    const move=this.engine.resolve(action,this.context());
-   if(!move.valid)this.notice(`${move.label} needs at least ${move.depth+move.count-1} layers. Escape clears the depth.`);
+   if(!move.valid)this.notice(`${move.label} needs at least ${move.depth+move.count-1} layers. Press the selected suffix again to clear it.`);
    else if(this.move(move)!==false){this.engine.consume();this.lastMove=move.label;}else this.notice(this.context().scrambling?'Wait for the scramble to finish.':'Input queue full. Wait for turns to finish, or press Escape.');
   }else if(['depth','suffix-slice'].includes(action?.type)){this.suffix?.();
   }else if(action?.type==='command'){
@@ -147,6 +161,14 @@ export class KeyboardUI{
   }
   if(action&&['mode','next-mode'].includes(action.type))this.save();
   this.render();
+ }
+ pointerMove(face,event={},base={kind:'outer',depth:1,dir:1}){
+  if(this.context().manualPaused||this.context().scrambling)return false;
+  this.syncModifiers(event);
+  const move=this.engine.resolve({type:'move',face,kind:base.kind,depth:base.depth,dir:base.dir*(event.button===2?-1:1)},this.context());
+  if(!move.valid)return false;
+  if(this.move(move)===false)return false;
+  this.engine.consume();this.lastMove=move.label;this.render();return true;
  }
  syncModifiers(event){
   for(const code of this.engine.syncModifiers(event,new Set(this.pointerKeys.values()))){this.pressedLabels.delete(code);}
@@ -199,7 +221,7 @@ export class KeyboardUI{
   $('keyboard-title').textContent=`${this.size} × ${this.size} Keyboard & bindings`;
   $('keyboard-pending').textContent=this.engine.pending!==null?`${this.config.suffixMode==='one-shot'?'Next':'Depth'}: ${this.engine.pending}${this.engine.slicePending?' · slice':' layers'}`:this.engine.slicePending?'Next: slice':this.engine.sequence.length?'Sequence…':'';
   $('keyboard-last').textContent=this.lastMove??'';
-  for(const button of document.querySelectorAll('#move-buttons .move-button')){const triggers=this.engine.mode.bindings.filter(b=>b.action.type==='move'&&b.action.face===button.dataset.face).map(b=>displayTrigger(b.trigger));const shortcut=button.querySelector('.shortcut');shortcut.textContent=triggers.slice(0,2).join(' / ');shortcut.title=triggers.join(' / ');}
+
   this.renderLights();this.renderMeter();
  }
  paintKey(code,context=this.context()){
@@ -209,7 +231,7 @@ export class KeyboardUI{
   group.classList.toggle('selected',state.selected);group.classList.toggle('affected',state.affected);
   label.textContent=text;label.setAttribute('font-size',text.length>8?'.17':text.length>5?'.20':text.length>3?'.26':'.33');
   if(text.includes(' ')&&text.split(' ').length===2&&text.split(' ').every(word=>word.length<=6)){label.replaceChildren();for(const [i,line] of text.split(' ').entries()){const span=svg('tspan',{x:label.getAttribute('x'),dy:i?'.29':'-.14'});span.textContent=line+(i?'':' ');label.append(span);}label.setAttribute('font-size','.23');}
-  if(text.startsWith('Cube rotation')){label.replaceChildren();for(const [i,line] of ['Cube ',`rotation${text.slice(13)}`].entries()){const span=svg('tspan',{x:label.getAttribute('x'),dy:i?'.26':'-.12'});span.textContent=line;label.append(span);}label.setAttribute('font-size','.17');}
+
   group.setAttribute('aria-label',`${displayCode(code)}${text?`: ${text}`:': unbound'}`);group.classList.toggle('unbound',!text);
  }
  renderLights(){
@@ -237,11 +259,11 @@ export class KeyboardUI{
   if(!matches.length)list.append(node('p',{class:'muted'},'No bindings. Add a key, chord, or sequence.'));
   $('bindings-count').textContent=String(mode.bindings.length);
  }
- describe(a){return ['mode','hold-mode'].includes(a.type)?`${a.type==='hold-mode'?'Hold':'Switch'} → ${this.config.modes.find(m=>m.id===a.mode)?.name}`:a.type==='move'?`${actionLabel(a)}${a.kind==='default'?' · follows depth controls':''}`:actionLabel(a);}
+ describe(a){return ['mode','hold-mode'].includes(a.type)?`${a.type==='hold-mode'?'Hold':'Switch'} → ${this.config.modes.find(m=>m.id===a.mode)?.name}`:a.type==='move'?`${actionLabel(a)}${a.kind==='default'?' · uses suffixes':''}`:actionLabel(a);}
  renderForm(){
   this.capture=null;$('binding-record').textContent='Record chord';const binding=this.config.modes.find(m=>m.id===this.editMode).bindings.find(b=>b.id===this.editId);
   $('binding-trigger').value=binding?displayTrigger(binding.trigger):'';const a=binding?.action??{type:'move',face:'U',dir:1,kind:'outer',depth:1};
-  $('binding-type').value=a.type;$('binding-face').value=a.face??'U';$('binding-direction').value=a.followDirection?((a.dir??1)<0?'follow-reverse':'follow'):String(a.dir??1);$('binding-kind').value=a.kind??'outer';$('binding-depth').value=String(a.depth??2);$('binding-target-mode').value=a.mode??this.config.modes[0].id;$('binding-command').value=a.command??'undo';
+  $('binding-type').value=a.type;$('binding-face').value=a.face??'U';$('binding-direction').value=String(a.dir??1);$('binding-kind').value=a.kind??'outer';$('binding-depth').value=String(a.depth??2);$('binding-target-mode').value=a.mode??this.config.modes[0].id;$('binding-command').value=a.command??'undo';
   $('binding-save').textContent=binding?'Save changes':'Add binding';this.renderActionFields();this.message('');
  }
  renderActionFields(){
