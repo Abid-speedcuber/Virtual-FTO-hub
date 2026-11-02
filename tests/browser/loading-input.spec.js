@@ -1,6 +1,8 @@
+import {installKeyboard} from './keyboard-fixture.js';
 import {test,expect} from '@playwright/test';
 import {withSettings,scramble} from './helpers.js';
 import {solvedState,applyMove,signature} from '../../src/puzzle.js';
+test.beforeEach(async({page})=>{await installKeyboard(page);});
 const ready=page=>page.waitForFunction(()=>window.fto?.snapshot().ready);
 const snap=page=>page.evaluate(()=>window.fto.snapshot());
 const freeze=async page=>page.clock.pauseAt(new Date(await page.evaluate(()=>Date.now())+100));

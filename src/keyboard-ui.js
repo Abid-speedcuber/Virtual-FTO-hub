@@ -1,4 +1,4 @@
-import {KeyboardEngine,TurnMeter,defaultConfig,validateConfig,parseTrigger,displayTrigger,displayCode,modifierOf,actionLabel} from './keyboard-engine.js';
+import {KeyboardEngine,TurnMeter,defaultConfig,validateConfig,parseTrigger,displayTrigger,displayCode,modifierOf,actionLabel,validModeName} from './keyboard-engine.js';
 import {keyboardLayout} from './keyboard-layout.js';
 const $=id=>document.getElementById(id),NS='http://www.w3.org/2000/svg';
 const uid=()=>globalThis.crypto?.randomUUID?.()??`key-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -6,29 +6,59 @@ function node(tag,attributes={},text=''){
  const el=document.createElement(tag);for(const [key,value] of Object.entries(attributes))el.setAttribute(key,value);el.textContent=text;return el;
 }
 function svg(tag,attributes={}){const el=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attributes))el.setAttribute(k,v);return el;}
+// Upgrade untouched old defaults; keep deliberately customized legacy keyboards.
+function untouchedLegacy(config){
+ if(config.modes.length!==1||config.modes[0].id!=='default'||config.modes[0].name!=='Default')return false;
+ const expected=[];const add=(trigger,action)=>expected.push({trigger,action});
+ ['U','R','F','J','L','B','K','D'].forEach((key,i)=>add(key,{type:'move',face:['U','R','F','BR','L','B','BL','D'][i],dir:1,kind:'default',depth:1}));
+ for(let n=0;n<=9;n++){add(String(n),{type:'depth',depth:n||10});add(`Shift+${n}`,{type:'depth',depth:n?n+10:20});}
+ add('NumpadMultiply',{type:'depth',depth:18});add('Shift',{type:'hold-slice'});add('Ctrl',{type:'hold-wide'});add('Alt',{type:'hold-reverse'});add('M',{type:'next-mode'});
+ for(const [trigger,command] of [['Ctrl+Z','undo'],['Meta+Z','undo'],['Backspace','undo'],['Ctrl+Shift+Z','redo'],['Meta+Shift+Z','redo'],['Ctrl+Y','redo'],['Home','home'],['Escape','cancel']])add(trigger,{type:'command',command});
+ const canonical=bindings=>bindings.map(b=>`${JSON.stringify(parseTrigger(b.trigger))}:${JSON.stringify(Object.entries(b.action).sort())}`).sort().join('\n');
+ return canonical(config.modes[0].bindings)===canonical(expected);
+}
+function migrateNames(config){
+ const used=new Set();
+ for(const mode of config.modes){
+  let name=mode.name==='E-Center'?'E Center':mode.name.trim().split(/\s+/u).slice(0,2).map(word=>Array.from(word).slice(0,6).join('')).join(' ');
+  const base=name;let i=2;
+  while(used.has(name.toLowerCase())){const words=base.split(' '),last=words.length-1,suffix=String(i++);words[last]=words[last].slice(0,6-suffix.length)+suffix;name=words.join(' ');}
+  mode.name=name;used.add(name.toLowerCase());
+ }
+ return config;
+}
 export class KeyboardUI{
- constructor({context,move,command,status}){
-  this.context=context;this.move=move;this.command=command;this.status=status;this.storageOK=true;this.meter=new TurnMeter();this.pressedLabels=new Map();this.capture=null;this.editId=null;this.pointerKeys=new Map();
-  this.config=defaultConfig();
-  try{const stored=JSON.parse(localStorage.getItem('master-fto-keyboard-v1')||'null');if(stored){validateConfig(stored);this.config={...stored,display:{...this.config.display,...stored.display,cornerVersion:stored.display?.cornerVersion??0}};}}
+ constructor({context,move,command,status,suffix}){
+  this.suffix=suffix;this.size=context().size;this.profiles={};this.context=context;this.move=move;this.command=command;this.status=status;this.storageOK=true;this.meter=new TurnMeter();this.pressedLabels=new Map();this.capture=null;this.editId=null;this.pointerKeys=new Map();
+  this.config=defaultConfig(this.size);
+  try{const saved=JSON.parse(localStorage.getItem('master-fto-keyboard-v2')||'null');if(saved){this.profiles=saved.profiles??{};for(const config of Object.values(this.profiles)){validateConfig(config,{legacyNames:true});migrateNames(config);}this.config=this.profiles[this.size]??defaultConfig(this.size);this.config.display={...defaultConfig(this.size).display,...saved.display};}
+  else{const stored=JSON.parse(localStorage.getItem('master-fto-keyboard-v1')||'null');if(stored){validateConfig(stored,{legacyNames:true});this.config={...(untouchedLegacy(stored)?defaultConfig(this.size):stored),display:{...this.config.display,...stored.display,cornerVersion:stored.display?.cornerVersion??0}};}}}
   catch{this.storageOK=false;}
-  this.sanitizeDisplay();this.engine=new KeyboardEngine(this.config);this.editMode=this.engine.baseMode;
+  migrateNames(this.config);this.sanitizeDisplay();this.engine=new KeyboardEngine(this.config);this.editMode=this.engine.baseMode;
   this.install();this.renderLayout();this.renderSettings();this.renderModes();this.renderEditor();this.render();
   this.timer=setInterval(()=>{if(this.config.display.show){if(this.engine.expire())this.render();this.renderMeter();}},50);
+ }
+ setSize(size){
+  if(size===this.size)return;
+  this.save();const display=structuredClone(this.config.display);this.size=size;
+  this.config=structuredClone(this.profiles[size]??defaultConfig(size));this.config.display=display;
+  this.sanitizeDisplay();this.engine.configure(this.config);this.editMode=this.engine.baseMode;this.editId=null;this.clear({selection:true});
+  this.renderSettings();this.renderModes();this.renderEditor();this.render();this.save();
  }
  sanitizeDisplay(){
   const d=this.config.display;delete d.highlight;if(d.cornerVersion!==3&&[400,560].includes(d.width))d.width=900;d.cornerVersion=3;this.config.suffixMode='one-shot';
   for(const k of ['show','numpad','showTPS'])d[k]=d[k]===true;
-  d.layout=d.layout==='iso'?'iso':'ansi';
+  d.layout=['iso','60'].includes(d.layout)?d.layout:'ansi';
   if(![1,3,5].includes(d.window))d.window=1;
   for(const [key,min,max,fallback] of [['width',220,1200,900],['opacity',35,100,100],['window',1,5,1]])d[key]=Number.isFinite(d[key])?Math.min(max,Math.max(min,d[key])):fallback;
  }
  save(){
   this.config.activeMode=this.engine.baseMode;
-  try{localStorage.setItem('master-fto-keyboard-v1',JSON.stringify(this.config));this.storageOK=true;}catch{this.storageOK=false;}
+  this.profiles[this.size]=structuredClone(this.config);
+  try{localStorage.setItem('master-fto-keyboard-v2',JSON.stringify({version:2,profiles:this.profiles,display:this.config.display}));this.storageOK=true;}catch{this.storageOK=false;}
   this.status?.();
  }
- blocked(event){return $('settings-dialog').open||$('help-dialog').open||$('keyboard-dialog').open||event?.target?.closest?.('input,select,textarea,[contenteditable=true]');}
+ blocked(event){return !!document.querySelector('dialog[open]')||event?.target?.closest?.('input,select,textarea,[contenteditable=true]');}
  install(){
   $('show-keyboard').onchange=()=>{this.config.display.show=$('show-keyboard').checked;this.renderSettings();this.render();this.save();};
   $('edit-keyboard').onclick=()=>{this.clear();this.renderModes();this.renderEditor();$('keyboard-dialog').showModal();};
@@ -46,7 +76,7 @@ export class KeyboardUI{
   $('mode-add').onclick=()=>this.addMode(false);$('mode-clone').onclick=()=>this.addMode(true);
   $('mode-rename').onclick=()=>{
    const name=$('mode-name').value.trim();if(!name)return this.message('Enter a mode name.');
-   try{const next=structuredClone(this.config);next.modes.find(m=>m.id===this.editMode).name=name.slice(0,60);this.commit(next);this.renderModes();this.renderEditor();}catch(error){this.message(error.message);}
+   try{const next=structuredClone(this.config);next.modes.find(m=>m.id===this.editMode).name=name;this.commit(next);this.renderModes();this.renderEditor();}catch(error){this.message(error.message);}
   };
   $('mode-delete').onclick=()=>{
    if(this.config.modes.length===1)return this.message('Keep at least one mode.');
@@ -82,10 +112,15 @@ export class KeyboardUI{
  }
  addMode(copy){
   if(this.config.modes.length>=40)return this.message('The maximum is 40 modes.');
-  const next=structuredClone(this.config),source=next.modes.find(m=>m.id===this.editMode),id=uid();
-  let name=$('mode-name').value.trim()||`Mode ${next.modes.length+1}`,base=name,n=1;while(next.modes.some(m=>m.name.toLowerCase()===name.toLowerCase()))name=`${base.slice(0,48)} ${copy?'copy':'new'} ${n++}`;
-  next.modes.push({id,name,bindings:copy?source.bindings.map(b=>({...b,id:uid()})):[]});
-  this.editMode=id;this.editId=null;this.commit(next);this.renderEditor();
+  try{
+   const next=structuredClone(this.config),source=next.modes.find(m=>m.id===this.editMode),id=uid();
+   let name=$('mode-name').value.trim()||`Mode ${next.modes.length+1}`;
+   if(!validModeName(name))throw Error('Use one or two words, up to 6 characters each, with one space.');
+   const base=name;let n=2;
+   while(next.modes.some(m=>m.name.toLowerCase()===name.toLowerCase())){const parts=base.split(' '),i=parts.length-1,suffix=String(n++);parts[i]=parts[i].slice(0,6-suffix.length)+suffix;name=parts.join(' ');}
+   next.modes.push({id,name,bindings:copy?source.bindings.map(b=>({...b,id:uid()})):[]});
+   this.editMode=id;this.editId=null;this.commit(next);this.renderEditor();
+  }catch(error){this.message(error.message);}
  }
  clear({selection=false}={}){this.engine.clear({selection:selection||this.config.suffixMode==='one-shot'});this.pointerKeys.clear();this.pressedLabels.clear();this.render();}
  down(event){
@@ -99,13 +134,14 @@ export class KeyboardUI{
   const result=this.engine.keyDown(event.code,{repeat:event.repeat,size:this.context().size});
   if(result.handled)event.preventDefault();
   const action=result.action;
-  if(!result.repeat)this.pressedLabels.set(event.code,action?.type==='move'?this.engine.resolve(action,this.context()).label:result.prefix?`${actionLabel(result.prefix.action)} …`:this.engine.label(event.code,this.context()));
+  if(!result.repeat)this.pressedLabels.set(event.code,['move','rotate'].includes(action?.type)?this.engine.resolve(action,this.context()).label:result.prefix?`${this.engine.actionText(result.prefix.action)} …`:this.engine.label(event.code,this.context()));
   if(this.keycaps.has(event.code))this.paintKey(event.code);
   this.renderLights();
-  if(action?.type==='move'){
+  if(['move','rotate'].includes(action?.type)){
    const move=this.engine.resolve(action,this.context());
    if(!move.valid)this.notice(`${move.label} needs at least ${move.depth+move.count-1} layers. Escape clears the depth.`);
    else if(this.move(move)!==false){this.engine.consume();this.lastMove=move.label;}else this.notice(this.context().scrambling?'Wait for the scramble to finish.':'Input queue full. Wait for turns to finish, or press Escape.');
+  }else if(['depth','suffix-slice'].includes(action?.type)){this.suffix?.();
   }else if(action?.type==='command'){
    if(action.command==='reset-tps')this.meter.reset();else this.command(action.command);
   }
@@ -150,6 +186,7 @@ export class KeyboardUI{
   for(const [id,key] of [['keyboard-layout','layout'],['keyboard-numpad','numpad'],['keyboard-width','width'],['keyboard-opacity','opacity'],['keyboard-tps','showTPS'],['keyboard-window','window']]){
    if($(id).type==='checkbox')$(id).checked=d[key];else $(id).value=String(d[key]);
   }
+  $('keyboard-numpad').disabled=d.layout==='60';$('keyboard-numpad').closest('label').hidden=d.layout==='60';
   $('keyboard-width-value').textContent=`${d.width}px`;$('keyboard-opacity-value').textContent=`${d.opacity}%`;
   $('keyboard-overlay').style.setProperty('--keyboard-width',`${d.width}px`);$('keyboard-overlay').style.opacity=d.opacity/100;
   $('keyboard-stats').hidden=!d.showTPS;$('keyboard-sequence-timeout').value=String(this.config.sequenceTimeout??1400);
@@ -159,7 +196,8 @@ export class KeyboardUI{
   const context=this.context();
   for(const code of this.keycaps.keys())this.paintKey(code,context);
   $('keyboard-mode-name').textContent=this.engine.mode.name;
-  $('keyboard-pending').textContent=this.engine.pending!==null?`${this.config.suffixMode==='one-shot'?'Next':'Depth'}: ${this.engine.pending} layers`:this.engine.sequence.length?'Sequence…':'';
+  $('keyboard-title').textContent=`${this.size} × ${this.size} Keyboard & bindings`;
+  $('keyboard-pending').textContent=this.engine.pending!==null?`${this.config.suffixMode==='one-shot'?'Next':'Depth'}: ${this.engine.pending}${this.engine.slicePending?' · slice':' layers'}`:this.engine.slicePending?'Next: slice':this.engine.sequence.length?'Sequence…':'';
   $('keyboard-last').textContent=this.lastMove??'';
   for(const button of document.querySelectorAll('#move-buttons .move-button')){const triggers=this.engine.mode.bindings.filter(b=>b.action.type==='move'&&b.action.face===button.dataset.face).map(b=>displayTrigger(b.trigger));const shortcut=button.querySelector('.shortcut');shortcut.textContent=triggers.slice(0,2).join(' / ');shortcut.title=triggers.join(' / ');}
   this.renderLights();this.renderMeter();
@@ -170,6 +208,8 @@ export class KeyboardUI{
   const text=state.selected?state.label:active&&this.pressedLabels.has(code)?this.pressedLabels.get(code):state.label;
   group.classList.toggle('selected',state.selected);group.classList.toggle('affected',state.affected);
   label.textContent=text;label.setAttribute('font-size',text.length>8?'.17':text.length>5?'.20':text.length>3?'.26':'.33');
+  if(text.includes(' ')&&text.split(' ').length===2&&text.split(' ').every(word=>word.length<=6)){label.replaceChildren();for(const [i,line] of text.split(' ').entries()){const span=svg('tspan',{x:label.getAttribute('x'),dy:i?'.29':'-.14'});span.textContent=line+(i?'':' ');label.append(span);}label.setAttribute('font-size','.23');}
+  if(text.startsWith('Cube rotation')){label.replaceChildren();for(const [i,line] of ['Cube ',`rotation${text.slice(13)}`].entries()){const span=svg('tspan',{x:label.getAttribute('x'),dy:i?'.26':'-.12'});span.textContent=line;label.append(span);}label.setAttribute('font-size','.17');}
   group.setAttribute('aria-label',`${displayCode(code)}${text?`: ${text}`:': unbound'}`);group.classList.toggle('unbound',!text);
  }
  renderLights(){
@@ -206,12 +246,13 @@ export class KeyboardUI{
  }
  renderActionFields(){
   const type=$('binding-type').value;
-  for(const [id,show] of [['binding-move-fields',type==='move'],['binding-depth-field',type==='depth'||(type==='move'&&['slice','wide'].includes($('binding-kind').value))],['binding-mode-field',['mode','hold-mode'].includes(type)],['binding-command-field',type==='command']])$(id).hidden=!show;
+  for(const [id,show] of [['binding-move-fields',['move','rotate'].includes(type)],['binding-kind-field',type==='move'],['binding-depth-field',type==='depth'||(type==='move'&&['slice','wide'].includes($('binding-kind').value))],['binding-mode-field',['mode','hold-mode'].includes(type)],['binding-command-field',type==='command']])$(id).hidden=!show;
  }
  saveBinding(){
   try{
    const trigger=$('binding-trigger').value.trim();parseTrigger(trigger);const type=$('binding-type').value;let action={type};
-   if(type==='move')action={...action,face:$('binding-face').value,dir:['-1','follow-reverse'].includes($('binding-direction').value)?-1:1,followDirection:$('binding-direction').value.startsWith('follow'),kind:$('binding-kind').value,depth:Number($('binding-depth').value)};
+   if(['move','rotate'].includes(type))action={...action,face:$('binding-face').value,dir:['-1','follow-reverse'].includes($('binding-direction').value)?-1:1,followDirection:$('binding-direction').value.startsWith('follow'),kind:$('binding-kind').value,depth:Number($('binding-depth').value)};
+   if(type==='rotate'){action.kind='outer';action.depth=1;}
    if(type==='depth')action.depth=Number($('binding-depth').value);
    if(['mode','hold-mode'].includes(type))action.mode=$('binding-target-mode').value;
    if(type==='command')action.command=$('binding-command').value;
@@ -221,5 +262,5 @@ export class KeyboardUI{
   }catch(error){this.message(error.message);}
  }
  message(text){$('binding-message').textContent=text;}
- snapshot(){return {mode:this.engine.mode.id,modeName:this.engine.mode.name,baseMode:this.engine.baseMode,pending:this.engine.pending,pressed:[...this.engine.pressed],stats:this.meter.sample(performance.now(),this.config.display.window),config:structuredClone(this.config)};}
+ snapshot(){return {mode:this.engine.mode.id,modeName:this.engine.mode.name,baseMode:this.engine.baseMode,pending:this.engine.pending,slicePending:this.engine.slicePending,pressed:[...this.engine.pressed],stats:this.meter.sample(performance.now(),this.config.display.window),config:structuredClone(this.config)};}
 }

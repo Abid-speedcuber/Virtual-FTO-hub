@@ -7,6 +7,7 @@ export class SolveTimer{
   this.bestMs=finite(saved.bestMs)?saved.bestMs:null;this.bestAt=typeof saved.bestAt==='string'?saved.bestAt:null;
   this.completed=Number.isInteger(saved.completed)&&saved.completed>=0?saved.completed:0;
   this.lastMs=finite(saved.lastMs)?saved.lastMs:null;this.newBest=saved.newBest===true;
+  this.times=Array.isArray(saved.times)?saved.times.filter(t=>t&&finite(t.ms)).map(t=>({ms:t.ms,at:typeof t.at==='string'?t.at:null})):this.lastMs!==null?[{ms:this.lastMs,at:this.lastMs===this.bestMs?this.bestAt:null}]:[];
   this.startedAt=null;if(this.status==='running')this.status='paused';
  }
  elapsed(){return this.elapsedMs+(this.status==='running'?Math.max(0,this.clock()-this.startedAt):0);}
@@ -18,12 +19,13 @@ export class SolveTimer{
  finish(){
   if(!['running','paused'].includes(this.status))return false;
   this.elapsedMs=this.elapsed();this.startedAt=null;this.status='finished';this.lastMs=this.elapsedMs;this.completed++;
+  const at=new Date().toISOString();this.times.push({ms:this.elapsedMs,at});
   this.newBest=this.bestMs===null||this.elapsedMs<this.bestMs;
-  if(this.newBest){this.bestMs=this.elapsedMs;this.bestAt=new Date().toISOString();}
+  if(this.newBest){this.bestMs=this.elapsedMs;this.bestAt=at;}
   return true;
  }
  reset(){this.status='idle';this.elapsedMs=0;this.startedAt=null;this.newBest=false;}
- serialize(){return {status:this.status==='running'?'paused':this.status,elapsedMs:this.elapsed(),bestMs:this.bestMs,bestAt:this.bestAt,completed:this.completed,lastMs:this.lastMs,newBest:this.newBest};}
+ serialize(){return {status:this.status==='running'?'paused':this.status,elapsedMs:this.elapsed(),bestMs:this.bestMs,bestAt:this.bestAt,completed:this.completed,lastMs:this.lastMs,newBest:this.newBest,times:this.times.map(t=>({...t}))};}
  snapshot(){return {...this.serialize(),status:this.status};}
 }
 export function formatTime(ms){

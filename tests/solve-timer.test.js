@@ -28,3 +28,12 @@ test('a final accepted turn may complete while away without resuming or adding a
  let now=0;const timer=new SolveTimer({},()=>now);timer.scramble();timer.arm();timer.start();now=1200;timer.pause();now=50000;
  assert.equal(timer.finish(),true);assert.equal(timer.bestMs,1200);assert.equal(timer.resume(),false);assert.equal(timer.elapsed(),1200);
 });
+
+test('completed times persist in order, survive resets, and migrate known legacy results',()=>{
+ let now=0;const timer=new SolveTimer({},()=>now);
+ for(const ms of [3500,2400,4000]){timer.scramble();timer.arm();timer.start();now+=ms;timer.finish();}
+ assert.deepEqual(timer.times.map(t=>t.ms),[3500,2400,4000]);assert.ok(timer.times.every(t=>typeof t.at==='string'));timer.reset();
+ const loaded=new SolveTimer(timer.serialize());assert.deepEqual(loaded.times,timer.times);assert.equal(loaded.bestMs,2400);
+ const saved=loaded.serialize();saved.times[0].ms=999;assert.equal(loaded.times[0].ms,3500);
+ const legacy=new SolveTimer({completed:3,lastMs:4000,bestMs:2400});assert.deepEqual(legacy.times,[{ms:4000,at:null}]);
+});

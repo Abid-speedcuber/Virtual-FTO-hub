@@ -7,8 +7,8 @@ const tap=(e,code)=>{const result=e.keyDown(code);e.keyUp(code);return result;};
 const action=(face,dir=1)=>({type:'move',face,dir,kind:'outer',depth:1});
 function config(bindings){return {version:1,activeMode:'cif',modes:[{id:'cif',name:'CIF',bindings:bindings.map((b,i)=>({id:String(i),trigger:b[0],action:b[1]}))}],display:defaultConfig().display};}
 test('selected depths and held slice actions resolve 8 wide, slice 8, and 18 wide',()=>{
- const e=new KeyboardEngine();tap(e,'Digit8');assert.equal(e.pending,8);
- let a=tap(e,'KeyF').action;assert.deepEqual(e.resolve(a,ctx),{face:'F',layer:'slice',depth:1,count:8,dir:1,label:'8Fw',valid:true});
+ const e=new KeyboardEngine(defaultConfig(3));tap(e,'Digit8');assert.equal(e.pending,8);
+ let a=tap(e,'KeyF').action;assert.deepEqual(e.resolve(a,ctx),{face:'U',layer:'slice',depth:1,count:8,dir:-1,label:'8Uw′',valid:true});
  e.keyDown('ShiftLeft');a=tap(e,'KeyF').action;assert.equal(e.resolve(a,ctx).depth,8);assert.equal(e.resolve(a,ctx).count,1);
  e.keyUp('ShiftLeft');e.consume();assert.equal(e.pending,null);
  e.keyDown('ShiftLeft');tap(e,'Digit8');e.keyUp('ShiftLeft');assert.equal(e.pending,18);
@@ -92,7 +92,7 @@ test('modifier flags repair a missed release before the next move, without delay
  const move=e.resolve(e.keyDown('KeyF').action,ctx);assert.equal(move.depth,1);assert.equal(move.count,18);assert.equal(e.effectiveHolds.length,0);
 });
 test('modifier synchronization preserves other held sides and virtual-pointer chords',()=>{
- const e=new KeyboardEngine();e.keyDown('ShiftLeft');e.keyDown('ShiftRight');e.keyUp('ShiftLeft');e.syncModifiers({code:'ShiftLeft',shiftKey:true});
+ const e=new KeyboardEngine(defaultConfig(3));e.keyDown('ShiftLeft');e.keyDown('ShiftRight');e.keyUp('ShiftLeft');e.syncModifiers({code:'ShiftLeft',shiftKey:true});
  assert.ok(e.pressed.has('ShiftRight'));assert.equal(e.resolve(tap(e,'KeyF').action,ctx).depth,2);
  e.syncModifiers({code:'KeyF',shiftKey:false},new Set(['ShiftRight']));assert.ok(e.pressed.has('ShiftRight'));
  e.syncModifiers({code:'KeyF',shiftKey:false});assert.equal(e.resolve(tap(e,'KeyF').action,ctx).depth,1);
@@ -104,7 +104,7 @@ test('suffix waits through unbound input, then clears on one accepted turn',()=>
 });
 test('selected shifted suffix keeps its label and glow after releasing Shift',()=>{
  const e=new KeyboardEngine();e.keyDown('ShiftLeft');tap(e,'Digit8');e.keyUp('ShiftLeft');
- assert.deepEqual(e.keyState('Digit8',ctx),{selected:true,affected:false,label:'18w'});assert.equal(e.keyState('KeyF',ctx).label,'18Fw');
+ assert.deepEqual(e.keyState('Digit8',ctx),{selected:true,affected:false,label:'18w'});assert.equal(e.keyState('KeyF',ctx).label,'18Uw′');
  e.keyDown('ShiftLeft');tap(e,'Digit8');e.keyUp('ShiftLeft');assert.equal(e.pending,null);
 });
 test('out-of-range suffix bindings are blank and do not select or replace a valid depth',()=>{
@@ -114,4 +114,37 @@ test('out-of-range suffix bindings are blank and do not select or replace a vali
 });
 test('legacy sticky preferences are normalized to one-shot suffixes',()=>{
  const config=defaultConfig();config.suffixMode='toggle';const e=new KeyboardEngine(config);tap(e,'Digit8');e.consume();assert.equal(e.pending,null);assert.equal(e.pendingSource,null);
+});
+
+
+test('3x3 defaults contain all requested CIF moves and clockwise/counterclockwise EIF cycles',()=>{
+ const c=defaultConfig(3);validateConfig(c);const get=(mode,key)=>c.modes.find(m=>m.id===mode).bindings.find(b=>b.trigger===key)?.action;
+ const expected={F:['U',-1],J:['U',1],G:['F',-1],H:['F',1],E:['L',-1],D:['L',1],I:['R',1],K:['R',-1],R:['B',-1],U:['B',1],S:['BL',1],W:['BL',-1],L:['BR',-1],O:['BR',1],A:['D',1],Semicolon:['D',-1]};
+ const right={R:'BR',F:'R',L:'F',BL:'L',B:'BL',BR:'B',U:'U',D:'D'},left=Object.fromEntries(Object.entries(right).map(([a,b])=>[b,a]));
+ for(const [key,[face,dir]] of Object.entries(expected))for(const [mode,map] of [['cif',{}],['eif-r',right],['eif-l',left]]){assert.equal(get(mode,key).face,map[face]??face);assert.equal(get(mode,key).dir,dir);}
+ assert.equal(get('cif','Tab').mode,'eif-r');assert.equal(get('eif-r','Tab').mode,'cif');assert.equal(get('cif','C').mode,'eif-l');assert.equal(get('eif-l','C').mode,'cif');assert.equal(get('cif','M').mode,'e-center');assert.equal(get('e-center','M').mode,'cif');
+ assert.equal(get('cif','Space').depth,2);assert.equal(get('cif','2').depth,2);assert.equal(get('cif','1').depth,11);assert.equal(get('cif','0').depth,10);assert.equal(get('cif','Shift+1').depth,11);
+ assert.equal(get('cif','Ctrl'),undefined);assert.equal(get('cif','Alt'),undefined);assert.equal(get('cif',"'"),undefined);
+ for(const [key,face,dir,kind,depth] of [['F','U',-1,'outer',1],['H','U',1,'outer',1],['K','R',1,'outer',1],['D','R',-1,'outer',1],['S','R',-1,'wide',2],['L','R',1,'wide',2],['E','R',-1,'slice',2],['I','R',1,'slice',2]])assert.deepEqual(get('e-center',key),{type:'move',face,dir,kind,depth});
+ for(let size=2;size<=20;size++){const config=defaultConfig(size);validateConfig(config);if(size!==3){assert.equal(config.modes.length,1);assert.equal(config.modes[0].bindings.filter(b=>b.action.type==='move').length,16);assert.ok(!config.modes[0].bindings.some(b=>b.action.type.startsWith('hold-')));}}
+});
+test('full width is a cube rotation; slice suffix stacks in either order and clears after one move',()=>{
+ const c=defaultConfig(3);c.modes[0].bindings.push({id:'slice-suffix',trigger:"'",action:{type:'suffix-slice'}},{id:'rotation',trigger:'Q',action:{type:'rotate',face:'R',dir:-1,kind:'outer',depth:1}});
+ const e=new KeyboardEngine(c),context={size:3};assert.equal(e.label('Digit3',context),'Cube rotation');tap(e,'Digit3');assert.equal(e.resolve(tap(e,'KeyF').action,context).rotation,true);e.consume();
+ for(const codes of [['Digit2','Quote'],['Quote','Digit2']]){for(const code of codes)tap(e,code);tap(e,'KeyQ');const move=e.resolve(tap(e,'KeyF').action,context);assert.equal(move.depth,2);assert.equal(move.count,1);assert.equal(move.label,'2U′');assert.equal(move.rotation,undefined);assert.equal(e.keyState('Quote',context).selected,true);e.consume();assert.equal(e.slicePending,false);assert.equal(e.pending,null);}
+ assert.equal(e.resolve(tap(e,'KeyQ').action,context).rotation,true);
+ assert.equal(new KeyboardEngine(defaultConfig(2)).label('Digit2',{size:2}),'Cube rotation');
+});
+
+test('mode labels name their destinations and unbound shortcut modifiers stay blank',()=>{
+ const e=new KeyboardEngine(defaultConfig(3));assert.equal(e.label('Tab',ctx),'EIF-R');assert.equal(e.label('KeyC',ctx),'EIF-L');assert.equal(e.label('KeyM',ctx),'E Center');
+ for(const code of ['ControlLeft','ControlRight','MetaLeft','AltLeft','KeyZ'])assert.equal(e.label(code,ctx),'');
+ assert.equal(e.label('ShiftLeft',ctx),'Slice');tap(e,'Tab');assert.equal(e.label('Tab',ctx),'CIF');
+});
+test('mode names allow at most two six-character words and a single space',()=>{
+ for(const name of ['CIF','EIF-R','E Center','ABCDEF GHIJKL']){const c=config([]);c.modes[0].name=name;assert.doesNotThrow(()=>validateConfig(c));}
+ for(const name of ['1234567','a  b','one two three','a\tb','a\nb',' space','space ']){const c=config([]);c.modes[0].name=name;assert.throws(()=>validateConfig(c),/6 characters/);}
+});
+test('60 percent geometry contains only the main block and ignores optional numpad',()=>{
+ for(const numpad of [false,true]){const board=keyboardLayout({layout:'60',numpad}),codes=board.keys.map(k=>k.code);assert.equal(board.width,15);assert.equal(board.height,5);assert.equal(board.keys.length,61);assert.ok(codes.includes('Escape'));assert.ok(codes.includes('Enter'));for(const code of ['F1','ArrowUp','Home','Delete','Numpad0','Backquote'])assert.ok(!codes.includes(code));assert.equal(new Set(codes).size,codes.length);}
 });

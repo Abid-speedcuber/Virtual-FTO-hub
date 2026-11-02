@@ -1,5 +1,7 @@
+import {installKeyboard} from './keyboard-fixture.js';
 import {test,expect} from '@playwright/test';
 import {withSettings,scramble} from './helpers.js';
+test.beforeEach(async({page})=>{await installKeyboard(page);});
 const ready=page=>page.waitForFunction(()=>window.fto?.snapshot().keyboard);
 const snapshot=page=>page.evaluate(()=>window.fto.snapshot());
 async function setup(page,size='20'){
@@ -123,7 +125,7 @@ test('old large keyboard preferences shrink without losing a saved keymap',async
  await setup(page);await page.evaluate(()=>{
   const config=window.fto.snapshot().keyboard.config;config.display.width=900;delete config.display.cornerVersion;
   config.modes[0].name='Saved keymap';config.modes[0].bindings.push({id:'saved-action',trigger:'A+F',action:{type:'move',face:'U',dir:-1,kind:'outer',depth:1}});
-  localStorage.setItem('master-fto-keyboard-v1',JSON.stringify(config));
+  localStorage.removeItem('master-fto-keyboard-v2');localStorage.setItem('master-fto-keyboard-v1',JSON.stringify(config));
  });
  await page.reload();await ready(page);const config=(await snapshot(page)).keyboard.config;
  expect(config.display.width).toBe(900);expect(config.modes[0].name).toBe('Saved keymap');expect(config.modes[0].bindings.some(b=>b.id==='saved-action')).toBe(true);
@@ -153,7 +155,7 @@ test('shifted suffix keeps its selected label after modifier release and cancels
 
 test('a 10ms key press has exactly a 10ms press-state lifetime, ignoring old glow preferences',async({page})=>{
  await page.clock.install();await setup(page,'4');
- await page.evaluate(()=>{const config=window.fto.snapshot().keyboard.config;config.display.highlight=600;localStorage.setItem('master-fto-keyboard-v1',JSON.stringify(config));});
+ await page.evaluate(()=>{const config=window.fto.snapshot().keyboard.config;config.display.highlight=600;localStorage.removeItem('master-fto-keyboard-v2');localStorage.setItem('master-fto-keyboard-v1',JSON.stringify(config));});
  await page.reload();await ready(page);expect((await snapshot(page)).keyboard.config.display).not.toHaveProperty('highlight');
  await page.clock.pauseAt(new Date(await page.evaluate(()=>Date.now())+100));
  await page.evaluate(()=>{

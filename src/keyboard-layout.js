@@ -25,5 +25,6 @@ export function keyboardLayout({layout='ansi',numpad=false}={}){
   row(['Numpad1','Numpad2','Numpad3'],4.5,19);add('NumpadEnter',22,4.5,1,2);
   row([['Numpad0',2],'NumpadDecimal'],5.5,19);
  }
+ if(layout==='60'){const compact=keys.filter(k=>k.y>=1.5&&k.x<15).map(k=>({...k,code:k.code==='Backquote'?'Escape':k.code,y:k.y-1.5}));return {keys:compact,width:15,height:5};}
  return {keys,width:numpad?23:18.5,height:6.5};
 }

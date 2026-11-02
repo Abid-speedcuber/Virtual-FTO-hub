@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {PuzzleSounds} from './sounds.js';
 import {TurnPacing} from './turn-pacing.js';
 import {SolveTimer,formatTime} from './solve-timer.js';
 import {KeyboardUI} from './keyboard-ui.js';
@@ -43,17 +44,19 @@ try{const value=JSON.parse(localStorage.getItem(settingsKey)||'{}');if(value&&ty
 if(['outer','inner','wide','ultra'].includes(preferences.layer))layer=preferences.layer;
 reverse=preferences.reverse===true;
 let selectedSlice=Number.isInteger(preferences.slice)&&preferences.slice>=0&&preferences.slice<=size?preferences.slice:0;
-for(const [id,key,fallback] of [['follow','follow',true],['animate','animate',!matchMedia('(prefers-reduced-motion: reduce)').matches],['animate-scrambling','animateScrambling',false],['show-move-buttons','showMoveButtons',false],['show-labels','showLabels',true]]){
+for(const [id,key,fallback] of [['disable-sounds','disableSounds',false],['follow','follow',true],['animate','animate',!matchMedia('(prefers-reduced-motion: reduce)').matches],['animate-scrambling','animateScrambling',false],['show-move-buttons','showMoveButtons',false],['show-labels','showLabels',true]]){
  $(id).checked=typeof preferences[key]==='boolean'?preferences[key]:fallback;
 }
 function renderSaveStatus(){ $('save-status').textContent=storageOK&&settingsOK&&keyboard?.storageOK!==false?'Saved on this device':'Local storage unavailable'; }
 function saveSettings(){
  clearTimeout(settingsTimer);
  try{
-  localStorage.setItem(settingsKey,JSON.stringify({layer,slice:selectedSlice,reverse,follow:$('follow').checked,animate:$('animate').checked,animateScrambling:$('animate-scrambling').checked,showMoveButtons:$('show-move-buttons').checked,showLabels:$('show-labels').checked,view:{rotation:controls.rotation.toArray(),radius:controls.radius}}));settingsOK=true;
+  localStorage.setItem(settingsKey,JSON.stringify({layer,slice:selectedSlice,reverse,disableSounds:$('disable-sounds').checked,follow:$('follow').checked,animate:$('animate').checked,animateScrambling:$('animate-scrambling').checked,showMoveButtons:$('show-move-buttons').checked,showLabels:$('show-labels').checked,view:{rotation:controls.rotation.toArray(),radius:controls.radius}}));settingsOK=true;
  }catch{settingsOK=false;}
  renderSaveStatus();
 }
+const sounds=new PuzzleSounds(()=>$('disable-sounds').checked);
+$('disable-sounds').onchange=saveSettings;
 function queueSettingsSave(){clearTimeout(settingsTimer);settingsTimer=setTimeout(saveSettings,150);}
 const viewport=$('viewport');
 const scene=new THREE.Scene();
@@ -116,6 +119,7 @@ function draw(){
   const position=n.clone().multiplyScalar(1.24);const visible=n.dot(camera.position.clone().sub(position))>0.5;
   const p=position.project(camera);el.hidden=!visible||p.z>1;el.style.left=`${(p.x*.5+.5)*width}px`;el.style.top=`${(-p.y*.5+.5)*height}px`;
  });
+ materials.forEach((material,i)=>material.color.set(session.status==='paused'?'#888888':FACES[i].color));
  renderer.render(scene,camera);displayedCamera.copy(camera);renderedMoves=history.length;
  if(initialized&&width>0&&height>0)document.documentElement.setAttribute('data-app-ready','');
 }
@@ -128,17 +132,24 @@ function resizeViewport(){
 new ResizeObserver(resizeViewport).observe(viewport);
 function currentSolve(){return {history,redo,undoFloor,view:{rotation:controls.rotation.toArray(),radius:controls.radius},input:{layer,slice:selectedSlice,reverse},timer:session.serialize(),pending:[...(active?[active.action]:[]),...queue]};}
 function save(){try{localStorage.setItem(storageKey,JSON.stringify({size,solves:{...solves,[size]:currentSolve()},pointerMode}));storageOK=true;}catch{storageOK=false;}renderSaveStatus();}
+let timesKey='';
+function renderTimes(){
+ const key=`${size}:${session.times.length}:${session.completed}`;if(key===timesKey)return;timesKey=key;
+ $('times-count').textContent=String(session.times.length);$('times-empty').hidden=session.times.length>0;
+ const list=$('solve-times');list.replaceChildren();list.start=session.completed;
+ session.times.toReversed().forEach((entry,i)=>{const item=document.createElement('li'),number=document.createElement('span'),time=document.createElement('time');number.className='solve-number';number.textContent=String(session.completed-i);time.textContent=formatTime(entry.ms);if(entry.at){time.dateTime=entry.at;time.title=new Date(entry.at).toLocaleString();}item.append(number,time);list.append(item);});list.scrollTop=0;
+}
 function renderTimer(){
  const status=session.status;
  $('timer-size').textContent=`${size} × ${size} FTO`;
  $('timer-status').textContent={idle:'Free play',scrambling:'Scrambling',ready:'Ready',running:'Solving',paused:'Paused',finished:'Finished'}[status];
- const text=status==='idle'?'—':formatTime(session.elapsed());if($('timer-value').textContent!==text)$('timer-value').textContent=text;
+ const text=status==='idle'?'00:00':formatTime(session.elapsed());if($('timer-value').textContent!==text)$('timer-value').textContent=text;
  $('timer-pb').textContent=formatTime(session.bestMs);$('timer-result').textContent=status==='finished'?(session.newBest?'New PB':`${session.completed} solved`):'';
  $('timer-hint').textContent={idle:'Scramble to start a timed solve.',scrambling:'Preparing your scramble…',ready:'Timer starts on your first turn.',running:'',paused:'Resumes when you return.',finished:'Scramble again for another timed solve.'}[status];
- document.querySelector('.timer-panel').dataset.status=status;
+ document.querySelector('.timer-panel').dataset.status=status;renderTimes();
 }
-function pauseSession(){session.pause();save();renderTimer();}
-function resumeSession(){if(!document.hidden){session.resume();renderTimer();}}
+function pauseSession(){session.pause();save();renderTimer();draw();}
+function resumeSession(){if(!document.hidden&&!document.querySelector('dialog[open]')){session.resume();renderTimer();draw();}}
 function layoutSolveSpace(){
  const width=document.documentElement.clientWidth,height=window.innerHeight,side=Math.min(width,height);
  document.documentElement.classList.toggle('shared-corner',width-side<150);
@@ -161,7 +172,7 @@ function update(){
 function enqueue(action){
  if(queue.length>=500||session.status==='scrambling')return false;
  if(action.type==='undo'&&history.length<=undoFloor&&!active)return false;if(action.type==='redo'&&!redo.length&&active?.action.type!=='undo'&&!queue.some(a=>a.type==='undo'))return false;
- pacing.input(performance.now());session.start();queue.push(action);if(action.type==='move')keyboard?.recordTurn();save();update();pump();return true;
+ pacing.input(performance.now());session.start();queue.push(action);if(action.type==='move')keyboard?.recordTurn();sounds.play();save();update();pump();return true;
 }
 function requestMove(normal,name,event={}){
  enqueue({type:'move',move:{normal:[...normal],...chosenLayer(event),dir:reverse||event.reverse?-1:1,name}});
@@ -181,7 +192,7 @@ function commitAction(action,move){
  else if(action.type==='redo')history.push(redo.pop());
  else{history.push(move);redo=[];}
  if(action.source==='scramble'){
-  undoFloor=history.length;
+  sounds.play();undoFloor=history.length;
   if(!queue.some(a=>a.source==='scramble'))session.arm();
  }else if(isSolved(state))session.finish();
 }
@@ -216,9 +227,16 @@ function pump(){
  }
  requestAnimationFrame(tick);
 }
+async function confirmPaused(message,label){
+ const dialog=$('confirm-dialog');if(dialog.open)return false;
+ pauseSession();controls.cancelAll();keyboard?.clear({selection:true});
+ $('confirm-message').textContent=message;$('confirm-accept').textContent=label;dialog.returnValue='cancel';dialog.dataset.pending='true';
+ const result=new Promise(resolve=>dialog.addEventListener('close',()=>{delete dialog.dataset.pending;resumeSession();resolve(dialog.returnValue==='accept');},{once:true}));
+ dialog.showModal();return result;
+}
 $('undo').onclick=()=>enqueue({type:'undo'});$('redo').onclick=()=>enqueue({type:'redo'});
-$('scramble').onclick=()=>{
- if(!confirm(`Scramble this ${size} × ${size} FTO? This replaces the current solve and starts a new timed attempt.`))return;
+$('scramble').onclick=async()=>{
+ if(!await confirmPaused(`Scramble this ${size} × ${size} FTO? This replaces the current solve and starts a new timed attempt.`,'Scramble'))return;
  controls.cancelAll();keyboard?.clear({selection:true});queue=[];
  if(active){active.group.removeFromParent();active=null;}
  state=solvedState(size);history=[];redo=[];undoFloor=0;pacing.reset();session.scramble();
@@ -227,12 +245,14 @@ $('scramble').onclick=()=>{
  if($('animate-scrambling').checked){build();queue=moves.map(move=>({type:'move',move,source:'scramble'}));save();update();requestDraw();pump();}
  else{state=moves.reduce(applyMove,state);history=moves;undoFloor=history.length;build();session.arm();save();update();requestDraw();}
 };
-$('reset').onclick=()=>{
- if((history.length||active||queue.length)&&!confirm('Reset the puzzle to solved and clear this solve’s history?'))return;
+$('reset').onclick=async()=>{
+ if((history.length||active||queue.length)&&!await confirmPaused('Reset the puzzle to solved and clear this solve’s history?','Reset'))return;
  keyboard?.clear({selection:true});queue=[];const previous=active;active=null;
  if(previous)previous.group.removeFromParent();
  state=solvedState(size);history=[];redo=[];undoFloor=0;pacing.reset();session.reset();build();save();update();requestDraw();
 };
+
+$('freeplay-reset').onclick=()=>$('reset').click();
 
 function homeView(){controls.setPosition(HOME_POSITION);requestDraw();}
 $('home').onclick=homeView;$('fit').onclick=()=>{controls.radius=HOME_POSITION.length();controls.update();requestDraw();};
@@ -273,7 +293,7 @@ $('size').onchange=()=>{
  // Save completed and pending turns before switching to another puzzle size.
  session.pause();solves[size]=structuredClone(currentSolve());queue=[];pacing.reset();
  if(active){active.group.removeFromParent();active=null;}
- controls.cancelAll();keyboard?.clear({selection:true});size=Number($('size').value);
+ controls.cancelAll();keyboard?.clear({selection:true});size=Number($('size').value);keyboard?.setSize(size);
  const saved=structuredClone(solves[size]??{});
  history=saved.history??[];redo=saved.redo??[];undoFloor=saved.undoFloor??0;session=new SolveTimer(saved.timer);queue=saved.pending??[];
  if(saved.input){layer=saved.input.layer??'outer';selectedSlice=saved.input.slice??0;reverse=saved.input.reverse===true;}
@@ -309,13 +329,20 @@ function renderDisplay(){
  $('frame-status').textContent=$('follow').checked?'View-relative controls':'Fixed face controls';requestDraw();
 }
 for(const id of ['show-move-buttons','show-labels'])$(id).onchange=()=>{renderDisplay();saveSettings();};
-$('settings').onclick=()=>{controls.cancelAll();clearModifiers();$('settings-dialog').showModal();};
+$('settings').onclick=()=>{controls.cancelAll();clearModifiers();$('settings-dialog').showModal();pauseSession();};
 $('close-settings').onclick=()=>$('settings-dialog').close();
+for(const dialog of document.querySelectorAll('dialog')){
+ dialog.addEventListener('close',resumeSession);
+ const outside=e=>{const r=dialog.getBoundingClientRect();return e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom;};
+ let startedOutside=false;dialog.addEventListener('pointerdown',e=>{startedOutside=e.target===dialog&&outside(e);});
+ dialog.addEventListener('click',e=>{if(startedOutside&&e.target===dialog&&outside(e))dialog.close();startedOutside=false;});
+}
 $('settings-dialog').addEventListener('close',()=>{clearModifiers();saveSettings();});
 window.addEventListener('pagehide',()=>{saveSettings();pauseSession();});
 window.addEventListener('pageshow',resumeSession);
+window.addEventListener('beforeprint',pauseSession);window.addEventListener('afterprint',resumeSession);
 
-$('help').onclick=()=>$('help-dialog').showModal();$('close-help').onclick=()=>$('help-dialog').close();
+$('help').onclick=()=>{$('help-dialog').showModal();pauseSession();};$('close-help').onclick=()=>$('help-dialog').close();
 const raycaster=new THREE.Raycaster();
 controls.pick=(x,y)=>{
  if(active)return null;
@@ -342,12 +369,17 @@ controls.addEventListener('tap',e=>{
 if(!storageOK)$('save-status').textContent='Saved solve could not be loaded';
 update();requestDraw();
 // Read-only diagnostics for verifying geometry and input behavior in a browser.
-window.fto={snapshot:()=>({size,pointerMode,undoFloor,ready:document.documentElement.hasAttribute('data-app-ready'),animationMs:pacing.duration(),renderedMoves,keyboard:keyboard?.snapshot(),timer:session.snapshot(),state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};
+window.fto={snapshot:()=>({size,pointerMode,undoFloor,ready:document.documentElement.hasAttribute('data-app-ready'),animationMs:pacing.duration(),renderedMoves,stickerColors:materials.map(m=>m.color.getHexString()),keyboard:keyboard?.snapshot(),timer:session.snapshot(),state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};
 
 keyboard=new KeyboardUI({
  context:()=>({size,scrambling:session.status==='scrambling',defaultMove:{...moveRange(chosenLayer({}),size),dir:reverse?-1:1}}),
  move:move=>{
   const face=FACES.find(f=>f.name===move.face);
+  if(move.rotation){
+   if(session.status==='scrambling')return false;
+   const axis=new THREE.Vector3(...transformedNormal(face.normal,frame)).normalize();
+   controls.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(axis,-move.dir*2*Math.PI/3)).normalize();controls.update();sounds.play();draw();save();return true;
+  }
   const notation={'1,1':'outer','2,1':'inner','1,2':'wide','1,3':'ultra'}[`${move.depth},${move.count}`]??'slice';
   return enqueue({type:'move',move:{normal:transformedNormal(face.normal,frame),name:face.name,layer:notation,depth:move.depth,count:move.count,dir:move.dir}});
  },
@@ -359,6 +391,7 @@ keyboard=new KeyboardUI({
   if(command==='reset')$('reset').click();
   if(command==='cancel'&&session.status!=='scrambling'){queue=[];save();update();}
  },
+ suffix:()=>sounds.play('suffix'),
  status:renderSaveStatus,
 });
 

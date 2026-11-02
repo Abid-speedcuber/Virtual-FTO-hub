@@ -3,8 +3,8 @@ import {withSettings} from './helpers.js';
 const ready=page=>page.waitForFunction(()=>window.fto);
 const snap=page=>page.evaluate(()=>window.fto.snapshot());
 test.beforeEach(async({page})=>{await page.goto('/');await ready(page);});
-test('default solve screen has only the puzzle and four essential actions',async({page})=>{
- await expect(page.getByRole('button')).toHaveText(['↶ Undo','↷ Redo','Scramble','⚙ Settings']);
+test('default solve screen has only the puzzle and five essential actions',async({page})=>{
+ await expect(page.getByRole('button')).toHaveText(['↶ Undo','↷ Redo','Scramble','Reset','⚙ Settings']);
  await expect(page.locator('#solve-controls')).toBeHidden();
  await expect(page.locator('canvas')).toBeVisible();
  await withSettings(page,async()=>{
