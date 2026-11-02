@@ -1,6 +1,7 @@
 // Physical-code bindings are independent of the character produced by the OS.
 export const FACE_NAMES=['U','R','F','BR','L','B','BL','D'];
 export const MODIFIERS=['Shift','Control','Alt','Meta'];
+export const SUFFIX_HOLD_MS=200;
 export const modifierOf=code=>/^(Shift|Control|Alt|Meta)(Left|Right)$/.exec(code)?.[1]??code;
 const aliases={ctrl:'Control',control:'Control',shift:'Shift',alt:'Alt',option:'Alt',cmd:'Meta',command:'Meta',meta:'Meta',space:'Space',spacebar:'Space',esc:'Escape',escape:'Escape',enter:'Enter',return:'Enter',tab:'Tab',backspace:'Backspace',capslock:'CapsLock',delete:'Delete',del:'Delete',insert:'Insert',home:'Home',end:'End',pageup:'PageUp',pagedown:'PageDown',up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',';':'Semicolon',"'":'Quote',',':'Comma','.':'Period','/':'Slash','[':'BracketLeft',']':'BracketRight','\\':'Backslash','`':'Backquote','-':'Minus','=':'Equal'};
 export function codeName(token){
@@ -89,10 +90,42 @@ export function defaultConfig(size=4){
    modes.push({id:mode,name,bindings:copy});
   }
  if(size===3){
-  const center=[['F','U',-1,'outer',1],['H','U',1,'outer',1],['K','R',1,'outer',1],['D','R',-1,'outer',1],['S','R',-1,'wide',2],['L','R',1,'wide',2],['E','R',-1,'slice',2],['I','R',1,'slice',2]].map(([trigger,face,dir,kind,depth])=>({id:`center-${trigger}`,trigger,action:move(face,dir,kind,depth)}));
-  center.push({id:'center-rot-u',trigger:'Backquote',action:{type:'rotate',face:'U',dir:1,kind:'outer',depth:1}},{id:'center-rot-ui',trigger:'Minus',action:{type:'rotate',face:'U',dir:-1,kind:'outer',depth:1}},{id:'center-slice',trigger:'Shift',action:{type:'hold-slice'}},{id:'center-pause',trigger:'Escape',action:{type:'command',command:'pause'}},{id:'center-redo',trigger:'Shift+Backspace',action:{type:'command',command:'redo'}},{id:'center-exit',trigger:'M',action:{type:'mode',mode:'cif'}});modes.push({id:'e-center',name:'E– cntr',bindings:center});
+  const center=[['F','U',1,'outer',1],['D','U',-1,'outer',1],['J','R',-1,'slice',2],['U','R',1,'slice',2],['K','R',-1,'outer',1],['I','R',1,'outer',1]].map(([trigger,face,dir,kind,depth])=>({id:`center-${trigger}`,trigger,action:move(face,dir,kind,depth)}));
+  center.push({id:'center-rot-u',trigger:'Backquote',action:{type:'rotate',face:'U',dir:1,kind:'outer',depth:1}},{id:'center-rot-ui',trigger:'Minus',action:{type:'rotate',face:'U',dir:-1,kind:'outer',depth:1}},{id:'center-slice',trigger:'Shift',action:{type:'hold-slice'}},{id:'center-pause',trigger:'Escape',action:{type:'command',command:'pause'}},{id:'center-undo',trigger:'Backspace',action:{type:'command',command:'undo'}},{id:'center-redo',trigger:'Shift+Backspace',action:{type:'command',command:'redo'}},{id:'center-exit',trigger:'M',action:{type:'mode',mode:'cif'}},{id:'center-right',trigger:'Tab',action:{type:'mode',mode:'eif-r'}},{id:'center-left',trigger:'C',action:{type:'mode',mode:'eif-l'}});modes.push({id:'e-center',name:'E– cntr',bindings:center});
  }
- return {version:1,preset:'abid',rotationVersion:1,eifVersion:1,sliceVersion:1,suffixMode:'one-shot',activeMode:'cif',modes,display:{show:false,layout:'ansi',numpad:false,width:900,cornerVersion:3,opacity:100,showTPS:true,window:1},sequenceTimeout:1400};
+ for(const mode of modes)for(const [trigger,dir] of [['Q',1],['P',1],['Z',-1],['Period',-1]])mode.bindings.push({id:`right-rotation-${mode.id}-${trigger}`,trigger,action:{type:'rotate',face:'R',dir,kind:'outer',depth:1}});
+ return {version:1,preset:'abid',rotationVersion:1,rightRotationVersion:1,eifVersion:1,sliceVersion:1,centerVersion:2,undoVersion:1,suffixMode:'one-shot',activeMode:'cif',modes,display:{show:false,layout:'ansi',numpad:false,width:900,cornerVersion:3,opacity:100,showTPS:true,window:1},sequenceTimeout:1400};
+}
+// Upgrade shipped bindings without replacing user-owned keys or modes.
+export function upgradeKeyboardDefaults(config){
+ const add=(mode,trigger,action,id)=>{
+  const steps=parseTrigger(trigger);
+  if(mode.bindings.some(b=>{const other=parseTrigger(b.trigger);return other.length===1&&sameStroke(other[0],steps[0]);}))return;
+  mode.bindings.push({id,trigger,action});
+  try{validateConfig(config);}catch{mode.bindings.pop();}
+ };
+ const center=config.modes.find(m=>m.id==='e-center');
+ if(config.centerVersion!==2&&center){
+  const old=[['F','U',-1,'outer',1],['H','U',1,'outer',1],['K','R',1,'outer',1],['D','R',-1,'outer',1],['S','R',-1,'wide',2],['L','R',1,'wide',2],['E','R',-1,'slice',2],['I','R',1,'slice',2]];
+  center.bindings=center.bindings.filter(b=>!old.some(([trigger,face,dir,kind,depth])=>b.id===`center-${trigger}`&&triggerKey(b.trigger)===triggerKey(trigger)&&JSON.stringify(b.action)===JSON.stringify({type:'move',face,dir,kind,depth})));
+  for(const binding of defaultConfig(3).modes.find(m=>m.id==='e-center').bindings.filter(b=>['move','mode'].includes(b.action.type))){
+   if(binding.action.type==='mode'&&!config.modes.some(m=>m.id===binding.action.mode))continue;
+   const trigger=binding.id==='center-left'&&config.preset==='cstimer'?'Shift+Tab':binding.trigger;
+   add(center,trigger,binding.action,`upgrade-${binding.id}`);
+  }
+ }
+ config.centerVersion=2;
+ if(config.undoVersion!==1){
+  for(const mode of config.modes)for(const [trigger,command] of [['Backspace','undo'],['Shift+Backspace','redo']])add(mode,trigger,{type:'command',command},`upgrade-${mode.id}-${command}`);
+  config.undoVersion=1;
+ }
+ if(config.rightRotationVersion!==1){
+  for(const mode of config.modes.filter(m=>['cif','eif-r','eif-l','e-center'].includes(m.id)&&(config.preset!=='cstimer'||m.id==='e-center'))){
+   for(const [trigger,dir] of [['Q',1],['P',1],['Z',-1],['Period',-1]])add(mode,trigger,{type:'rotate',face:'R',dir,kind:'outer',depth:1},`right-rotation-${mode.id}-${trigger}`);
+  }
+  config.rightRotationVersion=1;
+ }
+ return config;
 }
 // Upgrade existing CIF profiles once. User-owned modes and occupied keys win.
 export function upgradeEIFDefaults(config){
@@ -130,17 +163,36 @@ export class KeyboardEngine{
   this.compiled=new Map(this.config.modes.map(m=>[m.id,m.bindings.map(b=>({...b,steps:parseTrigger(b.trigger)}))]));
   this.clear();
  }
- clear({selection=true}={}){this.pressed?.clear();this.holds=[];this.sequence=[];if(selection){this.pending=null;this.pendingSource=null;this.slicePending=false;this.sliceSource=null;}}
+ clear({selection=true}={}){this.pressed?.clear();this.holds=[];this.suffixPresses=[];this.sequence=[];if(selection){this.pending=null;this.pendingSource=null;this.slicePending=false;this.sliceSource=null;}}
  get effectiveHolds(){return this.holds.filter(h=>h.keys.every(key=>held(this.pressed,key))&&!this.holds.some(other=>other!==h&&other.keys.length>h.keys.length&&h.keys.every(key=>other.keys.includes(key))));}
  get mode(){const id=this.effectiveHolds.filter(h=>h.action.type==='hold-mode').at(-1)?.action.mode??this.baseMode;return this.config.modes.find(m=>m.id===id)??this.config.modes[0];}
  setMode(id){if(!this.config.modes.some(m=>m.id===id))return;this.baseMode=id;this.config.activeMode=id;this.sequence=[];}
- keyUp(code){this.pressed.delete(code);this.holds=this.holds.filter(h=>h.keys.every(key=>held(this.pressed,key)));}
+ get activeSuffixes(){return this.suffixPresses.filter(p=>p.active&&!p.superseded&&this.pressed.has(p.code));}
+ activateSuffixes(now=Date.now(),chord=false){
+  let changed=false;
+  for(const press of this.suffixPresses)if(!press.active&&!press.superseded&&(chord||now-press.startedAt>=SUFFIX_HOLD_MS)){press.active=true;changed=true;}
+  return changed;
+ }
+ get suffixDeadline(){return Math.min(...this.suffixPresses.filter(p=>!p.active&&!p.superseded).map(p=>p.startedAt+SUFFIX_HOLD_MS));}
+ selectSuffix(action,source){
+  if(action.type==='depth'){this.pending=this.pending===action.depth?null:action.depth;this.pendingSource=this.pending===null?null:source;}
+  else{this.slicePending=!this.slicePending;this.sliceSource=this.slicePending?source:null;}
+ }
+ keyUp(code,{now=Date.now(),cancel=false}={}){
+  if(!cancel)this.activateSuffixes(now);
+  this.pressed.delete(code);this.holds=this.holds.filter(h=>h.keys.every(key=>held(this.pressed,key)));
+  const released=this.suffixPresses.filter(p=>!this.pressed.has(p.code));
+  this.suffixPresses=this.suffixPresses.filter(p=>!released.includes(p));
+  let result;
+  for(const press of released)if(!cancel&&!press.active&&!press.superseded){this.selectSuffix(press.action,{code:press.code,mode:press.mode});result={handled:true,action:press.action,binding:press.binding};}
+  return result;
+ }
  // KeyboardEvent flags are authoritative when a modifier key-up was missed.
  // Pointer-generated virtual chords omit these flags and retain their holds.
  syncModifiers(event,protectedCodes=new Set()){
   const released=[];
   for(const [modifier,flag] of [['Shift','shiftKey'],['Control','ctrlKey'],['Alt','altKey'],['Meta','metaKey']]){
-   if(event[flag]===false)for(const code of [...this.pressed])if(modifierOf(code)===modifier&&code!==event.code&&!protectedCodes.has(code)){this.keyUp(code);released.push(code);}
+   if(event[flag]===false)for(const code of [...this.pressed])if(modifierOf(code)===modifier&&code!==event.code&&!protectedCodes.has(code)){this.keyUp(code,{cancel:true});released.push(code);}
   }
   return released;
  }
@@ -154,7 +206,7 @@ export class KeyboardEngine{
    if(preceding.length>sequence.length||!preceding.every((s,i)=>s.join('+')===sequence[sequence.length-preceding.length+i]?.join('+')))continue;
    // Unbound OS modifiers must not accidentally invoke a bare move.
    const extras=MODIFIERS.filter(m=>held(pressed,m)&&!last.includes(m)&&!last.some(k=>modifierOf(k)===m));
-   const allowed=this.effectiveHolds.flatMap(h=>h.keys.map(modifierOf));
+   const allowed=[...this.effectiveHolds,...this.suffixPresses.filter(p=>!p.superseded)].flatMap(h=>h.keys.map(modifierOf));
    if(extras.some(m=>!allowed.includes(m)))continue;
    candidates.push(binding);
   }
@@ -170,6 +222,7 @@ export class KeyboardEngine{
   return candidates.sort((a,b)=>b.score-a.score)[0];
  }
  keyDown(code,{repeat=false,now=Date.now(),size=20}={}){
+  this.activateSuffixes(now);
   const already=this.pressed.has(code);this.pressed.add(code);
   if(repeat||already)return {handled:!!this.find(code),repeat:true};
   if(now-this.lastStroke>(this.config.sequenceTimeout??1400))this.sequence=[];
@@ -181,6 +234,16 @@ export class KeyboardEngine{
   const stroke=binding.steps.at(-1);
   const action=binding.action;
   if(action.type==='depth'&&action.depth>size){this.sequence=[];return {handled:true,unavailable:true,binding};}
+  if(['depth','suffix-slice'].includes(action.type)){
+   // A tap is selected on release. A hold (or a chord with a move) remains
+   // active across accepted turns and never becomes a sticky suffix afterward.
+   const existing=this.suffixPresses.find(p=>!p.superseded&&p.keys.every(key=>stroke.includes(key)));
+   const owner=MODIFIERS.includes(modifierOf(code))&&existing?existing.code:code;
+   for(const press of this.suffixPresses)if(press.keys.every(key=>stroke.includes(key)))press.superseded=true;
+   this.suffixPresses.push({code:owner,keys:stroke,action,binding,mode:this.mode.id,startedAt:now,active:false});
+   this.sequence=[];return {handled:true,binding,deferred:true};
+  }
+  if(['move','rotate'].includes(action.type))this.activateSuffixes(now,true);
   if(action.type.startsWith('hold-')){
    this.holds.push({keys:stroke,action});
    // Held actions may also be the first step of a tap sequence.
@@ -188,19 +251,15 @@ export class KeyboardEngine{
    return {handled:true,action,binding,prefix:prefix?.binding};
   }
   this.sequence=[];
-  if(action.type==='depth'){
-   this.pending=this.pending===action.depth?null:action.depth;
-   this.pendingSource=this.pending===null?null:{code,mode:this.mode.id};
-  }
-  if(action.type==='suffix-slice'){this.slicePending=!this.slicePending;this.sliceSource=this.slicePending?{code,mode:this.mode.id}:null;}
   if(action.type==='mode')this.setMode(action.mode);
   if(action.type==='next-mode'){const i=this.config.modes.findIndex(m=>m.id===this.baseMode);this.setMode(this.config.modes[(i+1)%this.config.modes.length].id);}
-  if(action.type==='command'&&action.command==='cancel'){this.pending=null;this.pendingSource=null;this.slicePending=false;this.sliceSource=null;this.sequence=[];}
+  if(action.type==='command'&&action.command==='cancel'){this.pending=null;this.pendingSource=null;this.slicePending=false;this.sliceSource=null;this.sequence=[];this.suffixPresses=[];}
   return {handled:true,action,binding};
  }
  resolve(action,context){
   if(action.type==='rotate')return {face:action.face,layer:'slice',depth:1,count:context.size,dir:action.dir,label:actionLabel(action),valid:true,rotation:true,...(action.vertex?{vertex:true}:{})};
-  const holds=this.effectiveHolds.map(h=>h.action.type),depth=this.pending;
+  const holds=this.effectiveHolds.map(h=>h.action.type),suffixes=this.activeSuffixes;
+  const depth=suffixes.filter(p=>p.action.type==='depth').at(-1)?.action.depth??this.pending;
   let start=1,count=1,dir=action.dir;
   if(action.kind==='default'){const base=context.defaultMove??{depth:1,count:1,dir:1};start=base.depth;count=base.count;dir=base.dir*action.dir;}
   else if(action.followDirection===true)dir*=context.defaultMove?.dir??1;
@@ -208,7 +267,7 @@ export class KeyboardEngine{
   if(action.kind==='wide')count=action.depth;
   if(depth!==null){start=1;count=depth;}
   if(holds.includes('hold-wide')){start=1;count=depth??2;}
-  if(this.slicePending||holds.includes('hold-slice')){start=depth??(action.kind==='slice'?action.depth:2);count=1;}
+  if(this.slicePending||suffixes.some(p=>p.action.type==='suffix-slice')||holds.includes('hold-slice')){start=depth??(action.kind==='slice'?action.depth:2);count=1;}
   if(holds.includes('hold-reverse'))dir*=-1;
   const valid=start>=1&&count>=1&&start+count-1<=context.size;
   const rotation=action.type==='rotate'||(start===1&&count===context.size);
@@ -221,7 +280,7 @@ export class KeyboardEngine{
   return actionLabel(action);
  }
  label(code,context){
-  const pressed=new Set(this.pressed);pressed.add(code);
+  const pressed=this.labelPressed(code);
   const binding=this.find(code,this.sequence,pressed);
   if(binding){
    if(binding.action.type==='command'&&binding.action.command==='pause')return context.canPause?(context.manualPaused?'Resume':'Pause'):'';
@@ -232,13 +291,23 @@ export class KeyboardEngine{
   return partial?.steps.length>1?`${this.actionText(partial.action)} …`:'';
  }
  keyState(code,context){
-  const pressed=new Set(this.pressed);pressed.add(code);
+  const pressed=this.labelPressed(code);
   const binding=this.find(code,this.sequence,pressed);
-  const selectedSlice=this.slicePending&&this.sliceSource?.code===code&&this.sliceSource.mode===this.mode.id;
-  const selected=selectedSlice||this.pending!==null&&this.pending<=context.size&&((this.pendingSource?.code===code&&this.pendingSource.mode===this.mode.id)||(binding?.action.type==='depth'&&binding.action.depth===this.pending));
+  const active=this.activeSuffixes,heldSuffix=active.find(p=>p.code===code);
+  const depth=active.filter(p=>p.action.type==='depth').at(-1)?.action.depth??this.pending;
+  const selectedSlice=heldSuffix?.action.type==='suffix-slice'||this.slicePending&&this.sliceSource?.code===code&&this.sliceSource.mode===this.mode.id;
+  const selected=selectedSlice||heldSuffix?.action.type==='depth'||this.pending!==null&&this.pending<=context.size&&((this.pendingSource?.code===code&&this.pendingSource.mode===this.mode.id)||(binding?.action.type==='depth'&&binding.action.depth===this.pending));
   const move=binding?.action.type==='move'?this.resolve(binding.action,context):null;
-  const affected=(this.pending!==null||this.slicePending)&&!!move?.valid;
-  return {selected,affected,label:selectedSlice?'Slice next':selected?(this.pending===context.size?'Rot':this.pending===2?'Wide':`${this.pending}w`):this.label(code,context)};
+  const affected=(depth!==null||this.slicePending||active.length>0)&&!!move?.valid;
+  const selectedDepth=heldSuffix?.action.type==='depth'?heldSuffix.action.depth:this.pending;
+  return {selected:!!selected,affected,label:selectedSlice?(heldSuffix?'Slice':'Slice next'):selected?(selectedDepth===context.size?'Rot':selectedDepth===2?'Wide':`${selectedDepth}w`):this.label(code,context)};
+ }
+ labelPressed(code){
+  const pressed=new Set(this.pressed);
+  // A suffix key still being tested as a tap must not turn Shift's "Slice"
+  // legend into a shifted-number shortcut, or change the move legends yet.
+  for(const press of this.suffixPresses)if(!press.active)pressed.delete(press.code);
+  pressed.add(code);return pressed;
  }
  expire(now=Date.now()){
   if(this.sequence.length&&now-this.lastStroke>(this.config.sequenceTimeout??1400)){this.sequence=[];return true;}return false;

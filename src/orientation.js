@@ -3,6 +3,8 @@ import {FACES,dot} from './puzzle.js';
 export const HOME_POSITION = new THREE.Vector3(6,4.8,7);
 const sides=['F','L','BL','B','BR','R'];
 const vector=n=>new THREE.Vector3(...n);
+// Extra tilt past square-on before U/F changes to F/D.
+export const DEFAULT_LABEL_SWITCH_ANGLE=15;
 // A hold is defined by its upper and front faces, not by the nearest rigid
 // rotation of one reference camera. The 24 CIF and 24 EIF holds have different
 // side-label assignments. See https://nautilusfto.com/Notation/ .
@@ -19,16 +21,16 @@ for(const up of FACES)for(const front of FACES){
  FRAMES.push({up:up.name,front:front.name,notation:dot(up.normal,front.normal)<0?'CIF':'EIF',normals:FACES.map(f=>[...FACES.find(original=>names.get(original)===f.name).normal])});
 }
 export const FIXED_FRAME={notation:'fixed',normals:FACES.map(f=>[...f.normal])};
-export function frameForCamera(camera) {
+export function frameForCamera(camera,switchAngle=DEFAULT_LABEL_SWITCH_ANGLE) {
  camera.updateMatrixWorld();
  const screenUp=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1);
  const towardCamera=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,2);
- // U follows the upper direction of the hold, even when that face is on
- // the back of the puzzle. Restricting this choice to visible faces turns a
- // bottom-view CIF hold into EIF and incorrectly labels a side face U.
- // Only exact ties prefer the face toward the camera (e.g. a square silhouette).
- const upScore=f=>vector(f.normal).dot(screenUp);
+ // Bias the upper-direction score toward the viewer so a slight tilt does
+ // not immediately relabel U/F as F/D. Deep bottom views still allow hidden U.
+ const angle=Number.isFinite(switchAngle)?THREE.MathUtils.clamp(switchAngle,0,40):DEFAULT_LABEL_SWITCH_ANGLE;
+ const viewBias=Math.tan(THREE.MathUtils.degToRad(angle));
  const facing=f=>vector(f.normal).dot(towardCamera);
+ const upScore=f=>vector(f.normal).dot(screenUp)+viewBias*facing(f);
  const up=FACES.reduce((best,f)=>{
   const difference=upScore(f)-upScore(best);
   return difference>1e-9||(Math.abs(difference)<=1e-9&&facing(f)>facing(best)+1e-9)?f:best;

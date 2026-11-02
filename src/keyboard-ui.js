@@ -1,4 +1,4 @@
-import {KeyboardEngine,TurnMeter,defaultConfig,validateConfig,parseTrigger,displayTrigger,displayCode,modifierOf,actionLabel,validModeName,upgradeEIFDefaults} from './keyboard-engine.js';
+import {KeyboardEngine,TurnMeter,defaultConfig,validateConfig,parseTrigger,displayTrigger,displayCode,modifierOf,actionLabel,validModeName,upgradeEIFDefaults,upgradeKeyboardDefaults} from './keyboard-engine.js';
 import {cstimerConfig} from './keyboard-presets.js';
 import {keyboardLayout} from './keyboard-layout.js';
 const $=id=>document.getElementById(id),NS='http://www.w3.org/2000/svg';
@@ -41,7 +41,7 @@ function migrateNames(config){
   }
   mode.name=name;used.add(name.toLowerCase());
  }
- config.commandVersion=1;config.sliceVersion=1;config.rotationVersion=1;return upgradeEIFDefaults(config);
+ config.commandVersion=1;config.sliceVersion=1;config.rotationVersion=1;return upgradeKeyboardDefaults(upgradeEIFDefaults(config));
 }
 export class KeyboardUI{
  constructor({context,move,command,status,suffix}){
@@ -146,7 +146,11 @@ export class KeyboardUI{
    this.editMode=id;this.editId=null;this.commit(next);this.renderEditor();
   }catch(error){this.message(error.message);}
  }
- clear({selection=false}={}){this.engine.clear({selection:selection||this.config.suffixMode==='one-shot'});this.pointerKeys.clear();this.pressedLabels.clear();this.render();}
+ clear({selection=false}={}){clearTimeout(this.suffixHoldTimer);this.engine.clear({selection:selection||this.config.suffixMode==='one-shot'});this.pointerKeys.clear();this.pressedLabels.clear();this.render();}
+ scheduleSuffixHold(){
+  clearTimeout(this.suffixHoldTimer);const deadline=this.engine.suffixDeadline;
+  if(Number.isFinite(deadline))this.suffixHoldTimer=setTimeout(()=>{if(this.engine.activateSuffixes()){this.suffix?.();this.render();}this.scheduleSuffixHold();},Math.max(0,deadline-Date.now()));
+ }
  down(event){
   if(this.capture&&$('keyboard-dialog').open){
    event.preventDefault();event.stopPropagation();
@@ -157,6 +161,7 @@ export class KeyboardUI{
   if(this.blocked(event))return;
   this.syncModifiers(event);
   const result=this.engine.keyDown(event.code,{repeat:event.repeat,size:this.context().size});
+  this.scheduleSuffixHold();
   if(result.handled)event.preventDefault();
   const action=result.action;
   if(action?.type==='command'&&action.command==='pause'&&!this.context().canPause){this.pressedLabels.set(event.code,'');this.render();return;}
@@ -177,6 +182,7 @@ export class KeyboardUI{
  pointerMove(face,event={},base={kind:'outer',depth:1,dir:1}){
   if(this.context().manualPaused||this.context().scrambling)return false;
   this.syncModifiers(event);
+  this.engine.activateSuffixes(Date.now(),true);this.scheduleSuffixHold();
   const move=this.engine.resolve({type:'move',face,kind:base.kind,depth:base.depth,dir:base.dir*(event.button===2?-1:1)},this.context());
   if(!move.valid)return false;
   if(this.move(move)===false)return false;
@@ -194,7 +200,8 @@ export class KeyboardUI{
    }
    return;
   }
-  this.engine.keyUp(event.code);this.syncModifiers(event);this.pressedLabels.delete(event.code);
+  const result=this.engine.keyUp(event.code);this.syncModifiers(event);this.scheduleSuffixHold();this.pressedLabels.delete(event.code);
+  if(result?.action)this.suffix?.();
   this.keycaps.get(event.code)?.group.classList.remove('pressed');
   this.render();
  }

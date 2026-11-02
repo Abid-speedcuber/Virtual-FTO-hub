@@ -125,7 +125,7 @@ test('3x3 defaults contain all requested CIF moves and clockwise/counterclockwis
  assert.equal(get('cif','Tab').mode,'eif-r');assert.equal(get('eif-r','Tab').mode,'cif');assert.equal(get('cif','C').mode,'eif-l');assert.equal(get('eif-l','C').mode,'cif');assert.equal(get('cif','M').mode,'e-center');assert.equal(get('e-center','M').mode,'cif');
  assert.equal(get('cif','Space').depth,2);assert.equal(get('cif','2').depth,2);assert.equal(get('cif','1').depth,11);assert.equal(get('cif','0').depth,10);assert.equal(get('cif','Shift+1').depth,11);
  assert.equal(get('cif','Ctrl'),undefined);assert.equal(get('cif','Alt'),undefined);assert.equal(get('cif',"'"),undefined);
- for(const [key,face,dir,kind,depth] of [['F','U',-1,'outer',1],['H','U',1,'outer',1],['K','R',1,'outer',1],['D','R',-1,'outer',1],['S','R',-1,'wide',2],['L','R',1,'wide',2],['E','R',-1,'slice',2],['I','R',1,'slice',2]])assert.deepEqual(get('e-center',key),{type:'move',face,dir,kind,depth});
+ for(const [key,face,dir,kind,depth] of [['F','U',1,'outer',1],['D','U',-1,'outer',1],['J','R',-1,'slice',2],['U','R',1,'slice',2],['K','R',-1,'outer',1],['I','R',1,'outer',1]])assert.deepEqual(get('e-center',key),{type:'move',face,dir,kind,depth});
  for(let size=2;size<=20;size++){const config=defaultConfig(size);validateConfig(config);if(size!==3){assert.equal(config.modes.length,3);assert.equal(config.modes[0].bindings.filter(b=>b.action.type==='move').length,16);assert.deepEqual(config.modes[0].bindings.filter(b=>b.action.type.startsWith('hold-')).map(b=>b.action.type),['hold-slice']);}}
 });
 test('full width is a cube rotation; slice suffix stacks in either order and clears after one move',()=>{

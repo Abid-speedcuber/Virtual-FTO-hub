@@ -8,7 +8,7 @@ import {bodyGeometry} from './body-geometry.js';
 import {swipeMove} from './swipe.js';
 import {pickSurface,pickFaceNormal} from './picking.js';
 import {FACES,solvedState,selected,applyMove,inverse,isSolved,scrambleMoves} from './puzzle.js';
-import {HOME_POSITION,FIXED_FRAME,frameForCamera,transformedNormal} from './orientation.js';
+import {HOME_POSITION,FIXED_FRAME,frameForCamera,transformedNormal,DEFAULT_LABEL_SWITCH_ANGLE} from './orientation.js';
 const $=id=>document.getElementById(id);
 const storageKey='master-fto-v1';
 let keyboard,initialized=false,renderedMoves=0,manualPaused=false;
@@ -44,11 +44,13 @@ try{const value=JSON.parse(localStorage.getItem(settingsKey)||'{}');if(value&&ty
 for(const [id,key,fallback] of [['disable-sounds','disableSounds',false],['follow','follow',true],['animate','animate',!matchMedia('(prefers-reduced-motion: reduce)').matches],['animate-scrambling','animateScrambling',false],['show-labels','showLabels',true]]){
  $(id).checked=typeof preferences[key]==='boolean'?preferences[key]:fallback;
 }
+let labelSwitchAngle=Number.isFinite(preferences.labelSwitchAngle)?THREE.MathUtils.clamp(preferences.labelSwitchAngle,0,40):DEFAULT_LABEL_SWITCH_ANGLE;
+for(const id of ['label-switch-angle','label-switch-angle-value'])$(id).value=String(labelSwitchAngle);
 function renderSaveStatus(){ $('save-status').textContent=storageOK&&settingsOK&&keyboard?.storageOK!==false?'Saved on this device':'Local storage unavailable'; }
 function saveSettings(){
  clearTimeout(settingsTimer);
  try{
-  localStorage.setItem(settingsKey,JSON.stringify({disableSounds:$('disable-sounds').checked,follow:$('follow').checked,animate:$('animate').checked,animateScrambling:$('animate-scrambling').checked,showLabels:$('show-labels').checked,view:{rotation:controls.rotation.toArray(),radius:controls.radius}}));settingsOK=true;
+  localStorage.setItem(settingsKey,JSON.stringify({disableSounds:$('disable-sounds').checked,follow:$('follow').checked,labelSwitchAngle,animate:$('animate').checked,animateScrambling:$('animate-scrambling').checked,showLabels:$('show-labels').checked,view:{rotation:controls.rotation.toArray(),radius:controls.radius}}));settingsOK=true;
  }catch{settingsOK=false;}
  renderSaveStatus();
 }
@@ -94,7 +96,7 @@ function build(move=null,turnGroup=null){
 }
 build();
 const labels=FACES.map(f=>{const el=document.createElement('span');el.className='face-label';el.textContent=f.name;$('labels').append(el);return el;});
-function currentFrame(){return $('follow').checked?frameForCamera(camera):FIXED_FRAME;}
+function currentFrame(){return $('follow').checked?frameForCamera(camera,labelSwitchAngle):FIXED_FRAME;}
 frame=currentFrame();
 function draw(){
  scheduled=false;
@@ -176,16 +178,18 @@ function update(){
  renderTimer();
  const scrambling=session.status==='scrambling';$('scramble').disabled=scrambling;
  $('scramble').textContent=scrambling?'Scrambling…':'Scramble';
- const locked=['scrambling','paused'].includes(session.status);
+ const locked=['scrambling','paused','finished'].includes(session.status);
  $('undo').disabled=locked||(history.length<=undoFloor&&!active);$('redo').disabled=locked||!redo.length;
 
 }
 function enqueue(action){
  if(queue.length>=500||['scrambling','paused'].includes(session.status))return false;
+ if(session.status==='finished'&&['undo','redo'].includes(action.type))return false;
  if(action.type==='undo'&&history.length<=undoFloor&&!active)return false;if(action.type==='redo'&&!redo.length&&active?.action.type!=='undo'&&!queue.some(a=>a.type==='undo'))return false;
  const now=performance.now();pacing.input(now);if(viewTween)viewTween.deadline=Math.min(viewTween.deadline,now+pacing.duration());session.start();queue.push(action);if(action.type==='move')keyboard?.recordTurn();sounds.play();save();update();pump();return true;
 }
 function actionMove(action){
+ if(session.status==='finished'&&['undo','redo'].includes(action.type))return null;
  if(action.type==='undo')return history.length>undoFloor?inverse(history.at(-1)):null;
  if(action.type==='redo')return redo.length?redo.at(-1):null;
  return action.move;
@@ -258,6 +262,16 @@ async function resetSolve(){
 $('freeplay-reset').onclick=resetSolve;
 function homeView(){viewTween=null;controls.setPosition(HOME_POSITION);requestDraw();}
 $('follow').onchange=()=>{requestDraw();saveSettings();};
+for(const id of ['label-switch-angle','label-switch-angle-value'])$(id).oninput=()=>{
+ const value=$(id).valueAsNumber;if(!Number.isFinite(value))return;
+ labelSwitchAngle=Math.round(THREE.MathUtils.clamp(value,0,40));
+ for(const control of ['label-switch-angle','label-switch-angle-value'])if(control!==id)$(control).value=String(labelSwitchAngle);
+ requestDraw();queueSettingsSave();
+};
+for(const id of ['label-switch-angle','label-switch-angle-value'])$(id).onchange=()=>{
+ for(const control of ['label-switch-angle','label-switch-angle-value'])$(control).value=String(labelSwitchAngle);
+ saveSettings();
+};
 $('animate').onchange=()=>{if(!$('animate').checked)viewTween=null;saveSettings();requestDraw();};$('animate-scrambling').onchange=saveSettings;
 function renderSize(){$('size').value=String(size);keyboard?.render();}
 $('size').onchange=()=>{

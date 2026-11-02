@@ -23,19 +23,19 @@ Numbers 2–9 select that width; 0 selects 10, and 1 selects 11. Shift+1–9 sel
 
 Shift holds Slice on every size, at the selected depth (depth two without a suffix). On 3×3, Space also selects Wide, Y/B are Rw/Rw′, and T/V are Lw′/Lw. Ctrl-wide, Alt-reverse, and the one-shot slice suffix begin unbound. Add **Next move: slice suffix** to any key to avoid holding Shift. Width and slice suffixes stack in either order: with Quote bound to slice, `8 ' F` performs `8U′` on a large enough puzzle.
 
-Tab toggles CIF/EIF-R; C toggles CIF/EIF-L. EIF-R cycles F → R → BR → B → BL → L → F, including wide moves; EIF-L reverses that cycle. U/D stay unchanged. M toggles CIF/E– cntr. The center mode uses F/H = U′/U, K/D = R/R′, S/L = Rw′/Rw, and E/I = 2R′/2R. Modes change bindings, not the camera.
+Tab toggles CIF/EIF-R; C toggles CIF/EIF-L. EIF-R cycles F → R → BR → B → BL → L → F, including wide moves; EIF-L reverses that cycle. U/D stay unchanged. M toggles CIF/E– cntr. The center mode uses F/D = U/U′, J/U = 2R′/2R, and K/I = R′/R. It has no Rw/Rw′ keys. M returns to CIF, Tab selects EIF-R, and C selects EIF-L (Shift+Tab in the csTimer preset). Modes change bindings, not the camera.
 
 ## Pointer input and one-shot suffixes
 
 Both pointer modes use the same suffix and held-action engine as keyboard turns. In the original click mode, select a width or slice suffix and click a face; right-click reverses its direction. In swipe mode, the gesture supplies a face, direction, and base slice; a selected suffix overrides its depth/width. Configured held slice/wide/reverse actions apply to either mode. Unbound physical modifiers do not add hidden pointer actions.
 
-A suffix waits for one accepted turn, including a pointer turn. Unbound keys, held actions, mode changes, and rejected turns do not consume it. Selected suffix keys remain lit after release and affected moves glow faintly. Press the same suffix again to cancel it. Full-size pointer turns become view rotations too.
+A short tap selects a suffix on release and waits for one accepted turn, including a pointer turn. Until release or hold activation, it does not change the move legends or hide Shift’s Slice legend. Holding a suffix for 200 ms, or using it with a turn sooner, activates it as a held modifier: it applies to every keyboard or pointer turn until release. Releasing a held suffix does not leave a one-shot selection behind. Held width and slice suffixes can stack. Unbound keys, held actions, mode changes, and rejected turns do not consume it. Selected suffix keys remain lit after release and affected moves glow faintly. Tap the same suffix again to cancel it. Full-size pointer turns become view rotations too.
 
 ## Pause, undo, and redo
 
 Escape pauses an active timed solve. The puzzle turns gray and **Press any key to resume** appears beneath it. The next key only resumes; it does not perform its binding. A manual pause survives reloads and switching sizes, and is not ended by closing Settings or returning focus. Escape’s Pause label and the square’s Pause button are hidden in free play and before timing starts.
 
-Backspace or Ctrl/Meta+Z undo player moves, stopping at the generated scramble. **Shift+Backspace**, Ctrl/Meta+Shift+Z, or Ctrl+Y redo. The binding editor also offers a separate cancel-pending-input command if desired.
+Backspace or Ctrl/Meta+Z undo player moves, stopping at the generated scramble. Undo and redo are disabled after a timed solve finishes, including input queued before the final turn completed and restored solves. **Shift+Backspace**, Ctrl/Meta+Shift+Z, or Ctrl+Y redo. The binding editor also offers a separate cancel-pending-input command if desired.
 
 ## Editing and modes
 
@@ -57,13 +57,13 @@ TPS measures accepted manual turn input in a trailing 1-, 3-, or 5-second window
 
 Move audio uses locally bundled Gateron Black Ink recordings from tplai/kbsim (MIT; license and attribution accompany the samples). Suffixes use a soft tone. Disable sounds is saved separately from keymaps.
 
-Size-specific profiles live in `master-fto-keyboard-v2` local storage. Overlay preferences are shared. Untouched legacy defaults upgrade; customized keyboards retain their moves. Shipped Escape-cancel bindings migrate to Pause, and redo gains Shift+Backspace where applicable. Temporary keys, suffix selections, and TPS do not survive reloads. Export/import applies to the current size and validates the entire configuration before replacing it.
+Size-specific profiles live in `master-fto-keyboard-v2` local storage. Overlay preferences are shared. Untouched legacy defaults upgrade; customized keyboards retain their moves. Shipped Escape-cancel bindings migrate to Pause, and modes gain missing Backspace undo and Shift+Backspace redo bindings without replacing custom key actions. Shipped older center moves upgrade to the new six-move layout once. Temporary keys, suffix selections, and TPS do not survive reloads. Export/import applies to the current size and validates the entire configuration before replacing it.
 
 ## Switching default presets
 
 The two reset buttons replace bindings and modes for the current size only. They keep puzzle progress, timer, TPS counters, overlay layout/visibility/size, and the sequence timeout. Resets select CIF and clear transient key/suffix state. Both presets include EIF-R/EIF-L on every size and Abid's E– cntr moves only on 3×3.
 
-**Abid:** Backquote rotates nUw; Minus (-) rotates nUw′. These independent rotations ignore width/slice suffixes and leave them selected for the next turn. Tab/C select EIF-R/EIF-L; M selects centers on 3×3.
+**Abid:** Backquote rotates nUw; Minus (-) rotates nUw′. Q/P rotate around R; Z/Period rotate around R′, including in EIF and center modes. These independent rotations ignore width/slice suffixes and leave them selected for the next turn. Tab/C select EIF-R/EIF-L; M selects centers on 3×3.
 
 **csTimer:** I/K = R/R′, D/E = L/L′, J/F = U/U′, H/G = F/F′, S/L = D/D′, W/O = B/B′, 8/Comma = BR/BR′, C/3 = BL/BL′. U/M = Rw/Rw′; R/V = Lw′/Lw. Y/N rotate [R]/[R′]; T/B rotate [L′]/[L]; Semicolon/A rotate [U]/[U′]; P/Q rotate T/T′ by 90° about the top/front vertex. These are independent view rotations and remain unchanged in EIF modes. Turn faces cycle as usual.
 

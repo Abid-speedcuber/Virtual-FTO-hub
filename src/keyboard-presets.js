@@ -34,6 +34,6 @@ export function cstimerConfig(size=4){
   if(size===3)bindings.push({id:`${id}-center`,trigger:'Space',action:{type:'mode',mode:'e-center'}});
   return {id,name,bindings};
  });
- if(abidCenter){abidCenter.bindings.push({id:'center-space-return',trigger:'Space',action:{type:'mode',mode:'cif'}});config.modes.push(abidCenter);}
+ if(abidCenter){abidCenter.bindings.find(b=>b.id==='center-left').trigger='Shift+Tab';abidCenter.bindings.push({id:'center-space-return',trigger:'Space',action:{type:'mode',mode:'cif'}});config.modes.push(abidCenter);}
  return config;
 }
