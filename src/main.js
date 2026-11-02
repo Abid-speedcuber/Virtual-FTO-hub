@@ -65,7 +65,8 @@ const view=solves[size]?.view??preferences.view;
 if(view&&Array.isArray(view.rotation)&&view.rotation.length===4&&view.rotation.every(Number.isFinite)&&Number.isFinite(Math.hypot(...view.rotation))&&Math.hypot(...view.rotation)>1e-9&&Number.isFinite(view.radius)){
  controls.rotation.fromArray(view.rotation).normalize();controls.radius=THREE.MathUtils.clamp(view.radius,controls.minDistance,controls.maxDistance);controls.update();
 }
-const displayedCamera=camera.clone();
+const displayedCamera=camera.clone(),renderCamera=camera.clone();
+let viewTween=null,viewFramePending=false;
 const puzzle=new THREE.Group();scene.add(puzzle);
 const materials=FACES.map(f=>new THREE.MeshBasicMaterial({color:f.color,side:THREE.DoubleSide}));
 const bodyMaterial=new THREE.MeshBasicMaterial({color:'#080e11'});
@@ -98,18 +99,32 @@ frame=currentFrame();
 function draw(){
  scheduled=false;
  if(!active)frame=currentFrame();
+ renderCamera.copy(camera);
+ if(viewTween){
+  const now=performance.now(),progress=now>=viewTween.deadline?1:Math.max(0,(now-viewTween.started)/(viewTween.deadline-viewTween.started));
+  const visible=viewTween.from.clone().slerp(controls.rotation,progress*progress*(3-2*progress)).invert();
+  renderCamera.position.set(0,0,controls.radius).applyQuaternion(visible);renderCamera.quaternion.copy(visible);
+  renderCamera.up.set(0,1,0).applyQuaternion(visible);renderCamera.updateMatrixWorld();
+  if(progress===1)viewTween=null;
+ }
  const {width,height}=viewport.getBoundingClientRect();
  labels.forEach((el,i)=>{
   const n=new THREE.Vector3(...transformedNormal(FACES[i].normal,frame)).normalize();
-  const position=n.clone().multiplyScalar(1.24);const visible=n.dot(camera.position.clone().sub(position))>0.5;
-  const p=position.project(camera);el.hidden=!visible||p.z>1;el.style.left=`${(p.x*.5+.5)*width}px`;el.style.top=`${(-p.y*.5+.5)*height}px`;
+  const position=n.clone().multiplyScalar(1.24);const visible=n.dot(renderCamera.position.clone().sub(position))>0.5;
+  const p=position.project(renderCamera);el.hidden=!visible||p.z>1;el.style.left=`${(p.x*.5+.5)*width}px`;el.style.top=`${(-p.y*.5+.5)*height}px`;
  });
  materials.forEach((material,i)=>material.color.set(session.status==='paused'?'#888888':FACES[i].color));
- renderer.render(scene,camera);displayedCamera.copy(camera);renderedMoves=history.length;
+ renderer.render(scene,renderCamera);displayedCamera.copy(renderCamera);renderedMoves=history.length;
  if(initialized&&width>0&&height>0)document.documentElement.setAttribute('data-app-ready','');
+ if(viewTween&&!viewFramePending){viewFramePending=true;requestAnimationFrame(()=>{viewFramePending=false;if(viewTween)draw();});}
 }
 function requestDraw(){if(!scheduled){scheduled=true;requestAnimationFrame(draw);}}
 controls.addEventListener('change',()=>{requestDraw();queueSettingsSave();});
+// A pointer grab takes over from the pose the user actually sees.
+viewport.addEventListener('pointerdown',event=>{
+ if(event.target!==renderer.domElement||!viewTween)return;viewTween=null;
+ controls.rotation.copy(displayedCamera.quaternion).invert().normalize();controls.update();frame=currentFrame();
+},true);
 function resizeViewport(){
  const {width,height}=viewport.getBoundingClientRect();if(!width||!height)return;
  camera.aspect=width/height;camera.fov=360/Math.PI*Math.atan(Math.tan(Math.PI/10)/Math.min(1,camera.aspect));camera.updateProjectionMatrix();renderer.setSize(width,height);requestDraw();
@@ -168,7 +183,7 @@ function update(){
 function enqueue(action){
  if(queue.length>=500||['scrambling','paused'].includes(session.status))return false;
  if(action.type==='undo'&&history.length<=undoFloor&&!active)return false;if(action.type==='redo'&&!redo.length&&active?.action.type!=='undo'&&!queue.some(a=>a.type==='undo'))return false;
- pacing.input(performance.now());session.start();queue.push(action);if(action.type==='move')keyboard?.recordTurn();sounds.play();save();update();pump();return true;
+ const now=performance.now();pacing.input(now);if(viewTween)viewTween.deadline=Math.min(viewTween.deadline,now+pacing.duration());session.start();queue.push(action);if(action.type==='move')keyboard?.recordTurn();sounds.play();save();update();pump();return true;
 }
 function actionMove(action){
  if(action.type==='undo')return history.length>undoFloor?inverse(history.at(-1)):null;
@@ -226,7 +241,7 @@ async function confirmPaused(message,label){
 $('undo').onclick=()=>enqueue({type:'undo'});$('redo').onclick=()=>enqueue({type:'redo'});
 $('scramble').onclick=async()=>{
  if(!await confirmPaused(`Scramble this ${size} × ${size} FTO? This replaces the current solve and starts a new timed attempt.`,'Scramble'))return;
- controls.cancelAll();keyboard?.clear({selection:true});queue=[];
+ viewTween=null;controls.cancelAll();keyboard?.clear({selection:true});queue=[];
  if(active){active.group.removeFromParent();active=null;}
  state=solvedState(size);history=[];redo=[];undoFloor=0;manualPaused=false;pacing.reset();session.scramble();
  let moves=scrambleMoves(Math.max(50,size*10),Math.random,size);
@@ -236,18 +251,18 @@ $('scramble').onclick=async()=>{
 };
 async function resetSolve(){
  if((history.length||active||queue.length)&&!await confirmPaused('Reset the puzzle to solved and clear this solve’s history?','Reset'))return;
- keyboard?.clear({selection:true});queue=[];const previous=active;active=null;manualPaused=false;
+ viewTween=null;keyboard?.clear({selection:true});queue=[];const previous=active;active=null;manualPaused=false;
  if(previous)previous.group.removeFromParent();
  state=solvedState(size);history=[];redo=[];undoFloor=0;pacing.reset();session.reset();build();save();update();requestDraw();
 }
 $('freeplay-reset').onclick=resetSolve;
-function homeView(){controls.setPosition(HOME_POSITION);requestDraw();}
+function homeView(){viewTween=null;controls.setPosition(HOME_POSITION);requestDraw();}
 $('follow').onchange=()=>{requestDraw();saveSettings();};
-$('animate').onchange=saveSettings;$('animate-scrambling').onchange=saveSettings;
+$('animate').onchange=()=>{if(!$('animate').checked)viewTween=null;saveSettings();requestDraw();};$('animate-scrambling').onchange=saveSettings;
 function renderSize(){$('size').value=String(size);keyboard?.render();}
 $('size').onchange=()=>{
  // Save completed and pending turns before switching to another puzzle size.
- session.pause();solves[size]=structuredClone(currentSolve());queue=[];pacing.reset();
+ session.pause();solves[size]=structuredClone(currentSolve());queue=[];viewTween=null;pacing.reset();
  if(active){active.group.removeFromParent();active=null;}
  controls.cancelAll();keyboard?.clear({selection:true});size=Number($('size').value);keyboard?.setSize(size);
  const saved=structuredClone(solves[size]??{});
@@ -305,7 +320,7 @@ controls.addEventListener('tap',e=>{
 if(!storageOK)$('save-status').textContent='Saved solve could not be loaded';
 update();requestDraw();
 // Read-only diagnostics for verifying geometry and input behavior in a browser.
-window.fto={snapshot:()=>({size,pointerMode,undoFloor,manualPaused,ready:document.documentElement.hasAttribute('data-app-ready'),animationMs:pacing.duration(),renderedMoves,stickerColors:materials.map(m=>m.color.getHexString()),keyboard:keyboard?.snapshot(),timer:session.snapshot(),state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};
+window.fto={snapshot:()=>({size,pointerMode,undoFloor,manualPaused,ready:document.documentElement.hasAttribute('data-app-ready'),animationMs:pacing.duration(),renderedMoves,rotating:!!viewTween,viewOrbit:displayedCamera.quaternion.clone().invert().toArray(),stickerColors:materials.map(m=>m.color.getHexString()),keyboard:keyboard?.snapshot(),timer:session.snapshot(),state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};
 
 function executeMove(move){
   const face=FACES.find(f=>f.name===move.face);
@@ -314,7 +329,12 @@ function executeMove(move){
    const axis=new THREE.Vector3(...transformedNormal(face.normal,frame));
    if(move.vertex)axis.add(new THREE.Vector3(...transformedNormal(FACES.find(f=>f.name==='F').normal,frame)));
    axis.normalize();
-   controls.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(axis,-move.dir*(move.vertex?Math.PI/2:2*Math.PI/3))).normalize();controls.update();sounds.play();draw();save();return true;
+   const from=displayedCamera.quaternion.clone().invert(),now=performance.now();pacing.input(now);
+   // Retargeting may shorten a transition, but can never postpone its finish.
+   const deadline=Math.min(viewTween?.deadline??Infinity,now+pacing.duration());
+   controls.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(axis,-move.dir*(move.vertex?Math.PI/2:2*Math.PI/3))).normalize();
+   viewTween=$('animate').checked?{from,started:now,deadline}:null;
+   controls.update();frame=currentFrame();sounds.play();if(!viewTween)draw();save();return true;
   }
   const notation={'1,1':'outer','2,1':'inner','1,2':'wide','1,3':'ultra'}[`${move.depth},${move.count}`]??'slice';
   return enqueue({type:'move',move:{normal:transformedNormal(face.normal,frame),name:face.name,layer:notation,depth:move.depth,count:move.count,dir:move.dir}});

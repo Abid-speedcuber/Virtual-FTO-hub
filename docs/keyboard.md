@@ -70,3 +70,5 @@ The two reset buttons replace bindings and modes for the current size only. They
 For csTimer, Tab selects EIF-R (or returns to CIF), Shift+Tab selects EIF-L (or returns), and Space selects centers on 3×3. Centers retain Abid's moves and return via Space or M. The native C/M/3/8 actions take priority over Abid's shortcuts, so 3/8 and their shifted variants are not width suffixes. Other number suffixes, Shift for Slice, pause, and undo/redo remain available.
 
 Source and GPLv3 attribution for the adapted csTimer mapping are recorded in [NOTICE.md](../NOTICE.md). Presets and edits save per size and export through the existing JSON controls.
+
+Whole-puzzle rotations follow **Animate turns**, including csTimer’s 90° T rotations and full-width suffix rotations. The view interpolates smoothly and catches up fast rotation input without queuing old poses. Independent rotation keys still preserve selected suffixes and do not affect timing or TPS.

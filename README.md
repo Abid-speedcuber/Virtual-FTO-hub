@@ -26,7 +26,7 @@ Move sounds use locally bundled **Gateron Black Ink recordings by Thomas Lai**, 
 
 ## Model and verification
 
-Every sticker vertex uses an integer lattice. A turn is an exact signed coordinate permutation. Each puzzle has `8 × size²` stickers, batched by color; rotating slabs and caps keep the black body attached during animation. Animations adapt to input cadence and catch bursts up without losing logical turns. The app stays hidden until the first complete scene renders.
+Every sticker vertex uses an integer lattice. A turn is an exact signed coordinate permutation. Each puzzle has `8 × size²` stickers, batched by color; rotating slabs and caps keep the black body attached during animation. Layer turns and whole-puzzle rotations both follow Animate turns. Rotations smoothly interpolate the view, including csTimer quarter turns, and retarget with input cadence to avoid a backlog. Following moves resolve against the intended final hold. Grabbing the puzzle hands control to the pointer at the displayed pose; size switches and reloads preserve the final accepted view. The app stays hidden until the first complete scene renders.
 
 - `npm test`: geometry, inverse/permutation stress, all 48 CIF/EIF holds, gestures, keyboard resolution, pacing, and timers.
 - `npm run test:browser`: real mouse/touch/keyboard input, suffixes, modes, pause/resume, persistence, recordings, and responsive layout. Requires Google Chrome or Playwright Chromium.
