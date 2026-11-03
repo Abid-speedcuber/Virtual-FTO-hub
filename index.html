@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#111719">
+<link rel="icon" href="./favicon.ico" sizes="any"><link rel="icon" type="image/png" href="./favicon-32.png" sizes="32x32"><link rel="icon" type="image/png" href="./favicon-16.png" sizes="16x16"><link rel="apple-touch-icon" href="./apple-touch-icon.png"><link rel="manifest" href="./manifest.webmanifest">
 <title>FTO</title><style>html{background:#111719}html:not([data-app-ready]) body{visibility:hidden;pointer-events:none}</style><link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
@@ -13,7 +14,7 @@
 <p id="pause-message" hidden>Press any key to resume</p><div class="puzzle-actions"><button class="primary" id="scramble">Scramble</button><button id="freeplay-reset" title="Reset to solved and return to free play">Reset</button></div>
 </div>
 <aside id="solve-panel" aria-label="Timer and input display">
-<section class="timer-panel" aria-label="Solve timer"><div class="timer-heading"><span id="timer-size">4 × 4 FTO</span><span id="timer-status">Free play</span></div><div id="timer-value" role="timer" aria-live="off">00:00</div><div class="timer-record"><span>PB <strong id="timer-pb">—</strong></span><span id="timer-result"></span></div><p id="timer-hint">Scramble to start a timed solve.</p></section>
+<section class="timer-panel" aria-label="Solve timer"><div class="timer-heading"><span class="app-brand"><img src="./logo.png" width="24" height="24" alt=""><span id="timer-size">4 × 4 FTO</span></span><span id="timer-status">Free play</span></div><div id="timer-value" role="timer" aria-live="off">00:00</div><div class="timer-record"><span>PB <strong id="timer-pb">—</strong></span><span id="timer-result"></span></div><p id="timer-hint">Scramble to start a timed solve.</p></section>
 <section class="times-panel" aria-label="Solve times"><div class="section-heading"><h2>Times</h2><span id="times-count">0</span></div><ol id="solve-times" reversed></ol><p id="times-empty">No timed solves yet.</p></section>
 <section id="keyboard-overlay" aria-label="Live input keyboard" hidden>
 <div class="keyboard-readout"><span id="keyboard-mode-name"></span><span id="keyboard-pending"></span><span id="keyboard-last"></span><span id="keyboard-stats"><strong id="keyboard-tps-value">0.0</strong> TPS <small>peak <span id="keyboard-peak">0.0</span> · <span id="keyboard-turns">0</span> turns</small></span></div>
@@ -25,16 +26,18 @@
 </div>
 <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message"><div class="dialog-heading"><h1 id="confirm-title">Replace this solve?</h1></div><p id="confirm-message"></p><form method="dialog" class="confirm-actions"><button id="confirm-cancel" value="cancel" autofocus>Cancel</button><button id="confirm-accept" value="accept" class="primary">Reset</button></form></dialog>
 <dialog id="settings-dialog" aria-labelledby="settings-title">
-<div class="dialog-heading"><h1 id="settings-title">Settings</h1><button id="close-settings" aria-label="Close settings">✕</button></div>
+<div class="dialog-heading"><h1 id="settings-title" class="app-brand"><img src="./logo.png" width="28" height="28" alt="">Settings</h1><button id="close-settings" aria-label="Close settings">✕</button></div>
 <section class="settings-section" aria-label="Puzzle settings"><h2>Puzzle</h2>
 
-<label class="setting">Pointer controls<select id="pointer-mode" aria-label="Pointer controls"><option value="swipe">Swipe to turn</option><option value="legacy">Orbit + click (original)</option></select></label>
+<label class="setting">Pointer controls<select id="pointer-mode" aria-label="Pointer controls"><option value="swipe">Swipe to turn</option><option value="legacy">Orbit + click</option></select></label>
 <label class="setting"><span>Follow the view<small>Keyboard labels adapt when you orbit</small></span><input type="checkbox" id="follow" role="switch" checked aria-label="Follow the view"></label>
 <div class="setting label-angle-setting"><label for="label-switch-angle">U/F → F/D switch<small>Degrees past square-on. Lower switches sooner.</small></label><span class="label-angle-controls"><input type="range" id="label-switch-angle" min="0" max="40" step="1" value="15"><input type="number" id="label-switch-angle-value" min="0" max="40" step="1" value="15" aria-label="Label switch angle in degrees"><span aria-hidden="true">°</span></span></div>
+<label class="setting"><span>Return keyboard to default after a solve<small>Choose the default mode in Keyboard &amp; bindings</small></span><input type="checkbox" id="auto-default-mode" role="switch" checked aria-label="Return keyboard to default after a solve"></label>
 <label class="setting"><span>Animate turns</span><input type="checkbox" id="animate" role="switch" checked aria-label="Animate turns"></label>
 <label class="setting"><span>Animate scrambling<small>Show the computer-generated turns</small></span><input type="checkbox" id="animate-scrambling" role="switch" aria-label="Animate scrambling"></label>
 <label class="setting"><span>Disable sounds<small>Mute move clicks and suffix tones</small></span><input type="checkbox" id="disable-sounds" role="switch" aria-label="Disable sounds"></label></section>
 <section class="settings-section" aria-label="Display settings"><h2>Display</h2>
+<button id="customize-colors" aria-haspopup="dialog" aria-controls="color-scheme-dialog">Customize color scheme</button>
 <label class="setting">Show face labels<input type="checkbox" id="show-labels" role="switch" checked aria-label="Show face labels"></label>
 
 <label class="setting"><span>Show keyboard<small>Live move labels, physical keys, and TPS</small></span><input type="checkbox" id="show-keyboard" role="switch" aria-label="Show keyboard"></label>
@@ -42,6 +45,12 @@
 
 </section>
 <p id="save-status" role="status">Saved on this device</p><p class="license-note">© 2026 Master FTO contributors · <a href="./licenses/GPL-3.0.txt" target="_blank" rel="noopener">GPLv3</a> · <a href="https://github.com/Abid-speedcuber/Virtual-FTO-hub" target="_blank" rel="noopener">Source</a> · <a href="./licenses/NOTICE.md" target="_blank" rel="noopener">Credits</a>. No warranty.</p>
+</dialog>
+<dialog id="color-scheme-dialog" aria-labelledby="color-scheme-title">
+<div class="dialog-heading"><h1 id="color-scheme-title">Customize color scheme</h1><button id="close-color-scheme" aria-label="Close color scheme">✕</button></div>
+<p class="color-scheme-help">Click a swatch to choose that face’s color. Changes save automatically.</p>
+<div id="face-color-swatches" class="face-color-swatches"></div>
+<button id="reset-face-colors">Reset to default colors</button>
 </dialog>
 <dialog id="keyboard-dialog" aria-labelledby="keyboard-title">
 <div class="dialog-heading"><h1 id="keyboard-title">Keyboard & bindings</h1><button id="close-keyboard" aria-label="Close keyboard settings">✕</button></div>
@@ -59,6 +68,7 @@
 <section class="settings-section"><h2>Default bindings</h2><div class="preset-buttons"><button id="keyboard-reset-abid">Reset to Abid's Default</button><button id="keyboard-reset-cstimer">Reset to csTimer's Default</button></div><p>Replaces bindings and modes for this puzzle size. Overlay preferences and puzzle progress are preserved.</p></section>
 <section class="settings-section"><h2>Keyboard modes</h2>
 <label class="setting">Active mode<select id="keyboard-active-mode"></select></label>
+<label class="setting">Default mode<select id="keyboard-default-mode" aria-label="Default keyboard mode"></select></label>
 <p>Switch modes with a binding, or use a held key/chord for a temporary mode. Modes have independent bindings; the same action can have several keys.</p>
 <div class="mode-tools"><select id="binding-mode" aria-label="Mode to edit"></select><input id="mode-name" aria-label="Mode name" maxlength="13" pattern="\S{1,6}( \S{1,6})?" title="One or two words, up to 6 characters each" placeholder="Mode name"><button id="mode-rename">Rename</button><button id="mode-add">Add empty</button><button id="mode-clone">Duplicate</button><button id="mode-delete">Delete mode</button></div>
 </section>
@@ -68,7 +78,7 @@
 <h2>Binding editor</h2>
 <label>Key, chord, or sequence<input id="binding-trigger" placeholder="F, Shift+F, A+F, or A F" required autocomplete="off" spellcheck="false"></label><button type="button" id="binding-record">Record chord</button>
 <label>Action<select id="binding-type"><option value="move">Turn a face</option><option value="rotate">Rot (face axis)</option><option value="depth">Next move depth</option><option value="suffix-slice">Next move: slice suffix</option><option value="hold-slice">Hold: slice</option><option value="hold-wide">Hold: wide</option><option value="hold-reverse">Hold: reverse</option><option value="hold-mode">Hold: keyboard mode</option><option value="mode">Switch keyboard mode</option><option value="next-mode">Cycle keyboard modes</option><option value="command">Command</option></select></label>
-<div id="binding-move-fields"><label id="binding-face-field">Face<select id="binding-face"><option>U</option><option>R</option><option>F</option><option>BR</option><option>L</option><option>B</option><option>BL</option><option>D</option></select></label><label>Direction<select id="binding-direction"><option value="1">Clockwise</option><option value="-1">Counterclockwise (′)</option></select></label><label id="binding-kind-field">Turn type<select id="binding-kind"><option value="outer">Outer</option><option value="slice">Single slice at depth</option><option value="wide">Wide, from the outside</option><option value="default">Outer (with suffixes)</option></select></label></div>
+<div id="binding-move-fields"><div id="binding-face-field" class="binding-move-field"><span id="binding-move-label">Move</span><details id="binding-move-picker" class="move-picker"><summary id="binding-move-choice" aria-label="Choose move">U</summary><div id="binding-move-options" class="move-options" role="listbox" aria-label="Moves"></div></details></div><label id="binding-kind-field">Turn type<select id="binding-kind"><option value="outer">Outer</option><option value="slice">Single slice at depth</option><option value="wide">Wide, from the outside</option><option value="default">Outer (with suffixes)</option></select></label></div>
 <label id="binding-rotation-field" hidden>Rotation axis<select id="binding-rotation-axis"><option value="face">Face axis · 120°</option><option value="vertex">Top/front vertex (T) · 90°</option></select></label>
 <label id="binding-depth-field">Depth / layer count<input id="binding-depth" type="number" min="1" max="20" value="2"></label>
 <label id="binding-mode-field" hidden>Target mode<select id="binding-target-mode"></select></label>
@@ -76,7 +86,7 @@
 <button id="binding-save" type="submit" class="primary">Add binding</button><p id="binding-message" role="status"></p>
 </form>
 </section>
-<details class="settings-section"><summary>How chords, modes, and depth work</summary><p><b>A+F</b> means hold A, then press F. <b>A F</b> means tap A, then F within 1.4 seconds. Use physical codes such as <b>KeyF</b>, <b>ShiftLeft</b>, or <b>Numpad8</b> when needed. A trigger can have one action per mode; other modes may reuse it.</p><p>Bindings and modes save separately for every puzzle size. On every size, Tab switches CIF/EIF-R and C switches CIF/EIF-L. On 3×3, M switches CIF/E– cntr. F/J do U′/U. Numbers 2–9 select width; 0 selects 10 and 1 selects 11. Shift+1–9 select 11–19 and Shift+0 selects 20. Shift holds Slice on every size. On 3×3, Space also selects Wide; Ctrl-wide and Alt-reverse start unbound. Add a next-move slice suffix to stack with a width without holding a key. Full-size widths are cube rotations, which can also be bound directly. Tap a suffix to select it on release for one accepted turn; unmapped keys and mode switches leave it waiting. Tap it again to clear it. Hold a suffix for 200 ms, or use it with a turn sooner, to apply it repeatedly until release. E– cntr uses F/D = U/U′, J/U = 2R′/2R, K/I = R′/R; M returns to CIF. Backspace undoes and Shift+Backspace redoes, except after a timed solve finishes. Escape pauses an active timed solve; any key resumes without making a move.</p><p>TPS counts accepted manual turns, including sticker drags and clicks. Depth keys, mode switches, held actions, undo/redo, auto-repeat, and automatic scrambles do not count. Peak and total reset with Reset input stats; the window is a trailing rolling average.</p></details>
+<details class="settings-section"><summary>How chords, modes, and depth work</summary><p><b>A+F</b> means hold A, then press F. <b>A F</b> means tap A, then F within 1.4 seconds. Use physical codes such as <b>KeyF</b>, <b>ShiftLeft</b>, or <b>Numpad8</b> when needed. A trigger can have one action per mode; other modes may reuse it.</p><p>Bindings and modes save separately for every puzzle size. On every size, Tab switches CIF/EIF-R and C switches CIF/EIF-L. On 3×3, M switches CIF/E– cntr. F/J do U′/U. Numbers 2–9 select width; 0 selects 10 and 1 selects 11. Shift+1–9 select 11–19 and Shift+0 selects 20. Shift holds Slice on every size. On 3×3, Space also selects Wide; Ctrl-wide and Alt-reverse start unbound. Add a next-move slice suffix to stack with a width without holding a key. Full-size widths are cube rotations, which can also be bound directly. Tap a suffix to select it on release for one accepted turn; unmapped keys and mode switches leave it waiting. Tap it again to clear it. Hold a suffix for 200 ms, or use it with a turn sooner, to apply it repeatedly until release. E– cntr uses F/D = U/U′, J/U = 2R′/2R, K/I = R′/R; M returns to CIF. Backspace undoes and Shift+Backspace redoes. After a timed solve, you can undo later free-play moves back to the solved state. Escape pauses an active timed solve; any key resumes without making a move.</p><p>TPS counts accepted manual turns, including sticker drags and clicks. Depth keys, mode switches, held actions, undo/redo, auto-repeat, and automatic scrambles do not count. Peak and total reset with Reset input stats; the window is a trailing rolling average.</p></details>
 <div class="keyboard-portability settings-section"><button id="keyboard-export">Export keyboard</button><label class="file-button">Import keyboard<input id="keyboard-import" type="file" accept="application/json,.json"></label></div>
 </dialog>
 <script type="module" src="/src/main.js"></script>

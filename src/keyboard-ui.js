@@ -1,4 +1,4 @@
-import {KeyboardEngine,TurnMeter,defaultConfig,validateConfig,parseTrigger,displayTrigger,displayCode,modifierOf,actionLabel,validModeName,upgradeEIFDefaults,upgradeKeyboardDefaults} from './keyboard-engine.js';
+import {KeyboardEngine,TurnMeter,defaultConfig,validateConfig,parseTrigger,displayTrigger,displayCode,modifierOf,actionLabel,validModeName,upgradeEIFDefaults,upgradeKeyboardDefaults,FACE_NAMES} from './keyboard-engine.js';
 import {cstimerConfig} from './keyboard-presets.js';
 import {keyboardLayout} from './keyboard-layout.js';
 const $=id=>document.getElementById(id),NS='http://www.w3.org/2000/svg';
@@ -19,6 +19,7 @@ function untouchedLegacy(config){
  return canonical(config.modes[0].bindings)===canonical(expected);
 }
 function migrateNames(config){
+ if(!config.modes.some(mode=>mode.id===config.defaultMode))config.defaultMode=config.modes.find(mode=>mode.id==='cif')?.id??config.modes[0].id;
  const used=new Set(),upgradeCommands=config.commandVersion!==1;
  for(const mode of config.modes){
   let name=upgradeCommands&&mode.id==='e-center'&&['E-Center','E Center'].includes(mode.name)?'E– cntr':mode.name.trim().split(/\s+/u).slice(0,2).map(word=>Array.from(word).slice(0,6).join('')).join(' ');
@@ -90,6 +91,7 @@ export class KeyboardUI{
   $('keyboard-reset-cstimer').onclick=()=>this.resetPreset('cstimer');
   $('keyboard-reset-tps').onclick=()=>{this.meter.reset();this.renderMeter();};
   $('keyboard-active-mode').onchange=()=>{this.engine.setMode($('keyboard-active-mode').value);this.render();this.save();};
+  $('keyboard-default-mode').onchange=()=>{this.config.defaultMode=$('keyboard-default-mode').value;this.save();};
   $('binding-mode').onchange=()=>{this.editMode=$('binding-mode').value;this.editId=null;this.renderEditor();};
   $('mode-add').onclick=()=>this.addMode(false);$('mode-clone').onclick=()=>this.addMode(true);
   $('mode-rename').onclick=()=>{
@@ -100,9 +102,20 @@ export class KeyboardUI{
    if(this.config.modes.length===1)return this.message('Keep at least one mode.');
    const deleted=this.editMode,next=structuredClone(this.config);next.modes=next.modes.filter(m=>m.id!==deleted);
    for(const mode of next.modes)mode.bindings=mode.bindings.filter(b=>!['mode','hold-mode'].includes(b.action.type)||b.action.mode!==deleted);
-   if(next.activeMode===deleted)next.activeMode=next.modes[0].id;this.editMode=next.modes[0].id;this.editId=null;this.commit(next);this.renderModes();this.renderEditor();
+   if(next.activeMode===deleted)next.activeMode=next.modes[0].id;
+   if(next.defaultMode===deleted)next.defaultMode=next.modes.find(mode=>mode.id==='cif')?.id??next.modes[0].id;
+   this.editMode=next.modes[0].id;this.editId=null;this.commit(next);this.renderModes();this.renderEditor();
   };
   $('binding-type').onchange=()=>this.renderActionFields();$('binding-kind').onchange=()=>this.renderActionFields();$('binding-rotation-axis').onchange=()=>this.renderActionFields();
+  const picker=$('binding-move-picker'),choice=$('binding-move-choice');
+  choice.addEventListener('keydown',event=>{
+   if(event.key==='ArrowDown'){event.preventDefault();picker.open=true;picker.querySelector('[aria-selected="true"]')?.focus();}
+  });
+  picker.addEventListener('keydown',event=>{
+   if(event.key==='Escape'&&picker.open){event.preventDefault();event.stopPropagation();picker.open=false;choice.focus();}
+  });
+  picker.addEventListener('focusout',event=>{if(!picker.contains(event.relatedTarget))picker.open=false;});
+  document.addEventListener('click',event=>{if(!picker.contains(event.target))picker.open=false;});
   $('keyboard-sequence-timeout').onchange=()=>{this.config.sequenceTimeout=Math.round(Math.max(200,Math.min(10000,Number($('keyboard-sequence-timeout').value)||1400)));this.engine.config.sequenceTimeout=this.config.sequenceTimeout;this.save();};
   $('binding-record').onclick=()=>{
    this.capture={pressed:new Set(),all:new Set()};$('binding-record').textContent='Press a chord…';this.message('Press and release the keys together. Use the text field for tap sequences.');
@@ -147,6 +160,10 @@ export class KeyboardUI{
   }catch(error){this.message(error.message);}
  }
  clear({selection=false}={}){clearTimeout(this.suffixHoldTimer);this.engine.clear({selection:selection||this.config.suffixMode==='one-shot'});this.pointerKeys.clear();this.pressedLabels.clear();this.render();}
+ returnToDefault(){
+  const mode=this.config.modes.find(mode=>mode.id===this.config.defaultMode)??this.config.modes.find(mode=>mode.id==='cif')??this.config.modes[0];
+  this.clear({selection:true});this.engine.setMode(mode.id);this.renderModes();this.render();this.save();
+ }
  scheduleSuffixHold(){
   clearTimeout(this.suffixHoldTimer);const deadline=this.engine.suffixDeadline;
   if(Number.isFinite(deadline))this.suffixHoldTimer=setTimeout(()=>{if(this.engine.activateSuffixes()){this.suffix?.();this.render();}this.scheduleSuffixHold();},Math.max(0,deadline-Date.now()));
@@ -258,9 +275,9 @@ export class KeyboardUI{
  }
  renderMeter(){const s=this.meter.sample(performance.now(),this.config.display.window);$('keyboard-tps-value').textContent=s.tps.toFixed(1);$('keyboard-peak').textContent=s.peak.toFixed(1);$('keyboard-turns').textContent=String(s.total);$('keyboard-stats').title=`${this.config.display.window}s window · Peak ${s.peak.toFixed(1)} TPS · ${s.total} turns`;}
  renderModes(){
-  for(const id of ['keyboard-active-mode','binding-mode','binding-target-mode']){
+  for(const id of ['keyboard-active-mode','keyboard-default-mode','binding-mode','binding-target-mode']){
    $(id).replaceChildren(...this.config.modes.map(m=>new Option(m.name,m.id)));
-   $(id).value=id==='keyboard-active-mode'?this.engine.baseMode:this.editMode;
+   $(id).value=id==='keyboard-active-mode'?this.engine.baseMode:id==='keyboard-default-mode'?this.config.defaultMode:this.editMode;
   }
  }
  renderEditor(){
@@ -282,17 +299,39 @@ export class KeyboardUI{
  renderForm(){
   this.capture=null;$('binding-record').textContent='Record chord';const binding=this.config.modes.find(m=>m.id===this.editMode).bindings.find(b=>b.id===this.editId);
   $('binding-trigger').value=binding?displayTrigger(binding.trigger):'';const a=binding?.action??{type:'move',face:'U',dir:1,kind:'outer',depth:1};
-  $('binding-type').value=a.type;$('binding-face').value=a.face??'U';$('binding-direction').value=String(a.dir??1);$('binding-kind').value=a.kind??'outer';$('binding-rotation-axis').value=a.vertex?'vertex':'face';$('binding-depth').value=String(a.depth??2);$('binding-target-mode').value=a.mode??this.config.modes[0].id;$('binding-command').value=a.command??'undo';
+  this.selectedMove={face:a.face??'U',dir:a.dir??1};$('binding-move-picker').open=false;
+  $('binding-type').value=a.type;$('binding-kind').value=a.kind??'outer';$('binding-rotation-axis').value=a.vertex?'vertex':'face';$('binding-depth').value=String(a.depth??2);$('binding-target-mode').value=a.mode??this.config.modes[0].id;$('binding-command').value=a.command??'undo';
   $('binding-save').textContent=binding?'Save changes':'Add binding';this.renderActionFields();this.message('');
  }
  renderActionFields(){
   const type=$('binding-type').value;
-  for(const [id,show] of [['binding-move-fields',['move','rotate'].includes(type)],['binding-kind-field',type==='move'],['binding-rotation-field',type==='rotate'],['binding-face-field',type!=='rotate'||$('binding-rotation-axis').value!=='vertex'],['binding-depth-field',type==='depth'||(type==='move'&&['slice','wide'].includes($('binding-kind').value))],['binding-mode-field',['mode','hold-mode'].includes(type)],['binding-command-field',type==='command']])$(id).hidden=!show;
+  for(const [id,show] of [['binding-move-fields',['move','rotate'].includes(type)],['binding-kind-field',type==='move'],['binding-rotation-field',type==='rotate'],['binding-depth-field',type==='depth'||(type==='move'&&['slice','wide'].includes($('binding-kind').value))],['binding-mode-field',['mode','hold-mode'].includes(type)],['binding-command-field',type==='command']])$(id).hidden=!show;
+  this.renderMovePicker();
+ }
+ renderMovePicker(){
+  const rotation=$('binding-type').value==='rotate',vertex=rotation&&$('binding-rotation-axis').value==='vertex';
+  const selected=this.selectedMove??{face:'U',dir:1};
+  const label=(face,dir)=>`${vertex?'T':face}${dir<0?'′':''}`;
+  $('binding-move-label').textContent=rotation?'Rotation':'Move';
+  const text=label(selected.face,selected.dir),choice=$('binding-move-choice');choice.textContent=text;choice.setAttribute('aria-label',`Choose ${rotation?'rotation':'move'}: ${text}`);
+  const options=$('binding-move-options');options.setAttribute('aria-label',rotation?'Rotations':'Moves');options.replaceChildren();
+  for(const face of vertex?['U']:FACE_NAMES)for(const dir of [1,-1]){
+   const chosen=(vertex||selected.face===face)&&selected.dir===dir;
+   const button=node('button',{type:'button',role:'option','aria-selected':String(chosen),tabindex:chosen?'0':'-1'},label(face,dir));
+   button.onclick=()=>{this.selectedMove={face,dir};this.renderMovePicker();$('binding-move-picker').open=false;choice.focus();};
+   button.onkeydown=event=>{
+    const buttons=[...options.children],index=buttons.indexOf(button),offset={ArrowLeft:-1,ArrowRight:1,ArrowUp:-4,ArrowDown:4}[event.key];
+    if(offset!==undefined||['Home','End'].includes(event.key)){
+     event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+offset+buttons.length)%buttons.length;buttons[next].focus();
+    }
+   };
+   options.append(button);
+  }
  }
  saveBinding(){
   try{
    const trigger=$('binding-trigger').value.trim();parseTrigger(trigger);const type=$('binding-type').value;let action={type};
-   if(['move','rotate'].includes(type))action={...action,face:$('binding-face').value,dir:['-1','follow-reverse'].includes($('binding-direction').value)?-1:1,followDirection:$('binding-direction').value.startsWith('follow'),kind:$('binding-kind').value,depth:Number($('binding-depth').value)};
+   if(['move','rotate'].includes(type))action={...action,...this.selectedMove,followDirection:false,kind:$('binding-kind').value,depth:Number($('binding-depth').value)};
    if(type==='rotate'){action.kind='outer';action.depth=1;if($('binding-rotation-axis').value==='vertex'){action.vertex=true;action.face='U';}}
    if(type==='depth')action.depth=Number($('binding-depth').value);
    if(['mode','hold-mode'].includes(type))action.mode=$('binding-target-mode').value;

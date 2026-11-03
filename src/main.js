@@ -14,8 +14,16 @@ const $=id=>document.getElementById(id);
 const storageKey='master-fto-v1';
 let keyboard,initialized=false,renderedMoves=0,manualPaused=false;
 const pacing=new TurnPacing();
-let size=4,solves={},pointerMode='swipe',undoFloor=0;
+let size=4,solves={},pointerMode='swipe',undoFloor=0,solveEnd=null;
 let state=solvedState(),history=[],redo=[],queue=[],active=null,frame,scheduled=false;
+function findSolveEnd(history,size,floor){
+ let restored=solvedState(size);
+ for(let i=0;i<history.length;i++){
+  restored=applyMove(restored,history[i]);
+  if(i+1>=floor&&isSolved(restored))return i+1;
+ }
+ return history.length;
+}
 let storageOK=true;
 try{const saved=JSON.parse(localStorage.getItem(storageKey)||'null');if(saved){
  const valid=m=>m&&FACES.some(f=>f.normal.every((v,i)=>v===m.normal?.[i]))&&['outer','inner','wide','ultra','slice'].includes(m.layer)&&[1,-1].includes(m.dir)&&typeof m.name==='string'&&(m.layer!=='slice'||(Number.isInteger(m.depth)&&m.depth>=1&&m.depth<=20&&Number.isInteger(m.count)&&m.count>=1&&m.count<=21-m.depth));
@@ -32,17 +40,26 @@ try{const saved=JSON.parse(localStorage.getItem(storageKey)||'null');if(saved){
    solve.undoFloor=timed?Math.min(timeline.length,Math.max(50,Number(key)*10)):0;
    while(solve.history.length<solve.undoFloor)solve.history.push(solve.redo.pop());
   }
+  if(solve.timer?.status==='finished'){
+   // Recover the boundary in older saves, including post-solve free-play moves.
+   if(!Number.isInteger(solve.solveEnd)||solve.solveEnd<0||solve.solveEnd>solve.history.length)solve.solveEnd=findSolveEnd(solve.history,+key,solve.undoFloor);
+   solve.undoFloor=Math.max(solve.undoFloor,solve.solveEnd);
+  }
   if(solve.pending!==undefined&&(!Array.isArray(solve.pending)||solve.pending.length>600||!solve.pending.every(a=>a&&(['undo','redo'].includes(a.type)||(a.type==='move'&&valid(a.move)))&&(a.source===undefined||a.source==='scramble'))))throw Error('Invalid pending turns');
  }
- history=structuredClone(solves[size]?.history??[]);redo=structuredClone(solves[size]?.redo??[]);undoFloor=solves[size]?.undoFloor??0;state=history.reduce(applyMove,solvedState(size));
+ history=structuredClone(solves[size]?.history??[]);redo=structuredClone(solves[size]?.redo??[]);undoFloor=solves[size]?.undoFloor??0;solveEnd=solves[size]?.solveEnd??null;state=history.reduce(applyMove,solvedState(size));
 }}catch{storageOK=false;size=4;solves={};history=[];redo=[];state=solvedState();}
-let session=new SolveTimer(solves[size]?.timer);manualPaused=solves[size]?.manualPaused===true&&session.status==='paused';
+let session=new SolveTimer(solves[size]?.timer);manualPaused=session.status==='paused';
 queue=structuredClone(solves[size]?.pending??[]);
 if(session.status==='scrambling'&&!queue.length)session.reset();
 const settingsKey='master-fto-settings-v1';
 let preferences={},settingsOK=true,settingsTimer;
 try{const value=JSON.parse(localStorage.getItem(settingsKey)||'{}');if(value&&typeof value==='object')preferences=value;}catch{settingsOK=false;}
-for(const [id,key,fallback] of [['disable-sounds','disableSounds',false],['follow','follow',true],['animate','animate',!matchMedia('(prefers-reduced-motion: reduce)').matches],['animate-scrambling','animateScrambling',false],['show-labels','showLabels',true]]){
+let faceColors=Object.fromEntries(FACES.map(face=>{
+ const saved=preferences.faceColors?.[face.name];
+ return [face.name,typeof saved==='string'&&/^#[0-9a-f]{6}$/i.test(saved)?saved.toLowerCase():face.color];
+}));
+for(const [id,key,fallback] of [['disable-sounds','disableSounds',false],['follow','follow',true],['animate','animate',!matchMedia('(prefers-reduced-motion: reduce)').matches],['animate-scrambling','animateScrambling',false],['show-labels','showLabels',true],['auto-default-mode','autoDefaultMode',true]]){
  $(id).checked=typeof preferences[key]==='boolean'?preferences[key]:fallback;
 }
 let labelSwitchAngle=Number.isFinite(preferences.labelSwitchAngle)?THREE.MathUtils.clamp(preferences.labelSwitchAngle,0,40):DEFAULT_LABEL_SWITCH_ANGLE;
@@ -51,12 +68,12 @@ function renderSaveStatus(){ $('save-status').textContent=storageOK&&settingsOK&
 function saveSettings(){
  clearTimeout(settingsTimer);
  try{
-  localStorage.setItem(settingsKey,JSON.stringify({disableSounds:$('disable-sounds').checked,follow:$('follow').checked,labelSwitchAngle,animate:$('animate').checked,animateScrambling:$('animate-scrambling').checked,showLabels:$('show-labels').checked,view:{rotation:controls.rotation.toArray(),radius:controls.radius}}));settingsOK=true;
+  localStorage.setItem(settingsKey,JSON.stringify({disableSounds:$('disable-sounds').checked,follow:$('follow').checked,labelSwitchAngle,animate:$('animate').checked,animateScrambling:$('animate-scrambling').checked,showLabels:$('show-labels').checked,autoDefaultMode:$('auto-default-mode').checked,faceColors,view:{rotation:controls.rotation.toArray(),radius:controls.radius}}));settingsOK=true;
  }catch{settingsOK=false;}
  renderSaveStatus();
 }
 const sounds=new PuzzleSounds(()=>$('disable-sounds').checked);
-$('disable-sounds').onchange=saveSettings;
+$('disable-sounds').onchange=saveSettings;$('auto-default-mode').onchange=saveSettings;
 function queueSettingsSave(){clearTimeout(settingsTimer);settingsTimer=setTimeout(saveSettings,150);}
 const viewport=$('viewport');
 const scene=new THREE.Scene();
@@ -71,7 +88,7 @@ if(view&&Array.isArray(view.rotation)&&view.rotation.length===4&&view.rotation.e
 const displayedCamera=camera.clone(),renderCamera=camera.clone();
 let viewTween=null,viewFramePending=false;
 const puzzle=new THREE.Group();scene.add(puzzle);
-const materials=FACES.map(f=>new THREE.MeshBasicMaterial({color:f.color,side:THREE.DoubleSide}));
+const materials=FACES.map(f=>new THREE.MeshBasicMaterial({color:faceColors[f.name],side:THREE.DoubleSide}));
 const bodyMaterial=new THREE.MeshBasicMaterial({color:'#080e11'});
 const batches=[],animationGroups=[];
 function build(){
@@ -129,7 +146,7 @@ function draw(){
   const position=n.clone().multiplyScalar(1.24);const visible=n.dot(renderCamera.position.clone().sub(position))>0.5;
   const p=position.project(renderCamera);el.hidden=!visible||p.z>1;el.style.left=`${(p.x*.5+.5)*width}px`;el.style.top=`${(-p.y*.5+.5)*height}px`;
  });
- materials.forEach((material,i)=>material.color.set(session.status==='paused'?'#888888':FACES[i].color));
+ materials.forEach((material,i)=>material.color.set(session.status==='paused'?'#888888':faceColors[FACES[i].name]));
  renderer.render(scene,renderCamera);displayedCamera.copy(renderCamera);renderedMoves=history.length;
  if(initialized&&width>0&&height>0)document.documentElement.setAttribute('data-app-ready','');
  if(viewTween&&!viewFramePending){viewFramePending=true;requestAnimationFrame(()=>{viewFramePending=false;if(viewTween)draw();});}
@@ -146,7 +163,7 @@ function resizeViewport(){
  camera.aspect=width/height;camera.fov=360/Math.PI*Math.atan(Math.tan(Math.PI/10)/Math.min(1,camera.aspect));camera.updateProjectionMatrix();renderer.setSize(width,height);requestDraw();
 }
 new ResizeObserver(resizeViewport).observe(viewport);
-function currentSolve(){return {history,redo,undoFloor,view:{rotation:controls.rotation.toArray(),radius:controls.radius},manualPaused,timer:session.serialize(),pending:[...(active?.turns.map(turn=>turn.action)??[]),...queue]};}
+function currentSolve(){return {history,redo,undoFloor,solveEnd,view:{rotation:controls.rotation.toArray(),radius:controls.radius},manualPaused,timer:session.serialize(),pending:[...(active?.turns.map(turn=>turn.action)??[]),...queue]};}
 function save(){try{localStorage.setItem(storageKey,JSON.stringify({size,solves:{...solves,[size]:currentSolve()},pointerMode}));storageOK=true;}catch{storageOK=false;}renderSaveStatus();}
 let timesKey='';
 function renderTimes(){
@@ -161,13 +178,20 @@ function renderTimer(){
  $('timer-status').textContent={idle:'Free play',scrambling:'Scrambling',ready:'Ready',running:'Solving',paused:'Paused',finished:'Finished'}[status];
  const text=status==='idle'?'00:00':formatTime(session.elapsed());if($('timer-value').textContent!==text)$('timer-value').textContent=text;
  $('timer-pb').textContent=formatTime(session.bestMs);$('timer-result').textContent=status==='finished'?(session.newBest?'New PB':`${session.completed} solved`):'';
- $('timer-hint').textContent={idle:'Scramble to start a timed solve.',scrambling:'Preparing your scramble…',ready:'Timer starts on your first turn.',running:'',paused:manualPaused?'Press any key to resume.':'Resumes when you return.',finished:'Scramble again for another timed solve.'}[status];
+ $('timer-hint').textContent={idle:'Scramble to start a timed solve.',scrambling:'Preparing your scramble…',ready:'Timer starts on your first turn.',running:'',paused:'Press any key to resume.',finished:'Scramble again for another timed solve.'}[status];
  if(status!=='paused')manualPaused=false;
  $('pause').hidden=!['running','paused'].includes(status);$('pause').textContent=manualPaused?'Resume':'Pause';$('pause-message').hidden=!manualPaused;
  document.querySelector('.timer-panel').dataset.status=status;renderTimes();keyboard?.render();
 }
-function pauseSession(){session.pause();save();update();draw();}
-function resumeSession(){if(!manualPaused&&!document.hidden&&!document.querySelector('dialog[open]')){session.resume();update();draw();}}
+function pauseSession(){
+ session.pause();if(session.status==='paused'){manualPaused=true;keyboard?.clear({selection:true});controls.cancelAll();}
+ save();update();draw();
+}
+function resumeSession(){
+ // Returning focus or closing a dialog only restores the paused screen.
+ if(session.status==='paused')manualPaused=true;
+ update();draw();
+}
 function toggleManualPause(){
  if(manualPaused){resumeManualPause();return;}
  if(session.status!=='running')return;
@@ -175,7 +199,7 @@ function toggleManualPause(){
  while(queue.length){const action=queue.shift(),move=actionMove(action);if(move)commitAction(action,move);}
  build();if(session.status==='running'){manualPaused=true;keyboard?.clear({selection:true});controls.cancelAll();pauseSession();}else{save();update();draw();}
 }
-function resumeManualPause(){if(!manualPaused||document.querySelector('dialog[open]'))return;manualPaused=false;keyboard?.clear({selection:true});resumeSession();save();}
+function resumeManualPause(){if(session.status!=='paused'||document.hidden||document.querySelector('dialog[open]'))return;manualPaused=false;keyboard?.clear({selection:true});session.resume();save();update();draw();}
 $('pause').onclick=toggleManualPause;
 // Consume the resume key so it cannot also turn a face or select a suffix.
 window.addEventListener('keydown',event=>{
@@ -192,33 +216,34 @@ function update(){
  renderTimer();
  const scrambling=session.status==='scrambling';$('scramble').disabled=scrambling;
  $('scramble').textContent=scrambling?'Scrambling…':'Scramble';
- const locked=['scrambling','paused','finished'].includes(session.status);
- $('undo').disabled=locked||(history.length<=undoFloor&&!active);$('redo').disabled=locked||!redo.length;
+ const locked=['scrambling','paused'].includes(session.status);
+ $('undo').disabled=locked||!actionMove({type:'undo'},true);$('redo').disabled=locked||!actionMove({type:'redo'},true);
 
 }
 function enqueue(action){
  if(queue.length+(active?.turns.length??0)>=500||['scrambling','paused'].includes(session.status))return false;
- if(session.status==='finished'&&['undo','redo'].includes(action.type))return false;
  if(['undo','redo'].includes(action.type)&&!actionMove(action,true))return false;
  const now=performance.now();pacing.input(now);if(viewTween)viewTween.deadline=Math.min(viewTween.deadline,now+pacing.duration());session.start();queue.push(action);if(action.type==='move')keyboard?.recordTurn();sounds.play();save();update();pump();return true;
 }
-function actionMove(action,includeActive=false){
- if(session.status==='finished'&&['undo','redo'].includes(action.type))return null;
- let past=history,future=redo;
- if(includeActive&&active){
-  past=history.slice();future=redo.slice();
-  for(const turn of active.turns){
-   if(turn.action.type==='undo')future.push(past.pop());
-   else if(turn.action.type==='redo')past.push(future.pop());
-   else{past.push(turn.move);future=[];}
-  }
+function pendingTimeline(prune=false){
+ const past=history.slice();let future=redo.slice();const valid=[];
+ for(const turn of active?.turns??[]){
+  if(turn.action.type==='undo'){if(past.length<=undoFloor)continue;future.push(past.pop());}
+  else if(turn.action.type==='redo'){if(!future.length)continue;past.push(future.pop());}
+  else{past.push(turn.move);future=[];}
+  valid.push(turn);
  }
+ if(prune&&active)active.turns=valid;
+ return {past,future};
+}
+function actionMove(action,includeActive=false){
+ const {past,future}=includeActive&&active?pendingTimeline():{past:history,future:redo};
  if(action.type==='undo')return past.length>undoFloor?inverse(past.at(-1)):null;
  if(action.type==='redo')return future.length?future.at(-1):null;
  return action.move;
 }
 function commitAction(action,move){
- if(session.status==='finished'&&['undo','redo'].includes(action.type))return;
+ if(['undo','redo'].includes(action.type)){move=actionMove(action);if(!move)return;}
  state=applyMove(state,move);
  if(action.type==='undo')redo.push(history.pop());
  else if(action.type==='redo')history.push(redo.pop());
@@ -226,7 +251,10 @@ function commitAction(action,move){
  if(action.source==='scramble'){
   sounds.play();undoFloor=history.length;
   if(!queue.some(a=>a.source==='scramble'))session.arm();
- }else if(isSolved(state))session.finish();
+ }else if(isSolved(state)&&session.finish()){
+  solveEnd=history.length;undoFloor=solveEnd;redo=[];
+  if($('auto-default-mode').checked)keyboard?.returnToDefault();
+ }
 }
 function snapActive(){
  if(!active)return false;
@@ -238,7 +266,7 @@ function finishCompleted(now){
  let changed=false;
  while(active?.turns.length&&now-active.turns[0].started>=active.turns[0].duration){
   const turn=active.turns.shift();commitAction(turn.action,turn.move);changed=true;
-  if(session.status==='finished')active.turns=active.turns.filter(next=>!['undo','redo'].includes(next.action.type));
+  if(session.status==='finished')pendingTimeline(true);
  }
  if(active&&!active.turns.length)active=null;
  return changed;
@@ -273,28 +301,32 @@ function pump(changed=false){
  if(changed){build();renderTurns(now);save();update();requestDraw();}
  scheduleTurns();
 }
-async function confirmPaused(message,label){
+async function confirmPaused(message,label,title='Replace this solve?'){
  const dialog=$('confirm-dialog');if(dialog.open)return false;
  pauseSession();controls.cancelAll();keyboard?.clear({selection:true});
- $('confirm-message').textContent=message;$('confirm-accept').textContent=label;dialog.returnValue='cancel';dialog.dataset.pending='true';
+ $('confirm-title').textContent=title;$('confirm-message').textContent=message;$('confirm-accept').textContent=label;dialog.returnValue='cancel';dialog.dataset.pending='true';
  const result=new Promise(resolve=>dialog.addEventListener('close',()=>{delete dialog.dataset.pending;resumeSession();resolve(dialog.returnValue==='accept');},{once:true}));
  dialog.showModal();return result;
 }
 $('undo').onclick=()=>enqueue({type:'undo'});$('redo').onclick=()=>enqueue({type:'redo'});
 $('scramble').onclick=async()=>{
- if(!await confirmPaused(`Scramble this ${size} × ${size} FTO? This replaces the current solve and starts a new timed attempt.`,'Scramble'))return;
+ const timed=['ready','running','paused'].includes(session.status);
+ const title=timed?'Replace this solve?':'Start a new timed solve?';
+ const message=timed?`Discard this attempt and scramble the ${size} × ${size} FTO for a new timed solve?`:`Scramble the ${size} × ${size} FTO and start a new timed solve?${history.length>(solveEnd??0)||active?' This clears the current free-play moves.':''} Saved times are kept.`;
+ if(!await confirmPaused(message,'Scramble',title))return;
  viewTween=null;controls.cancelAll();keyboard?.clear({selection:true});queue=[];
  active=null;
- state=solvedState(size);history=[];redo=[];undoFloor=0;manualPaused=false;pacing.reset();session.scramble();
+ state=solvedState(size);history=[];redo=[];undoFloor=0;solveEnd=null;manualPaused=false;pacing.reset();session.scramble();
  let moves=scrambleMoves(Math.max(50,size*10),Math.random,size);
  while(isSolved(moves.reduce(applyMove,state)))moves=scrambleMoves(Math.max(50,size*10),Math.random,size);
  if($('animate-scrambling').checked){build();queue=moves.map(move=>({type:'move',move,source:'scramble'}));save();update();requestDraw();pump();}
  else{state=moves.reduce(applyMove,state);history=moves;undoFloor=history.length;build();session.arm();save();update();requestDraw();}
 };
 async function resetSolve(){
- if((history.length||active||queue.length)&&!await confirmPaused('Reset the puzzle to solved and clear this solve’s history?','Reset'))return;
+ const timed=['ready','running','paused'].includes(session.status);
+ if((history.length||active||queue.length)&&!await confirmPaused(timed?'Reset the puzzle to solved and discard this attempt? Saved times are kept.':'Reset the puzzle to solved and clear free-play moves? Saved times are kept.','Reset','Reset puzzle?'))return;
  viewTween=null;keyboard?.clear({selection:true});queue=[];active=null;manualPaused=false;
- state=solvedState(size);history=[];redo=[];undoFloor=0;pacing.reset();session.reset();build();save();update();requestDraw();
+ state=solvedState(size);history=[];redo=[];undoFloor=0;solveEnd=null;pacing.reset();session.reset();build();save();update();requestDraw();
 }
 $('freeplay-reset').onclick=resetSolve;
 function homeView(){viewTween=null;controls.setPosition(HOME_POSITION);requestDraw();}
@@ -313,11 +345,11 @@ $('animate').onchange=()=>{if(!$('animate').checked)viewTween=null;saveSettings(
 function renderSize(){$('size').value=String(size);keyboard?.render();}
 $('size').onchange=()=>{
  // Save completed and pending turns before switching to another puzzle size.
- session.pause();solves[size]=structuredClone(currentSolve());queue=[];viewTween=null;pacing.reset();
+ session.pause();manualPaused=session.status==='paused';solves[size]=structuredClone(currentSolve());queue=[];viewTween=null;pacing.reset();
  active=null;
  controls.cancelAll();keyboard?.clear({selection:true});size=Number($('size').value);keyboard?.setSize(size);
  const saved=structuredClone(solves[size]??{});
- history=saved.history??[];redo=saved.redo??[];undoFloor=saved.undoFloor??0;session=new SolveTimer(saved.timer);manualPaused=saved.manualPaused===true&&session.status==='paused';queue=saved.pending??[];
+ history=saved.history??[];redo=saved.redo??[];undoFloor=saved.undoFloor??0;solveEnd=saved.solveEnd??null;session=new SolveTimer(saved.timer);manualPaused=session.status==='paused';queue=saved.pending??[];
  if(saved.view?.rotation?.length===4&&saved.view.rotation.every(Number.isFinite)&&Number.isFinite(Math.hypot(...saved.view.rotation))&&Math.hypot(...saved.view.rotation)>1e-9&&Number.isFinite(saved.view.radius)){controls.rotation.fromArray(saved.view.rotation).normalize();controls.radius=THREE.MathUtils.clamp(saved.view.radius,controls.minDistance,controls.maxDistance);controls.update();}else controls.setPosition(HOME_POSITION);
  if(session.status==='scrambling'&&!queue.length)session.reset();
  state=history.reduce(applyMove,solvedState(size));frame=currentFrame();build();renderSize();resumeSession();save();saveSettings();update();pump();draw();
@@ -334,6 +366,21 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){controls.c
 $('show-labels').onchange=()=>{$('labels').hidden=!$('show-labels').checked;requestDraw();saveSettings();};
 $('settings').onclick=()=>{controls.cancelAll();$('settings-dialog').showModal();pauseSession();};
 $('close-settings').onclick=()=>$('settings-dialog').close();
+function renderColorSwatches(){
+ const grid=$('face-color-swatches');grid.replaceChildren();
+ for(const face of FACES){
+  const label=document.createElement('label');label.className='face-color-swatch';
+  const name=document.createElement('span');name.textContent=face.name;
+  const input=document.createElement('input');input.type='color';input.value=faceColors[face.name];input.id=`face-color-${face.name}`;input.setAttribute('aria-label',`${face.name} face color`);
+  const value=document.createElement('span');value.className='face-color-value';value.textContent=input.value;
+  const update=()=>{faceColors[face.name]=input.value;value.textContent=input.value;requestDraw();saveSettings();};
+  input.addEventListener('input',update);input.addEventListener('change',update);
+  label.append(name,input,value);grid.append(label);
+ }
+}
+$('customize-colors').onclick=()=>{renderColorSwatches();$('color-scheme-dialog').showModal();pauseSession();};
+$('close-color-scheme').onclick=()=>$('color-scheme-dialog').close();
+$('reset-face-colors').onclick=()=>{faceColors=Object.fromEntries(FACES.map(face=>[face.name,face.color]));renderColorSwatches();requestDraw();saveSettings();};
 for(const dialog of document.querySelectorAll('dialog')){
  dialog.addEventListener('close',resumeSession);
  const outside=e=>{const r=dialog.getBoundingClientRect();return e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom;};

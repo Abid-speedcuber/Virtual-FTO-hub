@@ -1,6 +1,6 @@
 import {installKeyboard} from './keyboard-fixture.js';
 import {test,expect} from '@playwright/test';
-import {withSettings,scramble} from './helpers.js';
+import {withSettings,scramble,chooseMove} from './helpers.js';
 test.beforeEach(async({page})=>{await installKeyboard(page);});
 const ready=page=>page.waitForFunction(()=>window.fto?.snapshot().keyboard);
 const snapshot=page=>page.evaluate(()=>window.fto.snapshot());
@@ -14,7 +14,7 @@ async function editor(page){await page.locator('#settings').click();await page.l
 async function closeEditor(page){await page.locator('#close-keyboard').click();await page.locator('#close-settings').click();}
 async function bind(page,trigger,{type='move',face='U',dir='-1',kind='outer',depth='1',mode}={}){
  await page.locator('#binding-new').click();await page.locator('#binding-trigger').fill(trigger);await page.locator('#binding-type').selectOption(type);
- if(type==='move'){await page.locator('#binding-face').selectOption(face);await page.locator('#binding-direction').selectOption(dir);await page.locator('#binding-kind').selectOption(kind);}
+ if(type==='move'){await chooseMove(page,face,dir);await page.locator('#binding-kind').selectOption(kind);}
  if(await page.locator('#binding-depth').isVisible())await page.locator('#binding-depth').fill(depth);
  if(mode)await page.locator('#binding-target-mode').selectOption(mode);
  await page.locator('#binding-save').click();
@@ -51,7 +51,7 @@ test('mode cycle and held modes reuse a key without duplicate actions in one mod
  await page.locator('#mode-name').fill('CIF');await page.locator('#mode-rename').click();
  await page.locator('#mode-name').fill('EIF');await page.locator('#mode-clone').click();
  const eif=await page.locator('#binding-mode').inputValue();
- await page.locator('.binding-edit').filter({hasText:/^F$/}).click();await page.locator('#binding-face').selectOption('U');await page.locator('#binding-direction').selectOption('-1');await page.locator('#binding-save').click();
+ await page.locator('.binding-edit').filter({hasText:/^F$/}).click();await chooseMove(page,'U',-1);await page.locator('#binding-save').click();
  await bind(page,'F',{face:'R'});await expect(page.locator('#binding-message')).toContainText('already has an action');
  await page.locator('#binding-mode').selectOption('default');await bind(page,'Space',{type:'hold-mode',mode:eif});await closeEditor(page);
  await page.keyboard.press('KeyM');expect((await snapshot(page)).keyboard.modeName).toBe('EIF');await page.keyboard.press('KeyF');expect((await snapshot(page)).history.at(-1)).toMatchObject({name:'U',dir:-1});

@@ -33,7 +33,7 @@ test('E-center shows the six new moves, Backspace undo, and preset-specific EIF 
  await page.keyboard.press('Space');await page.keyboard.press('KeyM');expect((await snap(page)).keyboard.modeName).toBe('CIF');
 });
 
-test('finishing prevents queued and new undo/redo, and stays protected after reload',async({page})=>{
+test('finishing protects the solve while post-solve moves remain undoable and redoable across reload',async({page})=>{
  await page.addInitScript(()=>{
   if(sessionStorage.getItem('finish-seeded'))return;sessionStorage.setItem('finish-seeded','yes');
   localStorage.setItem('master-fto-v1',JSON.stringify({size:4,solves:{4:{history:[{normal:[1,1,1],name:'U',layer:'outer',dir:1,depth:1,count:1}],redo:[],undoFloor:0,timer:{status:'ready'}}}}));
@@ -46,4 +46,24 @@ test('finishing prevents queued and new undo/redo, and stays protected after rel
  for(const code of ['Backspace','Control+z','Shift+Backspace','Control+y'])await page.keyboard.press(code);
  expect((await snap(page)).history).toEqual(finished.history);expect((await snap(page)).state).toEqual(finished.state);
  await page.reload();await ready(page);await page.keyboard.press('Backspace');expect((await snap(page)).state).toEqual(finished.state);await expect(page.locator('#undo')).toBeDisabled();
+ // A post-solve move can even be undone while its animation is still running.
+ await page.keyboard.press('KeyI');await page.keyboard.press('Backspace');await page.clock.runFor(200);
+ expect((await snap(page)).state).toEqual(finished.state);await expect(page.locator('#redo')).toBeEnabled();
+ await page.keyboard.press('Shift+Backspace');await page.clock.runFor(200);
+ const freeplay=await snap(page);expect(freeplay.history).toHaveLength(3);expect(freeplay.undoFloor).toBe(2);expect(freeplay.timer.completed).toBe(finished.timer.completed);await expect(page.locator('#undo')).toBeEnabled();
+ await page.reload();await ready(page);await page.keyboard.press('Backspace');await page.clock.runFor(200);
+ expect((await snap(page)).state).toEqual(finished.state);await expect(page.locator('#undo')).toBeDisabled();await expect(page.locator('#redo')).toBeEnabled();
+ await page.keyboard.press('Backspace');expect((await snap(page)).history).toEqual(finished.history);
+});
+
+test('older finished saves recover the solve boundary without locking their later free-play moves',async({page})=>{
+ await page.addInitScript(()=>{
+  if(sessionStorage.getItem('legacy-finish-seeded'))return;sessionStorage.setItem('legacy-finish-seeded','yes');
+  const turn=(name,normal,dir)=>({name,normal,dir,layer:'outer',depth:1,count:1});
+  localStorage.setItem('master-fto-v1',JSON.stringify({size:4,solves:{4:{history:[turn('U',[1,1,1],1),turn('U',[1,1,1],-1),turn('R',[1,1,-1],1)],redo:[],undoFloor:0,timer:{status:'finished',completed:1,lastMs:1000}}}}));
+  localStorage.setItem('master-fto-settings-v1',JSON.stringify({follow:false,animate:false,disableSounds:true}));
+ });
+ await page.goto('/');await ready(page);expect((await snap(page)).undoFloor).toBe(2);await expect(page.locator('#undo')).toBeEnabled();
+ await page.keyboard.press('Backspace');const current=await snap(page);expect(current.solved).toBe(true);expect(current.history).toHaveLength(2);expect(current.redo).toHaveLength(1);expect(current.timer.completed).toBe(1);await expect(page.locator('#undo')).toBeDisabled();
+ await page.reload();await ready(page);expect((await snap(page)).undoFloor).toBe(2);await expect(page.locator('#redo')).toBeEnabled();
 });
