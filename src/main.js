@@ -24,8 +24,9 @@ function findSolveEnd(history,size,floor){
  }
  return history.length;
 }
-let storageOK=true;
+let storageOK=true,solveWasStored=false,storageCleared=false;
 try{const saved=JSON.parse(localStorage.getItem(storageKey)||'null');if(saved){
+ solveWasStored=true;
  const valid=m=>m&&FACES.some(f=>f.normal.every((v,i)=>v===m.normal?.[i]))&&['outer','inner','wide','ultra','slice'].includes(m.layer)&&[1,-1].includes(m.dir)&&typeof m.name==='string'&&(m.layer!=='slice'||(Number.isInteger(m.depth)&&m.depth>=1&&m.depth<=20&&Number.isInteger(m.count)&&m.count>=1&&m.count<=21-m.depth));
  if(saved.solves){
   if(!Number.isInteger(saved.size)||saved.size<2||saved.size>20)throw Error('Invalid size');
@@ -59,13 +60,14 @@ let faceColors=Object.fromEntries(FACES.map(face=>{
  const saved=preferences.faceColors?.[face.name];
  return [face.name,typeof saved==='string'&&/^#[0-9a-f]{6}$/i.test(saved)?saved.toLowerCase():face.color];
 }));
-for(const [id,key,fallback] of [['disable-sounds','disableSounds',false],['follow','follow',true],['animate','animate',!matchMedia('(prefers-reduced-motion: reduce)').matches],['animate-scrambling','animateScrambling',false],['show-labels','showLabels',true],['auto-default-mode','autoDefaultMode',true]]){
+for(const [id,key,fallback] of [['disable-sounds','disableSounds',false],['follow','follow',true],['animate','animate',true],['animate-scrambling','animateScrambling',true],['show-labels','showLabels',true],['auto-default-mode','autoDefaultMode',true]]){
  $(id).checked=typeof preferences[key]==='boolean'?preferences[key]:fallback;
 }
 let labelSwitchAngle=Number.isFinite(preferences.labelSwitchAngle)?THREE.MathUtils.clamp(preferences.labelSwitchAngle,0,40):DEFAULT_LABEL_SWITCH_ANGLE;
 for(const id of ['label-switch-angle','label-switch-angle-value'])$(id).value=String(labelSwitchAngle);
 function renderSaveStatus(){ $('save-status').textContent=storageOK&&settingsOK&&keyboard?.storageOK!==false?'Saved on this device':'Local storage unavailable'; }
 function saveSettings(){
+ if(detectClearedSolve())return;
  clearTimeout(settingsTimer);
  try{
   localStorage.setItem(settingsKey,JSON.stringify({disableSounds:$('disable-sounds').checked,follow:$('follow').checked,labelSwitchAngle,animate:$('animate').checked,animateScrambling:$('animate-scrambling').checked,showLabels:$('show-labels').checked,autoDefaultMode:$('auto-default-mode').checked,faceColors,view:{rotation:controls.rotation.toArray(),radius:controls.radius}}));settingsOK=true;
@@ -164,7 +166,16 @@ function resizeViewport(){
 }
 new ResizeObserver(resizeViewport).observe(viewport);
 function currentSolve(){return {history,redo,undoFloor,solveEnd,view:{rotation:controls.rotation.toArray(),radius:controls.radius},manualPaused,timer:session.serialize(),pending:[...(active?.turns.map(turn=>turn.action)??[]),...queue]};}
-function save(){try{localStorage.setItem(storageKey,JSON.stringify({size,solves:{...solves,[size]:currentSolve()},pointerMode}));storageOK=true;}catch{storageOK=false;}renderSaveStatus();}
+// DevTools can remove storage without notifying this document. Check before every
+// write too, so an open tab cannot restore cleared times on blur or pagehide.
+function detectClearedSolve(){
+ if(storageCleared)return true;
+ try{if(solveWasStored&&localStorage.getItem(storageKey)===null){storageCleared=true;location.reload();return true;}}catch{}
+ return false;
+}
+window.addEventListener('storage',event=>{if(event.storageArea===localStorage&&(event.key===storageKey||event.key===null))detectClearedSolve();});
+setInterval(detectClearedSolve,1000);
+function save(){if(detectClearedSolve())return;try{localStorage.setItem(storageKey,JSON.stringify({size,solves:{...solves,[size]:currentSolve()},pointerMode}));storageOK=true;solveWasStored=true;}catch{storageOK=false;}renderSaveStatus();}
 let timesKey='';
 function renderTimes(){
  const key=`${size}:${session.times.length}:${session.completed}`;if(key===timesKey)return;timesKey=key;
@@ -207,8 +218,9 @@ window.addEventListener('keydown',event=>{
  event.preventDefault();event.stopImmediatePropagation();resumeManualPause();
 },true);
 function layoutSolveSpace(){
- const width=document.documentElement.clientWidth,height=window.innerHeight,side=Math.min(width,height);
- document.documentElement.classList.toggle('shared-corner',width-side<150);
+ const width=document.documentElement.clientWidth,height=window.innerHeight-document.querySelector('.topbar').getBoundingClientRect().height,side=Math.min(width,height);
+ const keyboardFits=width>=900&&width-side>=360;
+ document.documentElement.classList.toggle('keyboard-unavailable',!keyboardFits);
  document.querySelector('.solve-layout').classList.toggle('panel-below',width-side<280);
 }
 window.addEventListener('resize',layoutSolveSpace);new ResizeObserver(layoutSolveSpace).observe(document.documentElement);layoutSolveSpace();
@@ -366,6 +378,8 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){controls.c
 $('show-labels').onchange=()=>{$('labels').hidden=!$('show-labels').checked;requestDraw();saveSettings();};
 $('settings').onclick=()=>{controls.cancelAll();$('settings-dialog').showModal();pauseSession();};
 $('close-settings').onclick=()=>$('settings-dialog').close();
+$('about').onclick=()=>{controls.cancelAll();$('about-dialog').showModal();pauseSession();};
+$('close-about').onclick=()=>$('about-dialog').close();
 function renderColorSwatches(){
  const grid=$('face-color-swatches');grid.replaceChildren();
  for(const face of FACES){

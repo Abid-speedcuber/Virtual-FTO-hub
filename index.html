@@ -3,9 +3,15 @@
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#111719">
 <link rel="icon" href="./favicon.ico" sizes="any"><link rel="icon" type="image/png" href="./favicon-32.png" sizes="32x32"><link rel="icon" type="image/png" href="./favicon-16.png" sizes="16x16"><link rel="apple-touch-icon" href="./apple-touch-icon.png"><link rel="manifest" href="./manifest.webmanifest">
-<title>FTO</title><style>html{background:#111719}html:not([data-app-ready]) body{visibility:hidden;pointer-events:none}</style><link rel="stylesheet" href="/src/style.css">
+<title>FTO Simulator</title><style>html{background:#111719}html:not([data-app-ready]) body{visibility:hidden;pointer-events:none}</style><link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
+<header class="topbar">
+<div class="site-brand"><img src="./logo.png" width="38" height="38" alt=""><span>FTO Simulator<small>by Abid Ibn Ashraf</small></span></div>
+<nav class="topbar-actions" aria-label="Application">
+<button id="settings" aria-label="Settings" title="Settings" aria-haspopup="dialog" aria-controls="settings-dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 3-.7 2.3-2 .9-2.2-.5-2.5 4.3 1.5 1.8v2.4L2.1 16l2.5 4.3 2.2-.5 2 .9.7 2.3h5l.7-2.3 2-.9 2.2.5 2.5-4.3-1.5-1.8v-2.4l1.5-1.8-2.5-4.3-2.2.5-2-.9-.7-2.3z" transform="translate(1 0) scale(.92)"/><circle cx="12" cy="12" r="3"/></svg></button>
+<button id="about" aria-label="About" title="About" aria-haspopup="dialog" aria-controls="about-dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></svg></button>
+</nav></header>
 <div class="app">
 <main class="solve-layout" aria-label="FTO solve space">
 <div id="viewport"><div id="labels" aria-hidden="true"></div><div id="keyboard-notice" role="status" hidden></div>
@@ -22,29 +28,34 @@
 </section>
 </aside>
 </main>
-<button id="settings" aria-haspopup="dialog" aria-controls="settings-dialog">⚙ <span>Settings</span></button>
 </div>
 <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message"><div class="dialog-heading"><h1 id="confirm-title">Replace this solve?</h1></div><p id="confirm-message"></p><form method="dialog" class="confirm-actions"><button id="confirm-cancel" value="cancel" autofocus>Cancel</button><button id="confirm-accept" value="accept" class="primary">Reset</button></form></dialog>
 <dialog id="settings-dialog" aria-labelledby="settings-title">
 <div class="dialog-heading"><h1 id="settings-title" class="app-brand"><img src="./logo.png" width="28" height="28" alt="">Settings</h1><button id="close-settings" aria-label="Close settings">✕</button></div>
-<section class="settings-section" aria-label="Puzzle settings"><h2>Puzzle</h2>
-
+<section class="settings-section" aria-label="Appearance settings"><h2>Appearance</h2>
+<label class="setting">Show face labels<input type="checkbox" id="show-labels" role="switch" checked aria-label="Show face labels"></label>
+<button id="customize-colors" aria-haspopup="dialog" aria-controls="color-scheme-dialog">Customize color scheme</button>
+<label class="setting"><span>Show keyboard<small>Live move labels, physical keys, and TPS</small></span><input type="checkbox" id="show-keyboard" role="switch" aria-label="Show keyboard"></label>
+</section>
+<section class="settings-section" aria-label="Controls settings"><h2>Controls</h2>
 <label class="setting">Pointer controls<select id="pointer-mode" aria-label="Pointer controls"><option value="swipe">Swipe to turn</option><option value="legacy">Orbit + click</option></select></label>
 <label class="setting"><span>Follow the view<small>Keyboard labels adapt when you orbit</small></span><input type="checkbox" id="follow" role="switch" checked aria-label="Follow the view"></label>
 <div class="setting label-angle-setting"><label for="label-switch-angle">U/F → F/D switch<small>Degrees past square-on. Lower switches sooner.</small></label><span class="label-angle-controls"><input type="range" id="label-switch-angle" min="0" max="40" step="1" value="15"><input type="number" id="label-switch-angle-value" min="0" max="40" step="1" value="15" aria-label="Label switch angle in degrees"><span aria-hidden="true">°</span></span></div>
 <label class="setting"><span>Return keyboard to default after a solve<small>Choose the default mode in Keyboard &amp; bindings</small></span><input type="checkbox" id="auto-default-mode" role="switch" checked aria-label="Return keyboard to default after a solve"></label>
-<label class="setting"><span>Animate turns</span><input type="checkbox" id="animate" role="switch" checked aria-label="Animate turns"></label>
-<label class="setting"><span>Animate scrambling<small>Show the computer-generated turns</small></span><input type="checkbox" id="animate-scrambling" role="switch" aria-label="Animate scrambling"></label>
-<label class="setting"><span>Disable sounds<small>Mute move clicks and suffix tones</small></span><input type="checkbox" id="disable-sounds" role="switch" aria-label="Disable sounds"></label></section>
-<section class="settings-section" aria-label="Display settings"><h2>Display</h2>
-<button id="customize-colors" aria-haspopup="dialog" aria-controls="color-scheme-dialog">Customize color scheme</button>
-<label class="setting">Show face labels<input type="checkbox" id="show-labels" role="switch" checked aria-label="Show face labels"></label>
-
-<label class="setting"><span>Show keyboard<small>Live move labels, physical keys, and TPS</small></span><input type="checkbox" id="show-keyboard" role="switch" aria-label="Show keyboard"></label>
 <button id="edit-keyboard">Keyboard & bindings</button>
-
 </section>
-<p id="save-status" role="status">Saved on this device</p><p class="license-note">© 2026 Master FTO contributors · <a href="./licenses/GPL-3.0.txt" target="_blank" rel="noopener">GPLv3</a> · <a href="https://github.com/Abid-speedcuber/Virtual-FTO-hub" target="_blank" rel="noopener">Source</a> · <a href="./licenses/NOTICE.md" target="_blank" rel="noopener">Credits</a>. No warranty.</p>
+<section class="settings-section" aria-label="Animation &amp; sound settings"><h2>Animation &amp; sound</h2>
+<label class="setting"><span>Animate turns</span><input type="checkbox" id="animate" role="switch" checked aria-label="Animate turns"></label>
+<label class="setting"><span>Animate scrambling<small>Show the computer-generated turns</small></span><input type="checkbox" id="animate-scrambling" role="switch" checked aria-label="Animate scrambling"></label>
+<label class="setting"><span>Disable sounds<small>Mute move clicks and suffix tones</small></span><input type="checkbox" id="disable-sounds" role="switch" aria-label="Disable sounds"></label>
+</section>
+<p id="save-status" role="status">Saved on this device</p>
+</dialog>
+<dialog id="about-dialog" aria-labelledby="about-title">
+<div class="dialog-heading"><h1 id="about-title">About FTO Simulator</h1><button id="close-about" aria-label="Close about">✕</button></div>
+<p>A virtual Face-Turning Octahedron for practicing and speedsolving.</p><p>by Abid Ibn Ashraf</p>
+<p class="about-storage">Your times, puzzle progress, and preferences are saved in this browser on this device. Times are stored separately for each puzzle size.</p>
+<p class="license-note">© 2026 Master FTO contributors · <a href="./licenses/GPL-3.0.txt" target="_blank" rel="noopener">GPLv3</a> · <a href="https://github.com/Abid-speedcuber/Virtual-FTO-hub" target="_blank" rel="noopener">Source</a> · <a href="./licenses/NOTICE.md" target="_blank" rel="noopener">Credits</a>. No warranty.</p>
 </dialog>
 <dialog id="color-scheme-dialog" aria-labelledby="color-scheme-title">
 <div class="dialog-heading"><h1 id="color-scheme-title">Customize color scheme</h1><button id="close-color-scheme" aria-label="Close color scheme">✕</button></div>
