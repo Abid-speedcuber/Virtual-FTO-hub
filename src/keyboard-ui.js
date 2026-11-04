@@ -202,7 +202,7 @@ export class KeyboardUI{
   this.engine.activateSuffixes(Date.now(),true);this.scheduleSuffixHold();
   const move=this.engine.resolve({type:'move',face,kind:base.kind,depth:base.depth,dir:base.dir*(event.button===2?-1:1)},this.context());
   if(!move.valid)return false;
-  if(this.move(move)===false)return false;
+  if(this.move({...move,source:'pointer'})===false)return false;
   this.engine.consume();this.lastMove=move.label;this.render();return true;
  }
  syncModifiers(event){
@@ -225,7 +225,7 @@ export class KeyboardUI{
  recordTurn(){this.meter.add(performance.now());this.meter.sample(performance.now(),this.config.display.window);if(this.config.display.show)this.renderMeter();}
  notice(text){$('keyboard-notice').textContent=text;$('keyboard-notice').hidden=false;clearTimeout(this.noticeTimer);this.noticeTimer=setTimeout(()=>$('keyboard-notice').hidden=true,3500);}
  renderLayout(){
-  const layout=keyboardLayout(this.config.display);this.keycaps=new Map();const board=$('keyboard-svg');board.replaceChildren();board.setAttribute('viewBox',`-.16 -.16 ${layout.width+.24} ${layout.height+.24}`);
+  const layout=keyboardLayout(this.config.display);this.keycaps=new Map();const board=$('keyboard-svg');board.replaceChildren();board.setAttribute('viewBox',`-.04 -.04 ${layout.width} ${layout.height}`);$('keyboard-overlay').style.setProperty('--keyboard-aspect',String(layout.width/layout.height));
   for(const key of layout.keys){
    const group=svg('g',{'data-code':key.code,class:'keycap',role:'button',tabindex:'0','aria-label':displayCode(key.code)});
    let shape;

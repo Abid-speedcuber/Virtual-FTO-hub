@@ -46,7 +46,7 @@ export class ViewControls extends THREE.EventDispatcher {
  down(e){
   if(![0,1,2].includes(e.button))return;
   e.preventDefault();this.element.setPointerCapture(e.pointerId);
-  this.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY,button:e.button,moved:false,hit:this.mode==='swipe'&&e.button===0?this.pick?.(e.clientX,e.clientY):null,blocked:false});
+  this.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY,button:e.button,moved:false,hit:this.mode==='swipe'&&e.button===0?this.pick?.(e.clientX,e.clientY):null,blocked:false,turned:false});
   if(this.pointers.size>1)for(const p of this.pointers.values()){p.moved=true;p.blocked=true;}
  }
  move(e){
@@ -69,17 +69,22 @@ export class ViewControls extends THREE.EventDispatcher {
   }else if(this.pointers.size===1&&p.moved){
    const mx=wasMoved?dx:e.clientX-p.startX,my=wasMoved?dy:e.clientY-p.startY;
    if(p.button===1)this.zoom(Math.exp(my*.01));
-   else if(!(this.mode==='swipe'&&p.hit&&!p.blocked))this.rotate(mx,my);
+   else if(this.mode==='swipe'&&p.hit&&!p.blocked){
+    if(!p.turned&&Math.hypot(e.clientX-p.startX,e.clientY-p.startY)>=6)this.swipe(p,e);
+   }else this.rotate(mx,my);
   }
   p.x=e.clientX;p.y=e.clientY;
  }
  up(e){
   const p=this.pointers.get(e.pointerId);this.pointers.delete(e.pointerId);
   if(this.element.hasPointerCapture(e.pointerId))this.element.releasePointerCapture(e.pointerId);
-  if(p&&this.mode==='swipe'&&p.hit&&!p.blocked&&Math.hypot(e.clientX-p.startX,e.clientY-p.startY)>=10)
-   this.dispatchEvent({type:'swipe',hit:p.hit,dx:e.clientX-p.startX,dy:e.clientY-p.startY,shiftKey:e.shiftKey,ctrlKey:e.ctrlKey,altKey:e.altKey,metaKey:e.metaKey});
+  if(p&&this.mode==='swipe'&&p.hit&&!p.blocked&&!p.turned&&Math.hypot(e.clientX-p.startX,e.clientY-p.startY)>=6)this.swipe(p,e);
   if(this.mode==='legacy'&&p&&!p.moved&&Math.hypot(e.clientX-p.startX,e.clientY-p.startY)<=5&&p.button!==1)
    this.dispatchEvent({type:'tap',x:e.clientX,y:e.clientY,button:p.button,shiftKey:e.shiftKey,ctrlKey:e.ctrlKey,altKey:e.altKey,metaKey:e.metaKey});
+ }
+ swipe(p,e){
+  p.turned=true;
+  this.dispatchEvent({type:'swipe',hit:p.hit,dx:e.clientX-p.startX,dy:e.clientY-p.startY,shiftKey:e.shiftKey,ctrlKey:e.ctrlKey,altKey:e.altKey,metaKey:e.metaKey});
  }
  cancel(e){
   if(this.pointers.has(e.pointerId))for(const p of this.pointers.values())p.blocked=true;

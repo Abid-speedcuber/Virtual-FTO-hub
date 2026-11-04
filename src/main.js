@@ -6,7 +6,7 @@ import {SolveTimer,formatTime} from './solve-timer.js';
 import {KeyboardUI} from './keyboard-ui.js';
 import {ViewControls} from './view-controls.js';
 import {bodyGeometry} from './body-geometry.js';
-import {swipeMove} from './swipe.js';
+import {swipeCandidates,chooseSwipeMove} from './swipe.js';
 import {pickSurface,pickFaceNormal} from './picking.js';
 import {FACES,solvedState,selected,applyMove,inverse,isSolved,scrambleMoves} from './puzzle.js';
 import {HOME_POSITION,FIXED_FRAME,frameForCamera,transformedNormal,DEFAULT_LABEL_SWITCH_ANGLE} from './orientation.js';
@@ -14,8 +14,8 @@ const $=id=>document.getElementById(id);
 const storageKey='master-fto-v1';
 let keyboard,initialized=false,renderedMoves=0,manualPaused=false;
 const pacing=new TurnPacing();
-let size=4,solves={},pointerMode='swipe',undoFloor=0,solveEnd=null;
-let state=solvedState(),history=[],redo=[],queue=[],active=null,frame,scheduled=false;
+let size=3,solves={},pointerMode='swipe',undoFloor=0,solveEnd=null;
+let state=solvedState(size),history=[],redo=[],queue=[],active=null,frame,scheduled=false;
 function findSolveEnd(history,size,floor){
  let restored=solvedState(size);
  for(let i=0;i<history.length;i++){
@@ -31,7 +31,7 @@ try{const saved=JSON.parse(localStorage.getItem(storageKey)||'null');if(saved){
  if(saved.solves){
   if(!Number.isInteger(saved.size)||saved.size<2||saved.size>20)throw Error('Invalid size');
   solves=saved.solves;size=saved.size;pointerMode=saved.pointerMode==='legacy'?'legacy':'swipe';
- }else solves[4]=saved;
+ }else{size=4;solves[4]=saved;}
  for(const [key,solve] of Object.entries(solves)){
   if(!Number.isInteger(+key)||+key<2||+key>20||!Array.isArray(solve.history)||!Array.isArray(solve.redo)||!solve.history.every(valid)||!solve.redo.every(valid))throw Error('Invalid saved solve');
   if(solve.undoFloor!==undefined&&(!Number.isInteger(solve.undoFloor)||solve.undoFloor<0||solve.undoFloor>solve.history.length))throw Error('Invalid scramble boundary');
@@ -46,16 +46,26 @@ try{const saved=JSON.parse(localStorage.getItem(storageKey)||'null');if(saved){
    if(!Number.isInteger(solve.solveEnd)||solve.solveEnd<0||solve.solveEnd>solve.history.length)solve.solveEnd=findSolveEnd(solve.history,+key,solve.undoFloor);
    solve.undoFloor=Math.max(solve.undoFloor,solve.solveEnd);
   }
-  if(solve.pending!==undefined&&(!Array.isArray(solve.pending)||solve.pending.length>600||!solve.pending.every(a=>a&&(['undo','redo'].includes(a.type)||(a.type==='move'&&valid(a.move)))&&(a.source===undefined||a.source==='scramble'))))throw Error('Invalid pending turns');
+  if(solve.pending!==undefined&&(!Array.isArray(solve.pending)||solve.pending.length>600||!solve.pending.every(a=>a&&(['undo','redo'].includes(a.type)||(a.type==='move'&&valid(a.move)))&&(a.source===undefined||['scramble','pointer'].includes(a.source)))))throw Error('Invalid pending turns');
  }
  history=structuredClone(solves[size]?.history??[]);redo=structuredClone(solves[size]?.redo??[]);undoFloor=solves[size]?.undoFloor??0;solveEnd=solves[size]?.solveEnd??null;state=history.reduce(applyMove,solvedState(size));
-}}catch{storageOK=false;size=4;solves={};history=[];redo=[];state=solvedState();}
+}}catch{storageOK=false;size=3;solves={};history=[];redo=[];state=solvedState(size);}
 let session=new SolveTimer(solves[size]?.timer);manualPaused=session.status==='paused';
 queue=structuredClone(solves[size]?.pending??[]);
 if(session.status==='scrambling'&&!queue.length)session.reset();
 const settingsKey='master-fto-settings-v1';
 let preferences={},settingsOK=true,settingsTimer;
 try{const value=JSON.parse(localStorage.getItem(settingsKey)||'{}');if(value&&typeof value==='object')preferences=value;}catch{settingsOK=false;}
+let outerTurnBias=Number.isFinite(preferences.outerTurnBias)?THREE.MathUtils.clamp(preferences.outerTurnBias,0,100):60;
+let animationSpeed=Number.isFinite(preferences.animationSpeed)?THREE.MathUtils.clamp(preferences.animationSpeed,.25,3):1;
+const animationDuration=ms=>ms/animationSpeed;
+function renderGestureSettings(){
+ $('outer-turn-bias').value=String(outerTurnBias);$('outer-turn-bias-value').value=`${outerTurnBias}%`;
+ $('animation-speed').value=String(animationSpeed);$('animation-speed-value').value=`${animationSpeed}×`;
+}
+renderGestureSettings();
+$('outer-turn-bias').oninput=()=>{outerTurnBias=Number($('outer-turn-bias').value);renderGestureSettings();queueSettingsSave();};
+$('animation-speed').oninput=()=>{animationSpeed=Number($('animation-speed').value);renderGestureSettings();queueSettingsSave();};
 let faceColors=Object.fromEntries(FACES.map(face=>{
  const saved=preferences.faceColors?.[face.name];
  return [face.name,typeof saved==='string'&&/^#[0-9a-f]{6}$/i.test(saved)?saved.toLowerCase():face.color];
@@ -70,7 +80,7 @@ function saveSettings(){
  if(detectClearedSolve())return;
  clearTimeout(settingsTimer);
  try{
-  localStorage.setItem(settingsKey,JSON.stringify({disableSounds:$('disable-sounds').checked,follow:$('follow').checked,labelSwitchAngle,animate:$('animate').checked,animateScrambling:$('animate-scrambling').checked,showLabels:$('show-labels').checked,autoDefaultMode:$('auto-default-mode').checked,faceColors,view:{rotation:controls.rotation.toArray(),radius:controls.radius}}));settingsOK=true;
+  localStorage.setItem(settingsKey,JSON.stringify({outerTurnBias,animationSpeed,disableSounds:$('disable-sounds').checked,follow:$('follow').checked,labelSwitchAngle,animate:$('animate').checked,animateScrambling:$('animate-scrambling').checked,showLabels:$('show-labels').checked,autoDefaultMode:$('auto-default-mode').checked,faceColors,view:{rotation:controls.rotation.toArray(),radius:controls.radius}}));settingsOK=true;
  }catch{settingsOK=false;}
  renderSaveStatus();
 }
@@ -235,7 +245,7 @@ function update(){
 function enqueue(action){
  if(queue.length+(active?.turns.length??0)>=500||['scrambling','paused'].includes(session.status))return false;
  if(['undo','redo'].includes(action.type)&&!actionMove(action,true))return false;
- const now=performance.now();pacing.input(now);if(viewTween)viewTween.deadline=Math.min(viewTween.deadline,now+pacing.duration());session.start();queue.push(action);if(action.type==='move')keyboard?.recordTurn();sounds.play();save();update();pump();return true;
+ const now=performance.now();pacing.input(now);if(viewTween)viewTween.deadline=Math.min(viewTween.deadline,now+animationDuration(pacing.duration()));session.start();queue.push(action);if(action.type==='move')keyboard?.recordTurn();sounds.play();pump();return true;
 }
 function pendingTimeline(prune=false){
  const past=history.slice();let future=redo.slice();const valid=[];
@@ -299,7 +309,7 @@ function pump(changed=false){
   if(active?.turns[0].action.source==='scramble')break;
   const action=queue[0];let move=actionMove(action,true);
   if(!move){queue.shift();changed=true;continue;}
-  if(active&&(action.source==='scramble'||!parallelMoves(active.turns[0].move,move))){
+  if(active&&(action.source==='scramble'||action.source==='pointer'||!parallelMoves(active.turns[0].move,move))){
    snapActive();changed=true;move=actionMove(action);
    if(!move){queue.shift();continue;}
   }
@@ -307,7 +317,7 @@ function pump(changed=false){
   const animated=action.source==='scramble'?$('animate-scrambling').checked:$('animate').checked;
   if(!animated){snapActive();commitAction(action,move);changed=true;continue;}
   if(!active)active={turns:[]};
-  active.turns.push({action,move,started:now,duration:action.source==='scramble'?65:TURN_ANIMATION_MS});changed=true;
+  active.turns.push({action,move,started:now,duration:animationDuration(action.source==='scramble'?65:TURN_ANIMATION_MS)});changed=true;
   if(action.source==='scramble')break;
  }
  if(changed){build();renderTurns(now);save();update();requestDraw();}
@@ -408,20 +418,21 @@ window.addEventListener('beforeprint',pauseSession);window.addEventListener('aft
 
 const raycaster=new THREE.Raycaster();
 controls.pick=(x,y)=>{
- if(active||manualPaused)return null;
+ if(manualPaused||session.status==='scrambling')return null;
  const rect=renderer.domElement.getBoundingClientRect();
  raycaster.setFromCamera(new THREE.Vector2((x-rect.left)/rect.width*2-1,-(y-rect.top)/rect.height*2+1),displayedCamera);
- return pickSurface(raycaster);
+ const hit=pickSurface(raycaster);
+ if(hit)hit.candidates=swipeCandidates(hit,displayedCamera,rect.width,rect.height,size);
+ return hit;
 };
 controls.addEventListener('swipe',e=>{
- if(active||manualPaused)return;
- const rect=renderer.domElement.getBoundingClientRect();
- const move=swipeMove(e.hit,e.dx,e.dy,displayedCamera,rect.width,rect.height,size);if(!move)return;
+ if(manualPaused||session.status==='scrambling')return;
+ const move=chooseSwipeMove(e.hit.candidates,e.dx,e.dy,outerTurnBias/100);if(!move)return;
  const index=FACES.findIndex(f=>transformedNormal(f.normal,frame).every((v,i)=>v===move.normal[i]));
  if(index>=0)keyboard.pointerMove(FACES[index].name,e,{kind:'slice',depth:move.depth,dir:move.dir});
 });
 controls.addEventListener('tap',e=>{
- if(active||manualPaused)return;
+ if(manualPaused||session.status==='scrambling')return;
  const rect=renderer.domElement.getBoundingClientRect();
  if(e.x<rect.left||e.x>rect.right||e.y<rect.top||e.y>rect.bottom)return;
  raycaster.setFromCamera(new THREE.Vector2((e.x-rect.left)/rect.width*2-1,-(e.y-rect.top)/rect.height*2+1),displayedCamera);
@@ -432,7 +443,7 @@ controls.addEventListener('tap',e=>{
 if(!storageOK)$('save-status').textContent='Saved solve could not be loaded';
 update();requestDraw();
 // Read-only diagnostics for verifying geometry and input behavior in a browser.
-window.fto={snapshot:()=>({size,pointerMode,undoFloor,manualPaused,ready:document.documentElement.hasAttribute('data-app-ready'),animationMs:TURN_ANIMATION_MS,animating:active?.turns.map(turn=>({move:structuredClone(turn.move),progress:Math.min(1,Math.max(0,(performance.now()-turn.started)/turn.duration))}))??[],renderedMoves,rotating:!!viewTween,viewOrbit:displayedCamera.quaternion.clone().invert().toArray(),stickerColors:materials.map(m=>m.color.getHexString()),keyboard:keyboard?.snapshot(),timer:session.snapshot(),state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};
+window.fto={snapshot:()=>({size,pointerMode,undoFloor,manualPaused,ready:document.documentElement.hasAttribute('data-app-ready'),animationMs:animationDuration(TURN_ANIMATION_MS),outerTurnBias,animationSpeed,animating:active?.turns.map(turn=>({move:structuredClone(turn.move),progress:Math.min(1,Math.max(0,(performance.now()-turn.started)/turn.duration))}))??[],renderedMoves,rotating:!!viewTween,viewOrbit:displayedCamera.quaternion.clone().invert().toArray(),stickerColors:materials.map(m=>m.color.getHexString()),keyboard:keyboard?.snapshot(),timer:session.snapshot(),state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};
 
 function executeMove(move){
   const face=FACES.find(f=>f.name===move.face);
@@ -443,13 +454,13 @@ function executeMove(move){
    axis.normalize();
    const from=displayedCamera.quaternion.clone().invert(),now=performance.now();pacing.input(now);
    // Retargeting may shorten a transition, but can never postpone its finish.
-   const deadline=Math.min(viewTween?.deadline??Infinity,now+pacing.duration());
+   const deadline=Math.min(viewTween?.deadline??Infinity,now+animationDuration(pacing.duration()));
    controls.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(axis,-move.dir*(move.vertex?Math.PI/2:2*Math.PI/3))).normalize();
    viewTween=$('animate').checked?{from,started:now,deadline}:null;
    controls.update();frame=currentFrame();sounds.play();if(!viewTween)draw();save();return true;
   }
   const notation={'1,1':'outer','2,1':'inner','1,2':'wide','1,3':'ultra'}[`${move.depth},${move.count}`]??'slice';
-  return enqueue({type:'move',move:{normal:transformedNormal(face.normal,frame),name:face.name,layer:notation,depth:move.depth,count:move.count,dir:move.dir}});
+  return enqueue({type:'move',source:move.source,move:{normal:transformedNormal(face.normal,frame),name:face.name,layer:notation,depth:move.depth,count:move.count,dir:move.dir}});
  }
 keyboard=new KeyboardUI({
  context:()=>({size,scrambling:session.status==='scrambling',canPause:['running','paused'].includes(session.status),manualPaused,defaultMove:{depth:1,count:1,dir:1}}),

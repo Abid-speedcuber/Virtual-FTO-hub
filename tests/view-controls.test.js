@@ -76,5 +76,17 @@ test('swipe mode separates face turns, background orbit, taps and multi-touch',(
  controls.down(event(100,100));controls.move(event(150,100));controls.up(event(150,100));assert.ok(controls.rotation.angleTo(initial)>.1);
  controls.down(event(20,20));controls.down(event(80,20,{pointerId:2}));controls.move(event(100,40,{pointerId:2}));controls.up(event(20,20));controls.up(event(100,40,{pointerId:2}));
  assert.equal(swipes.length,1);
- controls.down(event(20,20));controls.move(event(50,30));controls.cancelAll();controls.up(event(50,30));assert.equal(swipes.length,1);
+ controls.down(event(20,20));controls.move(event(23,22));controls.cancelAll();controls.up(event(50,30));assert.equal(swipes.length,1);
+});
+
+
+test('swipe starts on the first decisive movement, without waiting for release, and fires once per contact',()=>{
+ const {controls}=setup();controls.mode='swipe';let predictions=0;controls.pick=()=>{predictions++;return {point:'face'};};
+ const swipes=[];controls.addEventListener('swipe',e=>swipes.push(e));const before=controls.rotation.clone();
+ controls.down(event(20,20));assert.equal(predictions,1);
+ controls.move(event(23,22));assert.equal(swipes.length,0);
+ controls.move(event(26,21));assert.equal(swipes.length,1);assert.equal(swipes[0].dx,6);
+ controls.move(event(80,40));controls.up(event(80,40));assert.equal(swipes.length,1);assert.ok(controls.rotation.angleTo(before)<1e-7);
+ controls.down(event(20,20));controls.move(event(26,21));assert.equal(swipes.length,2);assert.equal(predictions,2);
+ controls.up(event(26,21));assert.equal(swipes.length,2);
 });
