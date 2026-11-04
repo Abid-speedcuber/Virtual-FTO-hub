@@ -9,13 +9,13 @@
 <header class="topbar">
 <div class="site-brand"><img src="./logo.png" width="38" height="38" alt=""><span>FTO Simulator<small>by Abid Ibn Ashraf</small></span></div>
 <nav class="topbar-actions" aria-label="Application">
+<button id="puzzles" aria-label="Choose puzzle" title="Choose puzzle" aria-haspopup="dialog" aria-controls="puzzle-dialog"></button>
 <button id="settings" aria-label="Settings" title="Settings" aria-haspopup="dialog" aria-controls="settings-dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 3-.7 2.3-2 .9-2.2-.5-2.5 4.3 1.5 1.8v2.4L2.1 16l2.5 4.3 2.2-.5 2 .9.7 2.3h5l.7-2.3 2-.9 2.2.5 2.5-4.3-1.5-1.8v-2.4l1.5-1.8-2.5-4.3-2.2.5-2-.9-.7-2.3z" transform="translate(1 0) scale(.92)"/><circle cx="12" cy="12" r="3"/></svg></button>
 <button id="about" aria-label="About" title="About" aria-haspopup="dialog" aria-controls="about-dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></svg></button>
 </nav></header>
 <div class="app">
 <main class="solve-layout" aria-label="FTO solve space">
 <div id="viewport"><div id="labels" aria-hidden="true"></div><div id="keyboard-notice" role="status" hidden></div>
-<div class="size-picker"><label class="size-setting"><span class="sr-only">FTO size</span><select id="size" aria-label="FTO size"><option value="2">Baby FTO (2x2)</option><option value="3" selected>3 × 3</option><option value="4">Master FTO (4x4)</option><option value="5">5 × 5</option><option value="6">6 × 6</option><option value="7">7 × 7</option><option value="8">8 × 8</option><option value="9">9 × 9</option><option value="10">10 × 10</option><option value="11">11 × 11</option><option value="12">12 × 12</option><option value="13">13 × 13</option><option value="14">14 × 14</option><option value="15">15 × 15</option><option value="16">16 × 16</option><option value="17">17 × 17</option><option value="18">18 × 18</option><option value="19">19 × 19</option><option value="20">20 × 20</option></select></label></div>
 <nav class="history-tools" aria-label="Undo and redo"><button id="undo" disabled>↶ Undo</button><button id="redo" disabled>↷ Redo</button><button id="pause" hidden title="Escape">Pause</button></nav>
 <p id="pause-message" hidden>Press any key to resume</p><div class="puzzle-actions"><button class="primary" id="scramble">Scramble</button><button id="freeplay-reset" title="Reset to solved and return to free play">Reset</button></div>
 </div>
@@ -29,6 +29,13 @@
 </aside>
 </main>
 </div>
+<nav id="mobile-controls" aria-label="Solve controls">
+<button id="mobile-pause" aria-label="Pause" title="Pause"></button><div id="mobile-timer" role="timer" aria-live="off">00:00</div>
+<button id="mobile-undo" aria-label="Undo" title="Undo"></button><button id="mobile-redo" aria-label="Redo" title="Redo"></button>
+<button id="mobile-reset" aria-label="Reset" title="Reset"></button><button id="mobile-scramble" aria-label="Scramble" title="Scramble"></button><button id="mobile-history" aria-label="History" title="History" aria-haspopup="dialog" aria-controls="history-dialog"></button>
+</nav>
+<dialog id="puzzle-dialog" aria-labelledby="puzzle-title"><div class="dialog-heading"><h1 id="puzzle-title">Choose puzzle</h1><button id="close-puzzles" aria-label="Close puzzle selector">✕</button></div><div id="puzzle-choices" aria-label="Puzzles"></div></dialog>
+<dialog id="history-dialog" aria-labelledby="history-title"><div class="dialog-heading"><h1 id="history-title">Solve history</h1><button id="close-history" aria-label="Close history">✕</button></div><p class="history-pb">Personal best <strong id="history-pb">—</strong></p><div class="section-heading"><h2>Times</h2><span id="history-count">0</span></div><ol id="history-times" reversed></ol><p id="history-empty">No timed solves yet.</p></dialog>
 <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message"><div class="dialog-heading"><h1 id="confirm-title">Replace this solve?</h1></div><p id="confirm-message"></p><form method="dialog" class="confirm-actions"><button id="confirm-cancel" value="cancel" autofocus>Cancel</button><button id="confirm-accept" value="accept" class="primary">Reset</button></form></dialog>
 <dialog id="settings-dialog" aria-labelledby="settings-title">
 <div class="dialog-heading"><h1 id="settings-title" class="app-brand"><img src="./logo.png" width="28" height="28" alt="">Settings</h1><button id="close-settings" aria-label="Close settings">✕</button></div>
@@ -39,7 +46,7 @@
 </section>
 <section class="settings-section" aria-label="Controls settings"><h2>Controls</h2>
 <label class="setting">Pointer controls<select id="pointer-mode" aria-label="Pointer controls"><option value="swipe">Swipe to turn</option><option value="legacy">Orbit + click</option></select></label>
-<div class="setting range-setting"><label for="outer-turn-bias">Outer turn bias<small>Favor outer turns when swipe directions overlap.</small></label><span class="range-controls"><input id="outer-turn-bias" type="range" min="0" max="100" step="1" value="60"><output id="outer-turn-bias-value" for="outer-turn-bias">60%</output></span></div>
+<button id="touch-turn-bias" aria-haspopup="dialog" aria-controls="touch-bias-dialog">Touch turn biasness</button>
 <label class="setting"><span>Follow the view<small>Keyboard labels adapt when you orbit</small></span><input type="checkbox" id="follow" role="switch" checked aria-label="Follow the view"></label>
 <div class="setting label-angle-setting"><label for="label-switch-angle">U/F → F/D switch<small>Degrees past square-on. Lower switches sooner.</small></label><span class="label-angle-controls"><input type="range" id="label-switch-angle" min="0" max="40" step="1" value="15"><input type="number" id="label-switch-angle-value" min="0" max="40" step="1" value="15" aria-label="Label switch angle in degrees"><span aria-hidden="true">°</span></span></div>
 <label class="setting"><span>Return keyboard to default after a solve<small>Choose the default mode in Keyboard &amp; bindings</small></span><input type="checkbox" id="auto-default-mode" role="switch" checked aria-label="Return keyboard to default after a solve"></label>
@@ -53,6 +60,9 @@
 </section>
 <p id="save-status" role="status">Saved on this device</p>
 </dialog>
+<dialog id="touch-bias-dialog" aria-labelledby="touch-bias-title"><div class="dialog-heading"><h1 id="touch-bias-title">Touch turn biasness</h1><button id="close-touch-bias" aria-label="Close touch turn biasness">✕</button></div><p class="keyboard-intro">Give common turns more room for error when swipe directions overlap. Set either slider to 0% for directional matching.</p><section class="settings-section" aria-label="Turn biases"><div class="setting range-setting"><label for="outer-turn-bias">Outer turn bias<small>Shrink inner-turn swipe ranges on outer pieces. 100% allows only outer turns there; interior pieces stay unchanged.</small></label><span class="range-controls"><input id="outer-turn-bias" type="range" min="0" max="100" step="1" value="60"><output id="outer-turn-bias-value" for="outer-turn-bias">60%</output></span></div>
+<div class="setting range-setting"><label for="u-turn-bias">CIF U turn bias<small>Shrink F’s swipe range at the shared U/F edge in CIF. 100% allows only U there; lower F stickers stay unchanged.</small></label><span class="range-controls"><input id="u-turn-bias" type="range" min="0" max="100" step="1" value="60"><output id="u-turn-bias-value" for="u-turn-bias">60%</output></span></div>
+<div class="setting range-setting"><label for="eif-u-turn-bias">EIF U turn bias<small>Favor U/U′ over BR and BL on the shared top row in EIF. 100% allows only U turns there; lower rows stay unchanged.</small></label><span class="range-controls"><input id="eif-u-turn-bias" type="range" min="0" max="100" step="1" value="60"><output id="eif-u-turn-bias-value" for="eif-u-turn-bias">60%</output></span></div></section></dialog>
 <dialog id="about-dialog" aria-labelledby="about-title">
 <div class="dialog-heading"><h1 id="about-title">About FTO Simulator</h1><button id="close-about" aria-label="Close about">✕</button></div>
 <p>A virtual Face-Turning Octahedron for practicing and speedsolving.</p><p>by Abid Ibn Ashraf</p>
