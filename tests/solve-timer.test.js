@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {SolveTimer,formatTime} from '../src/solve-timer.js';
+import {SolveTimer,formatTime,averageOf5} from '../src/solve-timer.js';
 test('free play is dormant; only a completed computer scramble arms timing',()=>{
  let now=0;const timer=new SolveTimer({},()=>now);assert.equal(timer.start(),false);now=5000;assert.equal(timer.elapsed(),0);assert.equal(timer.finish(),false);
  timer.scramble();now=10000;assert.equal(timer.start(),false);timer.arm();now=20000;assert.equal(timer.elapsed(),0);assert.equal(timer.status,'ready');assert.equal(timer.start(),true);
@@ -36,4 +36,13 @@ test('completed times persist in order, survive resets, and migrate known legacy
  const loaded=new SolveTimer(timer.serialize());assert.deepEqual(loaded.times,timer.times);assert.equal(loaded.bestMs,2400);
  const saved=loaded.serialize();saved.times[0].ms=999;assert.equal(loaded.times[0].ms,3500);
  const legacy=new SolveTimer({completed:3,lastMs:4000,bestMs:2400});assert.deepEqual(legacy.times,[{ms:4000,at:null}]);
+});
+
+
+test('ao5 uses the last five times and removes one fastest and one slowest solve',()=>{
+ assert.equal(averageOf5([]),null);assert.equal(averageOf5([{ms:1000}]),null);
+ assert.equal(averageOf5([1000,9000,3000,2000,4000].map(ms=>({ms}))),3000);
+ assert.equal(averageOf5([999999,1000,9000,3000,2000,4000].map(ms=>({ms}))),3000);
+ assert.equal(averageOf5(Array.from({length:5},()=>({ms:0}))),0);
+ assert.equal(averageOf5([1000,1000,1000,2000,2000].map(ms=>({ms}))),4000/3);
 });

@@ -25,6 +25,21 @@ bindings for 2x2–20x20, retained the native rotation keys including quarter-tu
 T rotations, and added EIF modes, Abid's center mode, app commands, and compatible
 one-shot depth/slice suffixes. csTimer touch gestures are not copied.
 
+## csTimer FTO random-state scrambler
+
+`src/vendor/cstimer-fto.mjs` is an unmodified copy of Chen Shuang's standalone
+FTO random-state scrambler, published by csTimer's author under the MIT license.
+Its full copyright and permission notice is retained at the top of the file
+and in `public/licenses/CSTIMER-FTO-MIT.txt`.
+
+Pinned gist revision: 30ef16c7db1d2758fe359786ee140a0f321b94e9
+Source: https://gist.github.com/cs0x7f/1579492aa43c794d529057386c489702/30ef16c7db1d2758fe359786ee140a0f321b94e9
+File SHA-256: a3424137ae08ab3b63bb2d4749af228e89e8e395d40527ddc42d07c37bdee06b
+
+Master FTO runs this code in `src/worker.js`, keeps one scramble prepared ahead, parses its conventional CIF notation
+into geometric outer turns, and uses it only for 3x3 FTO. Other sizes retain
+the existing random-move scrambler.
+
 ## Keyboard recordings
 
 Gateron Black Ink recordings by Thomas Lai (tplai), from tplai/kbsim, remain

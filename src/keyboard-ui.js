@@ -45,8 +45,8 @@ function migrateNames(config){
  config.commandVersion=1;config.sliceVersion=1;config.rotationVersion=1;return upgradeKeyboardDefaults(upgradeEIFDefaults(config));
 }
 export class KeyboardUI{
- constructor({context,move,command,status,suffix}){
-  this.suffix=suffix;this.size=context().size;this.profiles={};this.context=context;this.move=move;this.command=command;this.status=status;this.storageOK=true;this.meter=new TurnMeter();this.pressedLabels=new Map();this.capture=null;this.editId=null;this.pointerKeys=new Map();
+ constructor({context,move,command,status,suffix,input}){
+  this.input=input;this.suffix=suffix;this.size=context().size;this.profiles={};this.context=context;this.move=move;this.command=command;this.status=status;this.storageOK=true;this.meter=new TurnMeter();this.pressedLabels=new Map();this.capture=null;this.editId=null;this.pointerKeys=new Map();
   this.config=defaultConfig(this.size);
   try{const saved=JSON.parse(localStorage.getItem('master-fto-keyboard-v2')||'null');if(saved){this.profiles=saved.profiles??{};for(const config of Object.values(this.profiles)){validateConfig(config,{legacyNames:true});migrateNames(config);}this.config=this.profiles[this.size]??defaultConfig(this.size);this.config.display={...defaultConfig(this.size).display,...saved.display};}
   else{const stored=JSON.parse(localStorage.getItem('master-fto-keyboard-v1')||'null');if(stored){validateConfig(stored,{legacyNames:true});this.config={...(untouchedLegacy(stored)?defaultConfig(this.size):stored),display:{...this.config.display,...stored.display,cornerVersion:stored.display?.cornerVersion??0}};}}}
@@ -169,6 +169,7 @@ export class KeyboardUI{
   if(Number.isFinite(deadline))this.suffixHoldTimer=setTimeout(()=>{if(this.engine.activateSuffixes()){this.suffix?.();this.render();}this.scheduleSuffixHold();},Math.max(0,deadline-Date.now()));
  }
  down(event){
+  this.input?.('down',event);
   if(this.capture&&$('keyboard-dialog').open){
    event.preventDefault();event.stopPropagation();
    if(event.code==='Escape'){this.capture=null;$('binding-record').textContent='Record chord';this.message('Recording cancelled.');return;}
@@ -209,6 +210,7 @@ export class KeyboardUI{
   for(const code of this.engine.syncModifiers(event,new Set(this.pointerKeys.values()))){this.pressedLabels.delete(code);}
  }
  up(event){
+  this.input?.('up',event);
   if(this.capture){
    event.preventDefault();this.capture.pressed.delete(event.code);
    if(!this.capture.pressed.size){
@@ -225,7 +227,7 @@ export class KeyboardUI{
  recordTurn(){this.meter.add(performance.now());this.meter.sample(performance.now(),this.config.display.window);if(this.config.display.show)this.renderMeter();}
  notice(text){$('keyboard-notice').textContent=text;$('keyboard-notice').hidden=false;clearTimeout(this.noticeTimer);this.noticeTimer=setTimeout(()=>$('keyboard-notice').hidden=true,3500);}
  renderLayout(){
-  const layout=keyboardLayout(this.config.display);this.keycaps=new Map();const board=$('keyboard-svg');board.replaceChildren();board.setAttribute('viewBox',`-.04 -.04 ${layout.width} ${layout.height}`);$('keyboard-overlay').style.setProperty('--keyboard-aspect',String(layout.width/layout.height));
+  const layout=keyboardLayout(this.config.display);this.keycaps=new Map();const board=$('keyboard-svg');board.replaceChildren();board.setAttribute('viewBox',`-.04 -.04 ${layout.width} ${layout.height}`);$('solve-panel').style.setProperty('--keyboard-aspect',String(layout.width/layout.height));
   for(const key of layout.keys){
    const group=svg('g',{'data-code':key.code,class:'keycap',role:'button',tabindex:'0','aria-label':displayCode(key.code)});
    let shape;
@@ -246,7 +248,7 @@ export class KeyboardUI{
   }
   $('keyboard-numpad').disabled=d.layout==='60';$('keyboard-numpad').closest('label').hidden=d.layout==='60';
   $('keyboard-width-value').textContent=`${d.width}px`;$('keyboard-opacity-value').textContent=`${d.opacity}%`;
-  $('keyboard-overlay').style.setProperty('--keyboard-width',`${d.width}px`);$('keyboard-overlay').style.opacity=d.opacity/100;
+  $('solve-panel').style.setProperty('--keyboard-width',`${d.width}px`);$('keyboard-overlay').style.opacity=d.opacity/100;
   $('keyboard-stats').hidden=!d.showTPS;$('keyboard-sequence-timeout').value=String(this.config.sequenceTimeout??1400);
  }
  render(){

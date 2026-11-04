@@ -44,3 +44,14 @@ export function frameForCamera(camera,switchAngle=DEFAULT_LABEL_SWITCH_ANGLE) {
 }
 export const transformedNormal=(normal,frame)=>[...frame.normals[FACES.findIndex(f=>dot(f.normal,normal)===3)]];
 export const faceAtNormal=normal=>FACES.findIndex(f=>dot(f.normal,normal)===3);
+
+// Square up the current hold: U and F lie on the screen's vertical centerline,
+// with a consistent 30-degree elevation and no sideways tilt or roll.
+// Return the puzzle-to-view rotation used by ViewControls, keeping zoom separate.
+export function snappedViewRotation(frame){
+ const up=vector(frame.normals[0]).normalize(),front=vector(frame.normals[2]).normalize();
+ const forward=front.addScaledVector(up,-front.dot(up)).normalize();
+ const toward=forward.multiplyScalar(Math.sqrt(3)/2).addScaledVector(up,.5);
+ const matrix=new THREE.Matrix4().lookAt(toward,new THREE.Vector3(),up);
+ return new THREE.Quaternion().setFromRotationMatrix(matrix).invert().normalize();
+}

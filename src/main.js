@@ -1,19 +1,26 @@
 import * as THREE from 'three';
 import {icon,puzzleIcon} from './icons.js';
 import {PuzzleSounds} from './sounds.js';
+import {randomStateFtoScramble,prepareFtoScramble,ftoScrambleStatus} from './fto-scramble.js';
 import {TurnPacing} from './turn-pacing.js';
 import {TURN_ANIMATION_MS,parallelMoves,parallelBands,bandAngle} from './parallel-turns.js';
-import {SolveTimer,formatTime} from './solve-timer.js';
+import {SolveTimer,formatTime,averageOf5} from './solve-timer.js';
+import {PhaseTracker,phaseProfile} from './solve-phases.js';
+import {SolveRecorder} from './solve-recording.js';
+import {RecordingUI} from './recording-ui.js';
+import {PhaseUI} from './phase-ui.js';
 import {KeyboardUI} from './keyboard-ui.js';
 import {ViewControls} from './view-controls.js';
 import {bodyGeometry} from './body-geometry.js';
 import {swipeCandidates,chooseSwipeMove} from './swipe.js';
 import {pickSurface,pickFaceNormal} from './picking.js';
 import {FACES,solvedState,selected,applyMove,inverse,isSolved,scrambleMoves} from './puzzle.js';
-import {HOME_POSITION,FIXED_FRAME,frameForCamera,transformedNormal,DEFAULT_LABEL_SWITCH_ANGLE} from './orientation.js';
+import {HOME_POSITION,FIXED_FRAME,frameForCamera,transformedNormal,DEFAULT_LABEL_SWITCH_ANGLE,snappedViewRotation} from './orientation.js';
 const $=id=>document.getElementById(id);
 const storageKey='master-fto-v1';
-let keyboard,initialized=false,renderedMoves=0,manualPaused=false;
+let keyboard,phaseUI,initialized=false,renderedMoves=0,manualPaused=false,scrambleRequest=null;
+const isScrambling=()=>!!scrambleRequest||session.status==='scrambling';
+function cancelScrambleRequest(){const request=scrambleRequest;scrambleRequest=null;request?.abort();}
 const pacing=new TurnPacing();
 let size=3,solves={},pointerMode='swipe',undoFloor=0,solveEnd=null;
 let state=solvedState(size),history=[],redo=[],queue=[],active=null,frame,scheduled=false;
@@ -51,12 +58,17 @@ try{const saved=JSON.parse(localStorage.getItem(storageKey)||'null');if(saved){
  }
  history=structuredClone(solves[size]?.history??[]);redo=structuredClone(solves[size]?.redo??[]);undoFloor=solves[size]?.undoFloor??0;solveEnd=solves[size]?.solveEnd??null;state=history.reduce(applyMove,solvedState(size));
 }}catch{storageOK=false;size=3;solves={};history=[];redo=[];state=solvedState(size);}
+let recorder=new SolveRecorder(solves[size]?.recordings);
 let session=new SolveTimer(solves[size]?.timer);manualPaused=session.status==='paused';
 queue=structuredClone(solves[size]?.pending??[]);
 if(session.status==='scrambling'&&!queue.length)session.reset();
 const settingsKey='master-fto-settings-v1';
 let preferences={},settingsOK=true,settingsTimer;
 try{const value=JSON.parse(localStorage.getItem(settingsKey)||'{}');if(value&&typeof value==='object')preferences=value;}catch{settingsOK=false;}
+let phaseProfiles=preferences.phaseProfiles&&typeof preferences.phaseProfiles==='object'?preferences.phaseProfiles:{};
+const profileForSave=saved=>saved?.splits?.profile??phaseProfile(size,['running','paused','finished'].includes(saved?.timer?.status)?{method:'off'}:phaseProfiles[size]);
+let phaseTracker=new PhaseTracker(size,profileForSave(solves[size]),solves[size]?.splits);
+if(session.status==='ready'&&!solves[size]?.splits)phaseTracker.arm(state,session.times,{historyFloor:undoFloor});
 let outerTurnBias=Number.isFinite(preferences.outerTurnBias)?THREE.MathUtils.clamp(preferences.outerTurnBias,0,100):60;
 let uTurnBias=Number.isFinite(preferences.uTurnBias)?THREE.MathUtils.clamp(preferences.uTurnBias,0,100):60;
 let eifUTurnBias=Number.isFinite(preferences.eifUTurnBias)?THREE.MathUtils.clamp(preferences.eifUTurnBias,0,100):60;
@@ -87,7 +99,7 @@ function saveSettings(){
  if(detectClearedSolve())return;
  clearTimeout(settingsTimer);
  try{
-  localStorage.setItem(settingsKey,JSON.stringify({outerTurnBias,uTurnBias,eifUTurnBias,animationSpeed,disableSounds:$('disable-sounds').checked,follow:$('follow').checked,labelSwitchAngle,animate:$('animate').checked,animateScrambling:$('animate-scrambling').checked,showLabels:$('show-labels').checked,autoDefaultMode:$('auto-default-mode').checked,faceColors,view:{rotation:controls.rotation.toArray(),radius:controls.radius}}));settingsOK=true;
+  localStorage.setItem(settingsKey,JSON.stringify({phaseProfiles,outerTurnBias,uTurnBias,eifUTurnBias,animationSpeed,disableSounds:$('disable-sounds').checked,follow:$('follow').checked,labelSwitchAngle,animate:$('animate').checked,animateScrambling:$('animate-scrambling').checked,showLabels:$('show-labels').checked,autoDefaultMode:$('auto-default-mode').checked,faceColors,view:{rotation:controls.rotation.toArray(),radius:controls.radius}}));settingsOK=true;
  }catch{settingsOK=false;}
  renderSaveStatus();
 }
@@ -166,7 +178,8 @@ function draw(){
   const p=position.project(renderCamera);el.hidden=!visible||p.z>1;el.style.left=`${(p.x*.5+.5)*width}px`;el.style.top=`${(-p.y*.5+.5)*height}px`;
  });
  materials.forEach((material,i)=>material.color.set(session.status==='paused'?'#888888':faceColors[FACES[i].name]));
- renderer.render(scene,renderCamera);displayedCamera.copy(renderCamera);renderedMoves=history.length;
+ renderer.render(scene,renderCamera);displayedCamera.copy(renderCamera);
+ recorder.view({rotation:renderCamera.quaternion.clone().invert().toArray(),radius:controls.radius},{up:frame.up,front:frame.front,notation:frame.notation});renderedMoves=history.length;
  if(initialized&&width>0&&height>0)document.documentElement.setAttribute('data-app-ready','');
  if(viewTween&&!viewFramePending){viewFramePending=true;requestAnimationFrame(()=>{viewFramePending=false;if(viewTween)draw();});}
 }
@@ -182,7 +195,7 @@ function resizeViewport(){
  camera.aspect=width/height;camera.fov=360/Math.PI*Math.atan(Math.tan(Math.PI/10)/Math.min(1,camera.aspect));camera.updateProjectionMatrix();renderer.setSize(width,height);requestDraw();
 }
 new ResizeObserver(resizeViewport).observe(viewport);
-function currentSolve(){return {history,redo,undoFloor,solveEnd,view:{rotation:controls.rotation.toArray(),radius:controls.radius},manualPaused,timer:session.serialize(),pending:[...(active?.turns.map(turn=>turn.action)??[]),...queue]};}
+function currentSolve(){return {recordings:recorder.serialize(),splits:phaseTracker.serialize({diagnostics:true}),history,redo,undoFloor,solveEnd,view:{rotation:controls.rotation.toArray(),radius:controls.radius},manualPaused,timer:session.serialize(),pending:[...(active?.turns.map(turn=>turn.action)??[]),...queue]};}
 // DevTools can remove storage without notifying this document. Check before every
 // write too, so an open tab cannot restore cleared times on blur or pagehide.
 function detectClearedSolve(){
@@ -205,10 +218,13 @@ function renderTimes(){
  }
 }
 function renderMobileControls(status){
- if($('mobile-controls').dataset.status===status)return;
+ const compact=document.documentElement.classList.contains('compact-ui'),layout=compact?'compact':'desktop';
+ if($('mobile-controls').dataset.status===status&&$('mobile-controls').dataset.layout===layout)return;
+ $('mobile-controls').dataset.layout=layout;
  const running=status==='running',paused=status==='paused';
  $('mobile-controls').dataset.status=status;
- const visible=running?['pause','timer','undo','redo']:paused?['pause','timer','scramble','reset','history']:status==='finished'?['timer','reset','scramble','history']:['reset','scramble','history'];
+ let visible=running?['pause','timer','undo','redo']:paused?['pause','timer','scramble','reset','history']:status==='finished'?['timer','reset','scramble','history']:['reset','scramble','history'];
+ if(!compact)visible=[...visible.filter(name=>!['history','timer','undo','redo'].includes(name)),'undo','redo'];
  for(const name of ['pause','timer','undo','redo','reset','scramble','history']){
   const element=$(`mobile-${name}`);element.hidden=!visible.includes(name);element.style.order=String(visible.indexOf(name));
  }
@@ -220,19 +236,17 @@ $('mobile-pause').onclick=()=>toggleManualPause();
 for(const [name,target] of [['undo','undo'],['redo','redo'],['reset','freeplay-reset'],['scramble','scramble']])$(`mobile-${name}`).onclick=()=>$(target).click();
 function renderTimer(){
  const status=session.status;
- $('timer-size').textContent=`${size} × ${size} FTO`;
- $('timer-status').textContent={idle:'Free play',scrambling:'Scrambling',ready:'Ready',running:'Solving',paused:'Paused',finished:'Finished'}[status];
  const text=status==='idle'?'00:00':formatTime(session.elapsed());if($('timer-value').textContent!==text)$('timer-value').textContent=text;
  $('history-pb').textContent=formatTime(session.bestMs);
  $('mobile-timer').textContent=text;renderMobileControls(status);
+ $('timer-ao5').textContent=formatTime(averageOf5(session.times));
  $('timer-pb').textContent=formatTime(session.bestMs);$('timer-result').textContent=status==='finished'?(session.newBest?'New PB':`${session.completed} solved`):'';
- $('timer-hint').textContent={idle:'Scramble to start a timed solve.',scrambling:'Preparing your scramble…',ready:'Timer starts on your first turn.',running:'',paused:'Press any key to resume.',finished:'Scramble again for another timed solve.'}[status];
  if(status!=='paused')manualPaused=false;
  $('pause').hidden=!['running','paused'].includes(status);$('pause').textContent=manualPaused?'Resume':'Pause';$('pause-message').hidden=!manualPaused;
- document.querySelector('.timer-panel').dataset.status=status;renderTimes();keyboard?.render();
+ document.querySelector('.timer-panel').dataset.status=status;renderTimes();keyboard?.render();phaseUI?.render(phaseTracker,session.elapsed(),status);
 }
 function pauseSession(){
- session.pause();if(session.status==='paused'){manualPaused=true;keyboard?.clear({selection:true});controls.cancelAll();}
+ if(session.pause())recorder.event('pause');if(session.status==='paused'){manualPaused=true;keyboard?.clear({selection:true});controls.cancelAll();}
  save();update();draw();
 }
 function resumeSession(){
@@ -247,12 +261,12 @@ function toggleManualPause(){
  while(queue.length){const action=queue.shift(),move=actionMove(action);if(move)commitAction(action,move);}
  build();if(session.status==='running'){manualPaused=true;keyboard?.clear({selection:true});controls.cancelAll();pauseSession();}else{save();update();draw();}
 }
-function resumeManualPause(){if(session.status!=='paused'||document.hidden||document.querySelector('dialog[open]'))return;manualPaused=false;keyboard?.clear({selection:true});session.resume();save();update();draw();}
+function resumeManualPause(){if(scrambleRequest||session.status!=='paused'||document.hidden||document.querySelector('dialog[open]'))return;manualPaused=false;keyboard?.clear({selection:true});session.resume();recorder.event('resume');save();update();draw();}
 $('pause').onclick=toggleManualPause;
 // Consume the resume key so it cannot also turn a face or select a suffix.
 window.addEventListener('keydown',event=>{
  if(!manualPaused||document.querySelector('dialog[open]')||event.repeat)return;
- event.preventDefault();event.stopImmediatePropagation();resumeManualPause();
+ recordKey('down',event);event.preventDefault();event.stopImmediatePropagation();resumeManualPause();
 },true);
 function layoutSolveSpace(){
  const width=document.documentElement.clientWidth,height=window.innerHeight-document.querySelector('.topbar').getBoundingClientRect().height,side=Math.min(width,height);
@@ -260,21 +274,23 @@ function layoutSolveSpace(){
  document.documentElement.classList.toggle('keyboard-unavailable',!keyboardFits);
  document.documentElement.classList.toggle('compact-ui',width<900||width-side<280);
  document.querySelector('.solve-layout').classList.toggle('panel-below',width-side<280);
+ renderMobileControls(session.status);
 }
 window.addEventListener('resize',layoutSolveSpace);new ResizeObserver(layoutSolveSpace).observe(document.documentElement);layoutSolveSpace();
 function update(){
  renderTimer();
- const scrambling=session.status==='scrambling';$('scramble').disabled=scrambling;
+ const scrambling=isScrambling();$('scramble').disabled=scrambling;
  $('scramble').textContent=scrambling?'Scrambling…':'Scramble';
- const locked=['scrambling','paused'].includes(session.status);
+ const locked=isScrambling()||session.status==='paused';
  $('undo').disabled=locked||!actionMove({type:'undo'},true);$('redo').disabled=locked||!actionMove({type:'redo'},true);
  $('mobile-undo').disabled=$('undo').disabled;$('mobile-redo').disabled=$('redo').disabled;$('mobile-scramble').disabled=scrambling;$('mobile-history').disabled=scrambling;
 
 }
+function armRecording(){recorder.arm({size,scramble:history.slice(0,undoFloor),view:{rotation:controls.rotation.toArray(),radius:controls.radius},keyboard:keyboard?.snapshot().config,colors:faceColors});}
 function enqueue(action){
- if(queue.length+(active?.turns.length??0)>=500||['scrambling','paused'].includes(session.status))return false;
+ if(queue.length+(active?.turns.length??0)>=500||isScrambling()||session.status==='paused')return false;
  if(['undo','redo'].includes(action.type)&&!actionMove(action,true))return false;
- const now=performance.now();pacing.input(now);if(viewTween)viewTween.deadline=Math.min(viewTween.deadline,now+animationDuration(pacing.duration()));session.start();queue.push(action);if(action.type==='move')keyboard?.recordTurn();sounds.play();pump();return true;
+ const now=performance.now();pacing.input(now);if(viewTween)viewTween.deadline=Math.min(viewTween.deadline,now+animationDuration(pacing.duration()));if(session.start())recorder.event('start');action.elapsedMs=session.elapsed();action.recordId=recorder.accept(action);queue.push(action);if(action.type==='move')keyboard?.recordTurn();sounds.play();pump();return true;
 }
 function pendingTimeline(prune=false){
  const past=history.slice();let future=redo.slice();const valid=[];
@@ -296,15 +312,21 @@ function actionMove(action,includeActive=false){
 function commitAction(action,move){
  if(['undo','redo'].includes(action.type)){move=actionMove(action);if(!move)return;}
  state=applyMove(state,move);
+ if(action.source!=='scramble')recorder.event('turn',{id:action.recordId??0,move});
  if(action.type==='undo')redo.push(history.pop());
  else if(action.type==='redo')history.push(redo.pop());
  else{history.push(move);redo=[];}
  if(action.source==='scramble'){
   sounds.play();undoFloor=history.length;
-  if(!queue.some(a=>a.source==='scramble'))session.arm();
- }else if(isSolved(state)&&session.finish()){
-  solveEnd=history.length;undoFloor=solveEnd;redo=[];
-  if($('auto-default-mode').checked)keyboard?.returnToDefault();
+  if(!queue.some(a=>a.source==='scramble')){session.arm();armRecording();phaseTracker.arm(state,session.times,{historyFloor:undoFloor});}
+ }else if(['running','paused'].includes(session.status)){
+  const elapsed=Math.max(phaseTracker.groups.at(-1)?.ms??0,Number.isFinite(action.elapsedMs)?action.elapsedMs:session.elapsed()),solved=isSolved(state);
+  if(action.type==='undo')phaseTracker.rewind(state,elapsed,{turnIndex:history.length-undoFloor});else phaseTracker.observe(state,elapsed,{finished:solved,turnIndex:history.length-undoFloor});
+  if(solved&&session.finish(phaseTracker.serialize(),elapsed)){
+   recorder.finish(session.lastMs,session.newBest);
+   solveEnd=history.length;undoFloor=solveEnd;redo=[];
+   if($('auto-default-mode').checked)keyboard?.returnToDefault();
+  }
  }
 }
 function snapActive(){
@@ -346,7 +368,9 @@ function pump(changed=false){
   const animated=action.source==='scramble'?$('animate-scrambling').checked:$('animate').checked;
   if(!animated){snapActive();commitAction(action,move);changed=true;continue;}
   if(!active)active={turns:[]};
-  active.turns.push({action,move,started:now,duration:animationDuration(action.source==='scramble'?65:TURN_ANIMATION_MS)});changed=true;
+  const duration=animationDuration(action.source==='scramble'?65:TURN_ANIMATION_MS);
+  if(action.source!=='scramble')recorder.event('animate',{id:action.recordId??0,move,duration});
+  active.turns.push({action,move,started:now,duration});changed=true;
   if(action.source==='scramble')break;
  }
  if(changed){build();renderTurns(now);save();update();requestDraw();}
@@ -361,26 +385,42 @@ async function confirmPaused(message,label,title='Replace this solve?'){
 }
 $('undo').onclick=()=>enqueue({type:'undo'});$('redo').onclick=()=>enqueue({type:'redo'});
 $('scramble').onclick=async()=>{
+ if(isScrambling())return;
  const timed=['ready','running','paused'].includes(session.status);
  const title=timed?'Replace this solve?':'Start a new timed solve?';
  const message=timed?`Discard this attempt and scramble the ${size} × ${size} FTO for a new timed solve?`:`Scramble the ${size} × ${size} FTO and start a new timed solve?${history.length>(solveEnd??0)||active?' This clears the current free-play moves.':''} Saved times are kept.`;
  if(!await confirmPaused(message,'Scramble',title))return;
+ const scrambleSize=size,request=new AbortController();scrambleRequest=request;
+ $('scramble-error').hidden=true;controls.cancelAll();keyboard?.clear({selection:true});update();
+ let moves;
+ try{
+  if(size===3)moves=await randomStateFtoScramble(request.signal);
+  else do{moves=scrambleMoves(Math.max(50,size*10),Math.random,size);}while(isSolved(moves.reduce(applyMove,solvedState(size))));
+ }catch(error){
+  if(scrambleRequest!==request)return;
+  scrambleRequest=null;$('scramble-error').hidden=false;update();return;
+ }
+ if(scrambleRequest!==request||size!==scrambleSize)return;
+ scrambleRequest=null;
  viewTween=null;controls.cancelAll();keyboard?.clear({selection:true});queue=[];
  active=null;
- state=solvedState(size);history=[];redo=[];undoFloor=0;solveEnd=null;manualPaused=false;pacing.reset();session.scramble();
- let moves=scrambleMoves(Math.max(50,size*10),Math.random,size);
- while(isSolved(moves.reduce(applyMove,state)))moves=scrambleMoves(Math.max(50,size*10),Math.random,size);
+ state=solvedState(size);history=[];redo=[];undoFloor=0;solveEnd=null;manualPaused=false;pacing.reset();session.scramble();phaseTracker=new PhaseTracker(size,phaseProfile(size,phaseProfiles[size]));
  if($('animate-scrambling').checked){build();queue=moves.map(move=>({type:'move',move,source:'scramble'}));save();update();requestDraw();pump();}
- else{state=moves.reduce(applyMove,state);history=moves;undoFloor=history.length;build();session.arm();save();update();requestDraw();}
+ else{state=moves.reduce(applyMove,state);history=moves;undoFloor=history.length;build();session.arm();armRecording();phaseTracker.arm(state,session.times,{historyFloor:undoFloor});save();update();requestDraw();}
 };
 async function resetSolve(){
  const timed=['ready','running','paused'].includes(session.status);
  if((history.length||active||queue.length)&&!await confirmPaused(timed?'Reset the puzzle to solved and discard this attempt? Saved times are kept.':'Reset the puzzle to solved and clear free-play moves? Saved times are kept.','Reset','Reset puzzle?'))return;
+ cancelScrambleRequest();$('scramble-error').hidden=true;
  viewTween=null;keyboard?.clear({selection:true});queue=[];active=null;manualPaused=false;
- state=solvedState(size);history=[];redo=[];undoFloor=0;solveEnd=null;pacing.reset();session.reset();build();save();update();requestDraw();
+ state=solvedState(size);history=[];redo=[];undoFloor=0;solveEnd=null;pacing.reset();session.reset();recorder.discard();phaseTracker=new PhaseTracker(size,phaseProfile(size,phaseProfiles[size]));build();save();update();requestDraw();
 }
 $('freeplay-reset').onclick=resetSolve;
-function homeView(){viewTween=null;controls.setPosition(HOME_POSITION);requestDraw();}
+function snapView(){
+ const hold=['CIF','EIF'].includes(frame.notation)?frame:frameForCamera(displayedCamera,labelSwitchAngle);
+ viewTween=null;controls.cancelAll();controls.rotation.copy(snappedViewRotation(hold));controls.update();
+ frame=currentFrame();draw();save();saveSettings();
+}
 $('follow').onchange=()=>{requestDraw();saveSettings();};
 for(const id of ['label-switch-angle','label-switch-angle-value'])$(id).oninput=()=>{
  const value=$(id).valueAsNumber;if(!Number.isFinite(value))return;
@@ -404,12 +444,13 @@ function renderSize(){
  $('puzzles').title=`Choose puzzle · ${puzzleName(size)}`;keyboard?.render();
 }
 function selectSize(nextSize){
+ cancelScrambleRequest();$('scramble-error').hidden=true;
  // Save completed and pending turns before switching to another puzzle size.
- session.pause();manualPaused=session.status==='paused';solves[size]=structuredClone(currentSolve());queue=[];viewTween=null;pacing.reset();
+ if(session.pause())recorder.event('pause');manualPaused=session.status==='paused';solves[size]=structuredClone(currentSolve());queue=[];viewTween=null;pacing.reset();
  active=null;
  controls.cancelAll();keyboard?.clear({selection:true});size=nextSize;keyboard?.setSize(size);
  const saved=structuredClone(solves[size]??{});
- history=saved.history??[];redo=saved.redo??[];undoFloor=saved.undoFloor??0;solveEnd=saved.solveEnd??null;session=new SolveTimer(saved.timer);manualPaused=session.status==='paused';queue=saved.pending??[];
+ history=saved.history??[];redo=saved.redo??[];undoFloor=saved.undoFloor??0;solveEnd=saved.solveEnd??null;session=new SolveTimer(saved.timer);recorder=new SolveRecorder(saved.recordings);phaseTracker=new PhaseTracker(size,profileForSave(saved),saved.splits);manualPaused=session.status==='paused';queue=saved.pending??[];
  if(saved.view?.rotation?.length===4&&saved.view.rotation.every(Number.isFinite)&&Number.isFinite(Math.hypot(...saved.view.rotation))&&Math.hypot(...saved.view.rotation)>1e-9&&Number.isFinite(saved.view.radius)){controls.rotation.fromArray(saved.view.rotation).normalize();controls.radius=THREE.MathUtils.clamp(saved.view.radius,controls.minDistance,controls.maxDistance);controls.update();}else controls.setPosition(HOME_POSITION);
  if(session.status==='scrambling'&&!queue.length)session.reset();
  state=history.reduce(applyMove,solvedState(size));frame=currentFrame();build();renderSize();resumeSession();save();saveSettings();update();pump();draw();
@@ -431,6 +472,23 @@ for(const [button,dialog,close] of [['puzzles','puzzle-dialog','close-puzzles'],
  $(close).onclick=()=>$(dialog).close();
 }
 $('touch-bias-dialog').addEventListener('close',saveSettings);
+function markSplit(){
+ if(session.status==='running'&&phaseTracker.manual(session.elapsed(),pendingTimeline().past.length-undoFloor)){save();renderTimer();}
+}
+phaseUI=new PhaseUI({getSize:()=>size,getConfig:()=>phaseProfiles[size],setConfig:config=>{
+ phaseProfiles[size]=config;saveSettings();
+ if(session.status==='idle')phaseTracker=new PhaseTracker(size,phaseProfile(size,config));save();renderTimer();
+},mark:markSplit});
+$('mobile-split').innerHTML=icon('split');
+$('export-solve').onclick=()=>{
+ const solve=currentSolve();delete solve.timer.times;delete solve.recordings;
+ const url=URL.createObjectURL(new Blob([JSON.stringify({format:'fto-solve-diagnostic-v1',size,...solve},null,2)],{type:'application/json'}));
+ const link=document.createElement('a');link.href=url;link.download=`fto-solve-${size}x${size}.json`;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
+window.addEventListener('keydown',event=>{
+ if(event.code!=='Enter'||event.repeat||event.target?.closest?.('input,select,textarea,[contenteditable=true]')||document.querySelector('dialog[open]'))return;
+ if(session.status==='running'&&phaseTracker.profile.phases[phaseTracker.next]?.type==='manual'){event.preventDefault();event.stopImmediatePropagation();markSplit();}
+},true);
 $('about').onclick=()=>{controls.cancelAll();$('about-dialog').showModal();pauseSession();};
 $('close-about').onclick=()=>$('about-dialog').close();
 function renderColorSwatches(){
@@ -461,7 +519,7 @@ window.addEventListener('beforeprint',pauseSession);window.addEventListener('aft
 
 const raycaster=new THREE.Raycaster();
 controls.pick=(x,y)=>{
- if(manualPaused||session.status==='scrambling')return null;
+ if(manualPaused||isScrambling())return null;
  const rect=renderer.domElement.getBoundingClientRect();
  raycaster.setFromCamera(new THREE.Vector2((x-rect.left)/rect.width*2-1,-(y-rect.top)/rect.height*2+1),displayedCamera);
  const hit=pickSurface(raycaster);
@@ -476,13 +534,13 @@ controls.pick=(x,y)=>{
  return hit;
 };
 controls.addEventListener('swipe',e=>{
- if(manualPaused||session.status==='scrambling')return;
+ if(manualPaused||isScrambling())return;
  const move=chooseSwipeMove(e.hit.candidates,e.dx,e.dy,outerTurnBias/100,{...e.hit.uBias,upBias:uTurnBias/100,eifUpBias:eifUTurnBias/100});if(!move)return;
  const index=FACES.findIndex(f=>transformedNormal(f.normal,frame).every((v,i)=>v===move.normal[i]));
  if(index>=0)keyboard.pointerMove(FACES[index].name,e,{kind:'slice',depth:move.depth,dir:move.dir});
 });
 controls.addEventListener('tap',e=>{
- if(manualPaused||session.status==='scrambling')return;
+ if(manualPaused||isScrambling())return;
  const rect=renderer.domElement.getBoundingClientRect();
  if(e.x<rect.left||e.x>rect.right||e.y<rect.top||e.y>rect.bottom)return;
  raycaster.setFromCamera(new THREE.Vector2((e.x-rect.left)/rect.width*2-1,-(e.y-rect.top)/rect.height*2+1),displayedCamera);
@@ -493,12 +551,12 @@ controls.addEventListener('tap',e=>{
 if(!storageOK)$('save-status').textContent='Saved solve could not be loaded';
 update();requestDraw();
 // Read-only diagnostics for verifying geometry and input behavior in a browser.
-window.fto={snapshot:()=>({size,pointerMode,undoFloor,manualPaused,ready:document.documentElement.hasAttribute('data-app-ready'),animationMs:animationDuration(TURN_ANIMATION_MS),outerTurnBias,uTurnBias,eifUTurnBias,animationSpeed,animating:active?.turns.map(turn=>({move:structuredClone(turn.move),progress:Math.min(1,Math.max(0,(performance.now()-turn.started)/turn.duration))}))??[],renderedMoves,rotating:!!viewTween,viewOrbit:displayedCamera.quaternion.clone().invert().toArray(),stickerColors:materials.map(m=>m.color.getHexString()),keyboard:keyboard?.snapshot(),timer:session.snapshot(),state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};
+window.fto={snapshot:()=>({size,recordings:{last:recorder.last?{ms:recorder.last.solveMs,events:recorder.last.events.length}:null,pb:recorder.pb?{ms:recorder.pb.solveMs,events:recorder.pb.events.length}:null,recording:!!recorder.attempt},scramblePool:ftoScrambleStatus(),generatingScramble:!!scrambleRequest,pointerMode,undoFloor,manualPaused,ready:document.documentElement.hasAttribute('data-app-ready'),animationMs:animationDuration(TURN_ANIMATION_MS),outerTurnBias,uTurnBias,eifUTurnBias,animationSpeed,animating:active?.turns.map(turn=>({move:structuredClone(turn.move),progress:Math.min(1,Math.max(0,(performance.now()-turn.started)/turn.duration))}))??[],renderedMoves,rotating:!!viewTween,viewOrbit:displayedCamera.quaternion.clone().invert().toArray(),stickerColors:materials.map(m=>m.color.getHexString()),keyboard:keyboard?.snapshot(),timer:session.snapshot(),splits:phaseTracker.serialize(),state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};
 
 function executeMove(move){
   const face=FACES.find(f=>f.name===move.face);
   if(move.rotation){
-   if(['scrambling','paused'].includes(session.status))return false;
+   if(isScrambling()||session.status==='paused')return false;
    const axis=new THREE.Vector3(...transformedNormal(face.normal,frame));
    if(move.vertex)axis.add(new THREE.Vector3(...transformedNormal(FACES.find(f=>f.name==='F').normal,frame)));
    axis.normalize();
@@ -512,13 +570,15 @@ function executeMove(move){
   const notation={'1,1':'outer','2,1':'inner','1,2':'wide','1,3':'ultra'}[`${move.depth},${move.count}`]??'slice';
   return enqueue({type:'move',source:move.source,move:{normal:transformedNormal(face.normal,frame),name:face.name,layer:notation,depth:move.depth,count:move.count,dir:move.dir}});
  }
+function recordKey(edge,event){if(event.target?.closest?.('input,textarea,select,[contenteditable=true]'))return;recorder.event('key',{edge,code:event.code,repeat:!!event.repeat,modifiers:[!!event.shiftKey,!!event.ctrlKey,!!event.altKey,!!event.metaKey]});}
 keyboard=new KeyboardUI({
- context:()=>({size,scrambling:session.status==='scrambling',canPause:['running','paused'].includes(session.status),manualPaused,defaultMove:{depth:1,count:1,dir:1}}),
+ input:recordKey,
+ context:()=>({size,scrambling:isScrambling(),canPause:['running','paused'].includes(session.status),manualPaused,defaultMove:{depth:1,count:1,dir:1}}),
  move:executeMove,
  command:command=>{
   if(command==='undo'||command==='redo')enqueue({type:command});
   if(command==='scramble')$('scramble').click();
-  if(command==='home')homeView();
+  if(command==='snap-view')snapView();
   if(command==='fit'){controls.radius=HOME_POSITION.length();controls.update();requestDraw();}
   if(command==='reset')resetSolve();
   if(command==='pause')toggleManualPause();
@@ -529,7 +589,12 @@ keyboard=new KeyboardUI({
  status:renderSaveStatus,
 });
 
-initialized=true;resizeViewport();resumeSession();pump();draw();
+new RecordingUI({getSize:()=>size,getRecordings:()=>({last:recorder.last,pb:recorder.pb}),pause:pauseSession});
+for(const type of ['pointerdown','pointermove','pointerup','pointercancel','wheel'])renderer.domElement.addEventListener(type,event=>{
+ if(type==='pointermove'&&!event.buttons)return;
+ const box=renderer.domElement.getBoundingClientRect();recorder.event('pointer',{edge:type,x:(event.clientX-box.left)/box.width,y:(event.clientY-box.top)/box.height,button:event.button??0,pointerId:event.pointerId??0,deltaY:event.deltaY??0});
+},{capture:true,passive:true});
+initialized=true;resizeViewport();resumeSession();pump();draw();prepareFtoScramble();
 let lastTimerSave=performance.now();
 setInterval(()=>{
  if(session.status==='running'){

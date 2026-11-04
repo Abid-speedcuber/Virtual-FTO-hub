@@ -9,7 +9,7 @@ test('fixed branded header, About, and new defaults',async({page})=>{
  const header=await page.locator('.topbar').boundingBox(),canvas=await page.locator('#viewport').boundingBox();expect(canvas.y).toBe(header.height);
  await withSettings(page,async()=>{
   await expect(page.locator('#animate')).toBeChecked();await expect(page.locator('#animate-scrambling')).toBeChecked();
-  await expect(page.locator('#settings-dialog h2')).toHaveText(['Appearance','Controls','Animation & sound']);
+  await expect(page.locator('#settings-dialog h2')).toHaveText(['Appearance','Recordings','Splits','Controls','Animation & sound']);
   await page.locator('#edit-keyboard').click();await expect(page.locator('#keyboard-layout')).toHaveValue('60');await page.locator('#close-keyboard').click();
   await page.locator('#animate-scrambling').uncheck();
  });

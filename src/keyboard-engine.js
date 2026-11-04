@@ -47,7 +47,7 @@ export function validateConfig(config,{legacyNames=false}={}){
    if(a.type==='rotate'&&a.vertex!==undefined&&typeof a.vertex!=='boolean')throw Error('Invalid rotation axis.');
    if(a.type==='depth'&&(!Number.isInteger(a.depth)||a.depth<1||a.depth>20))throw Error('Next-move depth must be 1–20.');
    if(['hold-mode','mode'].includes(a.type)&&!ids.has(a.mode))throw Error('Select an existing target mode.');
-   if(a.type==='command'&&!['undo','redo','scramble','home','fit','reset','pause','cancel','reset-tps'].includes(a.command))throw Error('Unknown command.');
+   if(a.type==='command'&&!['undo','redo','scramble','snap-view','home','fit','reset','pause','cancel','reset-tps'].includes(a.command))throw Error('Unknown command.');
    if(a.type.startsWith('hold-')&&parseTrigger(binding.trigger).length!==1)throw Error('Held actions need a single key or chord, not a tap sequence.');
   }
   // A tap sequence may start with a held-action key, but never an immediate
@@ -73,7 +73,7 @@ export function defaultConfig(size=4){
   add(`Shift+${n}`,{type:'depth',depth:n?n+10:20});
  }
  add('NumpadMultiply',{type:'depth',depth:18});
- for(const [trigger,command] of [['Ctrl+Z','undo'],['Meta+Z','undo'],['Backspace','undo'],['Shift+Backspace','redo'],['Ctrl+Shift+Z','redo'],['Meta+Shift+Z','redo'],['Ctrl+Y','redo'],['Home','home'],['Escape','pause']])add(trigger,{type:'command',command});
+ for(const [trigger,command] of [['Ctrl+Z','undo'],['Meta+Z','undo'],['Backspace','undo'],['Shift+Backspace','redo'],['Ctrl+Shift+Z','redo'],['Meta+Shift+Z','redo'],['Ctrl+Y','redo'],['Escape','pause']])add(trigger,{type:'command',command});
  add('Shift',{type:'hold-slice'});
  add('Backquote',{type:'rotate',face:'U',dir:1,kind:'outer',depth:1});add('Minus',{type:'rotate',face:'U',dir:-1,kind:'outer',depth:1});
  let modes=[{id:'cif',name:'CIF',bindings}];
@@ -94,10 +94,17 @@ export function defaultConfig(size=4){
   center.push({id:'center-rot-u',trigger:'Backquote',action:{type:'rotate',face:'U',dir:1,kind:'outer',depth:1}},{id:'center-rot-ui',trigger:'Minus',action:{type:'rotate',face:'U',dir:-1,kind:'outer',depth:1}},{id:'center-slice',trigger:'Shift',action:{type:'hold-slice'}},{id:'center-pause',trigger:'Escape',action:{type:'command',command:'pause'}},{id:'center-undo',trigger:'Backspace',action:{type:'command',command:'undo'}},{id:'center-redo',trigger:'Shift+Backspace',action:{type:'command',command:'redo'}},{id:'center-exit',trigger:'M',action:{type:'mode',mode:'cif'}},{id:'center-right',trigger:'Tab',action:{type:'mode',mode:'eif-r'}},{id:'center-left',trigger:'C',action:{type:'mode',mode:'eif-l'}});modes.push({id:'e-center',name:'E– cntr',bindings:center});
  }
  for(const mode of modes)for(const [trigger,dir] of [['Q',1],['P',1],['Z',-1],['Period',-1]])mode.bindings.push({id:`right-rotation-${mode.id}-${trigger}`,trigger,action:{type:'rotate',face:'R',dir,kind:'outer',depth:1}});
- return {version:1,preset:'abid',rotationVersion:1,rightRotationVersion:1,eifVersion:1,sliceVersion:1,centerVersion:2,undoVersion:1,suffixMode:'one-shot',activeMode:'cif',defaultMode:'cif',modes,display:{show:false,layout:'60',numpad:false,width:900,cornerVersion:3,opacity:100,showTPS:true,window:1},sequenceTimeout:1400};
+ for(const mode of modes)mode.bindings.push({id:`view-snap-${mode.id}`,trigger:'[',action:{type:'command',command:'snap-view'}});
+ return {version:1,viewSnapVersion:1,preset:'abid',rotationVersion:1,rightRotationVersion:1,eifVersion:1,sliceVersion:1,centerVersion:2,undoVersion:1,suffixMode:'one-shot',activeMode:'cif',defaultMode:'cif',modes,display:{show:true,layout:'60',numpad:false,width:900,cornerVersion:3,opacity:100,showTPS:true,window:1},sequenceTimeout:1400};
 }
 // Upgrade shipped bindings without replacing user-owned keys or modes.
 export function upgradeKeyboardDefaults(config){
+ // Retire the fixed Home view. Keep custom keys that used it, but point them
+ // at hold-preserving snap instead; the bare Home default is removed.
+ for(const mode of config.modes){
+  mode.bindings=mode.bindings.filter(b=>!(b.action.type==='command'&&b.action.command==='home'&&triggerKey(b.trigger)==='Home'));
+  for(const binding of mode.bindings)if(binding.action.type==='command'&&binding.action.command==='home')binding.action.command='snap-view';
+ }
  const add=(mode,trigger,action,id)=>{
   const steps=parseTrigger(trigger);
   if(mode.bindings.some(b=>{const other=parseTrigger(b.trigger);return other.length===1&&sameStroke(other[0],steps[0]);}))return;
@@ -125,6 +132,10 @@ export function upgradeKeyboardDefaults(config){
   }
   config.rightRotationVersion=1;
  }
+ if(config.viewSnapVersion!==1){
+  if(config.preset!=='cstimer')for(const mode of config.modes.filter(m=>['cif','eif-r','eif-l','e-center','default'].includes(m.id)))add(mode,'[',{type:'command',command:'snap-view'},`view-snap-${mode.id}`);
+  config.viewSnapVersion=1;
+ }
  return config;
 }
 // Upgrade existing CIF profiles once. User-owned modes and occupied keys win.
@@ -151,7 +162,7 @@ export function upgradeEIFDefaults(config){
 export function actionLabel(action){
  if(action.type==='rotate')return `Rot ${action.vertex?'T':action.face}${action.dir<0?'′':''}`;
  if(action.type==='move')return `${action.kind==='slice'?action.depth:action.kind==='wide'&&action.depth>2?action.depth:''}${action.face}${action.kind==='wide'?'w':''}${action.dir<0?'′':''}`;
- return ({depth:action.depth===2?'Wide':`${action.depth}w`,'suffix-slice':'Slice next','hold-slice':'Slice','hold-wide':'Wide','hold-reverse':'Reverse','hold-mode':'Hold mode',mode:'Mode','next-mode':'Next mode',command:{undo:'Undo',redo:'Redo',scramble:'Scramble',home:'Home',fit:'Fit',reset:'Reset',pause:'Pause',cancel:'Clear','reset-tps':'Reset TPS'}[action.command]})[action.type]??'';
+ return ({depth:action.depth===2?'Wide':`${action.depth}w`,'suffix-slice':'Slice next','hold-slice':'Slice','hold-wide':'Wide','hold-reverse':'Reverse','hold-mode':'Hold mode',mode:'Mode','next-mode':'Next mode',command:{undo:'Undo',redo:'Redo',scramble:'Scramble','snap-view':'Snap view',home:'Snap view',fit:'Fit',reset:'Reset',pause:'Pause',cancel:'Clear','reset-tps':'Reset TPS'}[action.command]})[action.type]??'';
 }
 export class KeyboardEngine{
  constructor(config=defaultConfig()){

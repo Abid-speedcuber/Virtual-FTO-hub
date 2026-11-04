@@ -23,7 +23,7 @@ Numbers 2–9 select that width; 0 selects 10, and 1 selects 11. Shift+1–9 sel
 
 Shift holds Slice on every size, at the selected depth (depth two without a suffix). On 3×3, Space also selects Wide, Y/B are Rw/Rw′, and T/V are Lw′/Lw. Ctrl-wide, Alt-reverse, and the one-shot slice suffix begin unbound. Add **Next move: slice suffix** to any key to avoid holding Shift. Width and slice suffixes stack in either order: with Quote bound to slice, `8 ' F` performs `8U′` on a large enough puzzle.
 
-Tab toggles CIF/EIF-R; C toggles CIF/EIF-L. EIF-R cycles F → R → BR → B → BL → L → F, including wide moves; EIF-L reverses that cycle. U/D stay unchanged. M toggles CIF/E– cntr. The center mode uses F/D = U/U′, J/U = 2R′/2R, and K/I = R′/R. It has no Rw/Rw′ keys. M returns to CIF, Tab selects EIF-R, and C selects EIF-L (Shift+Tab in the csTimer preset). Modes change bindings, not the camera.
+Tab toggles CIF/EIF-R; C toggles CIF/EIF-L. EIF-R cycles F → R → BR → B → BL → L → F, including wide moves; EIF-L reverses that cycle. U/D stay unchanged. M toggles CIF/E– cntr. The center mode uses F/D = U/U′, J/U = 2R′/2R, and K/I = R′/R. It has no Rw/Rw′ keys. M returns to CIF, Tab selects EIF-R, and C selects EIF-L (Shift+Tab in the csTimer preset). Modes change bindings, not the camera. In Abid’s preset, **[** snaps the current CIF or EIF hold to a centered, level view, preserving U/R/F/L assignments, zoom, and selected suffixes. Home no longer resets the view. The action is also available as **Snap current CIF / EIF view** in the binding editor. Existing defaults upgrade on load; an already assigned [ key is preserved.
 
 ## Pointer input and one-shot suffixes
 

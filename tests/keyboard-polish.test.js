@@ -26,7 +26,7 @@ test('saved center defaults upgrade once and missing undo bindings are added wit
  config.modes.push({id:'custom',name:'Custom',bindings:[{id:'my-backspace',trigger:'Backspace',action:{type:'command',command:'home'}}]});
  upgradeKeyboardDefaults(config);validateConfig(config);
  assert.equal(find(center,'F').dir,1);assert.equal(find(center,'D').face,'U');assert.equal(find(center,'J').kind,'slice');assert.equal(find(center,'Tab').mode,'eif-r');assert.equal(find(center,'C').mode,'eif-l');assert.equal(find(center,'M').mode,'cif');
- assert.equal(center.bindings.filter(b=>b.action.type==='move').length,6);assert.equal(find(center,'Backspace').command,'undo');assert.equal(find(config.modes.at(-1),'Backspace').command,'home');
+ assert.equal(center.bindings.filter(b=>b.action.type==='move').length,6);assert.equal(find(center,'Backspace').command,'undo');assert.equal(find(config.modes.at(-1),'Backspace').command,'snap-view');
  const upgraded=structuredClone(config);upgradeKeyboardDefaults(config);assert.deepEqual(config,upgraded);
 });
 test('a quick suffix tap leaves Slice and move legends unchanged until release, then affects one move',()=>{

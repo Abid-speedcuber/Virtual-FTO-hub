@@ -16,12 +16,22 @@
 <div class="app">
 <main class="solve-layout" aria-label="FTO solve space">
 <div id="viewport"><div id="labels" aria-hidden="true"></div><div id="keyboard-notice" role="status" hidden></div>
+<nav id="mobile-controls" aria-label="Solve controls">
+<button id="mobile-pause" aria-label="Pause" title="Pause"></button><div id="mobile-timer" role="timer" aria-live="off">00:00</div>
+<button id="mobile-split" aria-label="Mark split" title="Mark split" hidden></button>
+<button id="mobile-undo" aria-label="Undo" title="Undo"></button><button id="mobile-redo" aria-label="Redo" title="Redo"></button>
+<button id="mobile-reset" aria-label="Reset" title="Reset"></button><button id="mobile-scramble" aria-label="Scramble" title="Scramble"></button><button id="mobile-history" aria-label="History" title="History" aria-haspopup="dialog" aria-controls="history-dialog"></button>
+</nav>
 <nav class="history-tools" aria-label="Undo and redo"><button id="undo" disabled>↶ Undo</button><button id="redo" disabled>↷ Redo</button><button id="pause" hidden title="Escape">Pause</button></nav>
 <p id="pause-message" hidden>Press any key to resume</p><div class="puzzle-actions"><button class="primary" id="scramble">Scramble</button><button id="freeplay-reset" title="Reset to solved and return to free play">Reset</button></div>
 </div>
 <aside id="solve-panel" aria-label="Timer and input display">
-<section class="timer-panel" aria-label="Solve timer"><div class="timer-heading"><span class="app-brand"><img src="./logo.png" width="24" height="24" alt=""><span id="timer-size">3 × 3 FTO</span></span><span id="timer-status">Free play</span></div><div id="timer-value" role="timer" aria-live="off">00:00</div><div class="timer-record"><span>PB <strong id="timer-pb">—</strong></span><span id="timer-result"></span></div><p id="timer-hint">Scramble to start a timed solve.</p></section>
-<section class="times-panel" aria-label="Solve times"><div class="section-heading"><h2>Times</h2><span id="times-count">0</span></div><ol id="solve-times" reversed></ol><p id="times-empty">No timed solves yet.</p></section>
+<section id="solve-summary" aria-label="Timer, splits and past times">
+<section class="timer-panel" aria-label="Solve timer"><div class="timer-main"><div id="timer-value" role="timer" aria-live="off">00:00</div><span id="timer-result"></span></div><dl class="timer-metrics"><div><dt>PB</dt><dd id="timer-pb">—</dd></div><div><dt>ao5</dt><dd id="timer-ao5">—</dd></div></dl></section>
+<p id="scramble-error" role="status" hidden>Couldn’t generate a scramble. Your puzzle is unchanged. Please try again.</p>
+<div class="time-columns"><section class="splits-panel" aria-label="Solve splits" tabindex="0"><div class="section-heading"><h2>Splits</h2></div><p id="split-reference"></p><p id="splits-empty">Configure phases in Settings → Splits.</p><table id="splits-table"><thead><tr><th>Phase</th><th>Time</th><th>Seg ±</th><th>Total ±</th></tr></thead><tbody id="split-rows"></tbody></table></section><section class="times-panel" aria-label="Solve times"><div class="section-heading"><h2>Times</h2><span id="times-count">0</span></div><ol id="solve-times" aria-label="Past solve times" tabindex="0" reversed></ol><p id="times-empty">No timed solves yet.</p></section>
+</div>
+</section>
 <section id="keyboard-overlay" aria-label="Live input keyboard" hidden>
 <div class="keyboard-readout"><span id="keyboard-mode-name"></span><span id="keyboard-pending"></span><span id="keyboard-last"></span><span id="keyboard-stats"><strong id="keyboard-tps-value">0.0</strong> TPS <small>peak <span id="keyboard-peak">0.0</span> · <span id="keyboard-turns">0</span> turns</small></span></div>
 <svg id="keyboard-svg" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Physical keyboard showing bound actions"></svg>
@@ -29,13 +39,14 @@
 </aside>
 </main>
 </div>
-<nav id="mobile-controls" aria-label="Solve controls">
-<button id="mobile-pause" aria-label="Pause" title="Pause"></button><div id="mobile-timer" role="timer" aria-live="off">00:00</div>
-<button id="mobile-undo" aria-label="Undo" title="Undo"></button><button id="mobile-redo" aria-label="Redo" title="Redo"></button>
-<button id="mobile-reset" aria-label="Reset" title="Reset"></button><button id="mobile-scramble" aria-label="Scramble" title="Scramble"></button><button id="mobile-history" aria-label="History" title="History" aria-haspopup="dialog" aria-controls="history-dialog"></button>
-</nav>
+
+<dialog id="splits-dialog" aria-labelledby="splits-title"><div class="dialog-heading"><h1 id="splits-title">Configure splits</h1><button id="close-splits" aria-label="Close split settings">✕</button></div><p id="split-size"></p><label class="setting">Method<select id="split-method"><option value="bencisco">Bencisco · automatic (3×3)</option><option value="nautilus">Nautilus · automatic (3×3)</option><option value="custom">Custom phases</option><option value="off">Off</option></select></label><p class="phase-help">Automatic 3×3 phases: First block → E centers → Last bottom triple / Last triple → Last three triples / Last layer. Unobserved boundaries are shown as combined segments, never invented zero-time splits. Comparisons use the fastest saved run with the same phases.</p><div id="custom-phases" hidden><div id="phase-rows"></div><button id="phase-add">Add phase</button><p class="phase-help">Each checkpoint adds solved pieces to the previous one. Detection allows every valid color-neutral starting scheme and whole-puzzle rotations, while preserving the same color relationships across phases. Finish is added automatically.</p></div><p class="phase-help">Changes apply to the next scramble. Custom phases work on every size.</p><p id="split-config-message" role="status"></p><button id="save-splits" class="primary">Save phases</button></dialog>
+<dialog id="phase-pattern-dialog" aria-labelledby="phase-pattern-title"><div class="dialog-heading"><h1 id="phase-pattern-title">Select checkpoint pieces</h1><button id="close-phase-pattern" aria-label="Close sticker selection">✕</button></div><p class="phase-help">Drag to orbit. Click a piece to select all of its stickers. Bright pieces form this checkpoint; earlier checkpoints stay included. Any valid color-neutral starting scheme is accepted.</p><label class="setting">Face<select id="pattern-face"></select></label><div class="pattern-tools"><button id="pattern-face-all">Select face</button><button id="pattern-face-clear">Clear face</button><button id="pattern-clear">Clear all</button></div><div id="phase-pattern-view"></div><p id="pattern-count"></p></dialog>
 <dialog id="puzzle-dialog" aria-labelledby="puzzle-title"><div class="dialog-heading"><h1 id="puzzle-title">Choose puzzle</h1><button id="close-puzzles" aria-label="Close puzzle selector">✕</button></div><div id="puzzle-choices" aria-label="Puzzles"></div></dialog>
-<dialog id="history-dialog" aria-labelledby="history-title"><div class="dialog-heading"><h1 id="history-title">Solve history</h1><button id="close-history" aria-label="Close history">✕</button></div><p class="history-pb">Personal best <strong id="history-pb">—</strong></p><div class="section-heading"><h2>Times</h2><span id="history-count">0</span></div><ol id="history-times" reversed></ol><p id="history-empty">No timed solves yet.</p></dialog>
+<dialog id="history-dialog" aria-labelledby="history-title"><div class="dialog-heading"><h1 id="history-title">Solve history</h1><button id="close-history" aria-label="Close history">✕</button></div><section id="history-splits" hidden><h2>Splits</h2><table class="history-splits-table"><thead><tr><th>Phase</th><th>Time</th><th>Seg ±</th><th>Total ±</th></tr></thead><tbody id="history-split-rows"></tbody></table></section><button id="history-recordings">Solve recordings</button><p class="history-pb">Personal best <strong id="history-pb">—</strong></p><div class="section-heading"><h2>Times</h2><span id="history-count">0</span></div><ol id="history-times" reversed></ol><p id="history-empty">No timed solves yet.</p></dialog>
+<dialog id="recordings-dialog" aria-labelledby="recordings-title"><div class="dialog-heading"><h1 id="recordings-title">Solve recordings</h1><button id="close-recordings" aria-label="Close recordings">✕</button></div>
+<div class="recording-tools"><button id="recording-last">Last solve</button><button id="recording-pb">Personal best</button><label class="file-button">Import recording<input id="recording-import" type="file" accept=".json,.ftoreplay,application/json"></label><button id="recording-export" disabled>Download recording</button></div><p class="phase-help">Your last solve and personal best are recorded automatically for 2×2–4×4. Share the downloaded file; others can import and play it here.</p><p id="recording-message" role="status"></p>
+<div id="replay-content" hidden><h2 id="recording-title"></h2><div id="replay-view"></div><div class="replay-controls"><button id="replay-play">Play</button><span id="replay-clock">0.00</span><select id="replay-speed" aria-label="Playback speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select></div><input id="replay-position" type="range" min="0" max="1" value="0" step="any" aria-label="Replay position"><div class="replay-readout"><span id="replay-hold"></span><output id="replay-keys" aria-label="Recorded keys">—</output></div></div></dialog>
 <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message"><div class="dialog-heading"><h1 id="confirm-title">Replace this solve?</h1></div><p id="confirm-message"></p><form method="dialog" class="confirm-actions"><button id="confirm-cancel" value="cancel" autofocus>Cancel</button><button id="confirm-accept" value="accept" class="primary">Reset</button></form></dialog>
 <dialog id="settings-dialog" aria-labelledby="settings-title">
 <div class="dialog-heading"><h1 id="settings-title" class="app-brand"><img src="./logo.png" width="28" height="28" alt="">Settings</h1><button id="close-settings" aria-label="Close settings">✕</button></div>
@@ -44,6 +55,8 @@
 <button id="customize-colors" aria-haspopup="dialog" aria-controls="color-scheme-dialog">Customize color scheme</button>
 <label class="setting"><span>Show keyboard<small>Live move labels, physical keys, and TPS</small></span><input type="checkbox" id="show-keyboard" role="switch" aria-label="Show keyboard"></label>
 </section>
+<section class="settings-section" aria-label="Recording settings"><h2>Recordings</h2><button id="open-recordings" aria-haspopup="dialog" aria-controls="recordings-dialog">Watch or share a solve</button></section>
+<section class="settings-section" aria-label="Splits settings"><h2>Splits</h2><button id="configure-splits" aria-haspopup="dialog" aria-controls="splits-dialog">Configure splits</button><button id="export-solve">Export current solve</button></section>
 <section class="settings-section" aria-label="Controls settings"><h2>Controls</h2>
 <label class="setting">Pointer controls<select id="pointer-mode" aria-label="Pointer controls"><option value="swipe">Swipe to turn</option><option value="legacy">Orbit + click</option></select></label>
 <button id="touch-turn-bias" aria-haspopup="dialog" aria-controls="touch-bias-dialog">Touch turn biasness</button>
@@ -66,7 +79,7 @@
 <dialog id="about-dialog" aria-labelledby="about-title">
 <div class="dialog-heading"><h1 id="about-title">About FTO Simulator</h1><button id="close-about" aria-label="Close about">✕</button></div>
 <p>A virtual Face-Turning Octahedron for practicing and speedsolving.</p><p>by Abid Ibn Ashraf</p>
-<p class="about-storage">Your times, puzzle progress, and preferences are saved in this browser on this device. Times are stored separately for each puzzle size.</p>
+<p class="about-storage">Your times, solve recordings, puzzle progress, and preferences are saved in this browser on this device. Times are stored separately for each puzzle size.</p>
 <p class="license-note">© 2026 Master FTO contributors · <a href="./licenses/GPL-3.0.txt" target="_blank" rel="noopener">GPLv3</a> · <a href="https://github.com/Abid-speedcuber/Virtual-FTO-hub" target="_blank" rel="noopener">Source</a> · <a href="./licenses/NOTICE.md" target="_blank" rel="noopener">Credits</a>. No warranty.</p>
 </dialog>
 <dialog id="color-scheme-dialog" aria-labelledby="color-scheme-title">
@@ -105,7 +118,7 @@
 <label id="binding-rotation-field" hidden>Rotation axis<select id="binding-rotation-axis"><option value="face">Face axis · 120°</option><option value="vertex">Top/front vertex (T) · 90°</option></select></label>
 <label id="binding-depth-field">Depth / layer count<input id="binding-depth" type="number" min="1" max="20" value="2"></label>
 <label id="binding-mode-field" hidden>Target mode<select id="binding-target-mode"></select></label>
-<label id="binding-command-field" hidden>Command<select id="binding-command"><option value="undo">Undo</option><option value="redo">Redo</option><option value="scramble">Scramble</option><option value="home">Home view</option><option value="fit">Fit puzzle</option><option value="reset">Reset to solved</option><option value="pause">Pause solve</option><option value="cancel">Cancel depth / queued input</option><option value="reset-tps">Reset input stats</option></select></label>
+<label id="binding-command-field" hidden>Command<select id="binding-command"><option value="undo">Undo</option><option value="redo">Redo</option><option value="scramble">Scramble</option><option value="snap-view">Snap current CIF / EIF view</option><option value="fit">Fit puzzle</option><option value="reset">Reset to solved</option><option value="pause">Pause solve</option><option value="cancel">Cancel depth / queued input</option><option value="reset-tps">Reset input stats</option></select></label>
 <button id="binding-save" type="submit" class="primary">Add binding</button><p id="binding-message" role="status"></p>
 </form>
 </section>

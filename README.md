@@ -8,8 +8,8 @@ Use `npm ci`, then `npm run dev` and open http://127.0.0.1:5173. Node.js 20.19+ 
 
 ## Play
 
-- The puzzle occupies a left-aligned square. Undo/Redo and the timed Pause button are at its top right; Scramble and Reset are at its bottom right on wide screens. Choose a puzzle using the tilted FTO icon to the left of Settings in the topbar; its modal offers sizes 2–20. A fixed topbar shows the FTO Simulator branding and icon buttons for Settings and About. New sessions default to 3×3; saved size choices are restored.
-- The side panel contains the timer, PB, a scrollable time list, and a bottom-anchored recording keyboard. On narrow screens the puzzle fills the space between the topbar and a fixed bottom bar. Free play shows Reset, Scramble, and History. Running solves show Pause, timer, Undo, and Redo; paused solves show Resume, timer, Scramble, Reset, and History. Finished solves keep the final time visible alongside Reset, Scramble, and History. History opens a modal containing the selected puzzle’s times and PB. The keyboard and its Show keyboard switch are hidden when the side column has too little room; the saved toggle preference is preserved. The overlay defaults to the compact 60% layout. The idle timer reads `00:00`.
+- The puzzle occupies a left-aligned square. A floating control island unifies Pause/Resume, Reset, Scramble, and Undo/Redo on wide screens. Undo and Redo stay visible; history remains in the side panel. Choose a puzzle using the tilted 2×2 FTO icon to the left of Settings in the topbar; its modal offers sizes 2–20. A fixed topbar shows the FTO Simulator branding and icon buttons for Settings and About. New sessions default to 3×3; saved size choices are restored.
+- The side panel contains the timer and PB above past times. Enabling splits adds a second column for checkpoints. A recording keyboard stays at the bottom. On narrow screens the puzzle fills the space between the topbar and a fixed bottom bar. Free play shows Reset, Scramble, and History. Running solves show Pause, timer, Undo, and Redo; paused solves show Resume, timer, Scramble, Reset, and History. Finished solves keep the final time visible alongside Reset, Scramble, and History. History opens a modal containing the selected puzzle’s times and PB. The keyboard and its Show keyboard switch are hidden when the side column has too little room; the saved toggle preference is preserved. The overlay defaults to enabled on wide screens, using the compact 60% layout. The idle timer reads `00:00`.
 - **Swipe to turn**: drag a sticker to turn its row, drag empty space or right-drag to orbit. Possible rows are calculated on contact; a turn starts after 6 pixels of movement, before release. Each contact triggers at most one turn. A new swipe completes any previous turn animation and starts immediately. Two fingers orbit, pinch to zoom, and twist to roll. Mouse wheel zooms. **Settings → Controls → Touch turn biasness** opens three saved sliders: Outer turn bias favors outer turns on ambiguous edge stickers, CIF U turn bias favors U over F where the two outer layers meet in CIF, and EIF U turn bias favors U/U′ over BR/BL on the shared outer U row in EIF. All default to 60%; set any to 0% for directional matching. At 100% EIF U turn bias, those top-row overlaps allow only U/U′; lower rows retain their normal behavior. The biases shrink the less-favored turn’s original angular activation range proportionally. For U turn bias, 90% leaves 10% of that range, and 100% makes the shared-edge stickers activate only U. At 100% outer turn bias, pieces with an outer-turn candidate activate only outer turns. Interior stickers and lower F stickers keep their normal response.
 - **Orbit + click**: drag to orbit, click a face clockwise, or right-click counterclockwise. Hold the puzzle and scroll to roll. This mode and swipe turns share the keyboard’s suffix/held-action resolver: a pending width or slice suffix applies to one accepted pointer turn and is then consumed. Full-size widths rotate the view, labeled **Rot**, without adding a turn or starting timing.
 - Keyboard bindings and modes are saved separately for each size. Every size provides CIF, EIF-R, and EIF-L, with outer turns, depth suffixes, and Shift for Slice. Only 3×3 additionally includes **E– cntr**. Every binding is editable; fixed deep slices/wides and cube rotations can be assigned directly. See [the keyboard guide](docs/keyboard.md).
@@ -18,15 +18,53 @@ Use `npm ci`, then `npm run dev` and open http://127.0.0.1:5173. Node.js 20.19+ 
 
 Scramble requires confirmation, arms the timer, and animates each computer turn by default. Animate turns and Animate scrambling can be changed independently in Settings → Animation & sound. Animation speed in the same section adjusts turns, view rotations, and scrambling from 0.25× to 3×. Timing starts on the first accepted manual turn and stops when solved. Reset requires confirmation when discarding progress and returns to solved free play, preserving PBs and times.
 
-**Escape / Pause** pauses an active timed solve, grays every sticker, and displays **Press any key to resume** below the puzzle. The resume key is consumed, so it does not also make a move or select a suffix. Manual pauses survive reloads and size switches; focus changes and closing Settings do not end them. The Pause button/key label is absent during free play and inspection.
+**Escape / Pause** pauses an active timed solve, grays every sticker, and shows Resume in the control bar. The resume key is consumed, so it does not also make a move or select a suffix. Manual pauses survive reloads and size switches; focus changes and closing Settings do not end them. The Pause button/key label is absent during free play and inspection.
 
 Settings, confirmation dialogs, and leaving the site pause active timing and gray the puzzle. Every pause waits for a resume key, even after returning focus, closing dialogs, reloading, or switching sizes. The resume key is consumed. Free play and ready inspection remain colored. Each size preserves its state, view, undo/redo, pending turns, timer, PB, and times across switches/reloads. These are stored in browser Local Storage under `master-fto-v1`, with preferences under `master-fto-settings-v1` and keyboard profiles under `master-fto-keyboard-v2`. Clearing the solve storage or site data reloads open simulator tabs so they cannot write old times back from memory.
 
 Move sounds use locally bundled **Gateron Black Ink recordings by Thomas Lai**, from [tplai/kbsim](https://github.com/tplai/kbsim), under its MIT license. [Attribution and original license](public/audio/black-ink/ATTRIBUTION.md) are included with the files. Suffixes use a gentle synthesized tone. **Disable sounds** mutes both and saves locally; playback makes no third-party requests.
 
+## Split tracking
+
+**Settings → Splits → Configure splits** offers automatic Bencisco and Nautilus
+presets for 3×3, with four coarse checkpoints each. Every puzzle size also supports
+custom named phases based on cumulative solved pieces, selected on an orbitable
+3D FTO. Valid color-neutral schemes and physical rotations are accepted, and the
+same color relationships carry through later checkpoints. Splits default to Off;
+the home screen hides the split section entirely until enabled. Finish is automatic.
+
+Segment and cumulative deltas compare against the fastest saved run with the same
+phase definition. Canceled or simultaneous phase boundaries are shown as combined
+segments rather than made-up zero times. Settings apply to the next scramble;
+current split progress, references, and completed run breakdowns are saved locally.
+See [the split tracking guide](docs/splits.md) for method sources, exact detection
+rules, cancellation limits, and storage details.
+
+## Shareable solve recordings
+
+2×2, 3×3 and 4×4 timed solves automatically retain the last completed recording
+and a separate PB recording until a faster PB replaces it. Both survive new
+scrambles, reset, size switches and reloads in the existing per-size solve storage.
+Only these two recordings are retained; ordinary past times stay compact.
+
+Settings → Recordings → Watch or share a solve (also available from History)
+opens the replay viewer. Play, pause, seek and change playback speed; download a
+`.ftoreplay.json` file to share or import one from someone else. Playback has its
+own 3D viewer and does not alter the live puzzle, times, bindings or PB.
+
+The versioned `fto-replay-v1` file stores the initial scramble, view, face colors
+and keyboard configuration, plus timestamped key transitions, pointer gestures,
+displayed camera poses, pauses, accepted actions, resolved turns and animation
+starts. Resolved turns ensure faithful playback even if bindings later change.
+Inspection and pauses are retained in the replay timeline; the official solve
+time remains separately recorded. Older times cannot acquire recordings retroactively.
+
 ## Model and verification
 
 Every sticker vertex uses an integer lattice. A turn is an exact signed coordinate permutation. Each puzzle has `8 × size²` stickers, batched by color; rotating slabs and caps keep the black body attached during animation. Layer turns and whole-puzzle rotations both follow Animate turns. Keyboard layer turns use their selected animation speed: parallel layers animate together (including overlapping wide turns and opposite faces); a nonparallel request immediately completes all active layer turns and animates the new turn at normal speed. Rotations smoothly interpolate the view, including csTimer quarter turns, and retarget with input cadence to avoid a backlog. Following moves resolve against the intended final hold. Grabbing the puzzle hands control to the pointer at the displayed pose; size switches and reloads preserve the final accepted view. The app stays hidden until the first complete scene renders.
+
+3×3 scrambles use [csTimer author Chen Shuang’s random-state FTO scrambler](https://gist.github.com/cs0x7f/1579492aa43c794d529057386c489702): sample a legal state, solve it, and invert that solution. Generation runs locally in `src/worker.js`. One scramble is prepared when the app opens; consuming it immediately starts preparing the next one, so normal scramble requests do not wait for generation. Other sizes keep their random-move scrambles. Both animated and instant scrambling use the generated sequence; the timer starts on your first turn afterward.
+
 
 - `npm test`: geometry, inverse/permutation stress, all 48 CIF/EIF holds, gestures, keyboard resolution, pacing, and timers.
 - `npm run test:browser`: real mouse/touch/keyboard input, suffixes, modes, pause/resume, persistence, recordings, and responsive layout. Requires Google Chrome or Playwright Chromium.

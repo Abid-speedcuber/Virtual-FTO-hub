@@ -23,6 +23,9 @@ test('all keyboard layouts have a small padded inset without side letterboxing',
    const box=el.getBoundingClientRect(),keys=[...el.querySelectorAll('.keycap')].map(key=>key.getBoundingClientRect());
    return {left:Math.min(...keys.map(k=>k.left))-box.left,right:box.right-Math.max(...keys.map(k=>k.right)),bottom:box.bottom,height:innerHeight,overflow:el.scrollHeight>el.clientHeight};
   });
+  const card=await page.locator('#solve-summary').boundingBox(),keyboard=await page.locator('#keyboard-overlay').boundingBox();
+  expect(card.x).toBeCloseTo(keyboard.x,1);expect(card.width).toBeCloseTo(keyboard.width,1);expect(card.y+card.height).toBeLessThan(keyboard.y);
+  await expect.poll(()=>page.locator('#solve-summary').evaluate(el=>{const last=el.querySelector('#solve-times');return last?.getClientRects().length?last.getBoundingClientRect().bottom-el.getBoundingClientRect().bottom:Infinity;})).toBeLessThanOrEqual(-8);
   expect(bounds.left).toBeGreaterThanOrEqual(8);expect(bounds.left).toBeLessThan(13);expect(bounds.right).toBeGreaterThanOrEqual(8);expect(bounds.right).toBeLessThan(13);expect(bounds.bottom).toBeLessThanOrEqual(bounds.height);expect(bounds.overflow).toBe(false);
  }
  await page.screenshot({path:'test-results/keyboard-no-side-gaps.png'});
