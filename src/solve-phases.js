@@ -76,11 +76,23 @@ export function detectBuiltin(state,anchor=null,method='bencisco'){
 export function phaseProfile(size,config={}){
  const method=['bencisco','nautilus','custom','off'].includes(config.method)?config.method:'off';
  if(method==='off'||(size!==3&&method!=='custom'))return {method:'off',phases:[]};
+ if(method==='custom'&&config.customVersion===2){
+  const rows=(config.phases??[]).slice(0,128),selected=new Set();
+  if(!rows.length)rows.push({name:'Finish'});
+  const phases=rows.map((p,i)=>{
+   const name=String(p.name??`Phase ${i+1}`).trim().slice(0,40)||`Phase ${i+1}`;
+   if(i===rows.length-1)return {name,type:'finish'};
+   for(const id of p.stickers??[])if(Number.isInteger(id)&&id>=0&&id<8*size*size)selected.add(id);
+   return {name,type:'pattern',stickers:[...selected].sort((a,b)=>a-b)};
+  });
+  return {method,customVersion:2,methodId:String(config.methodId??'custom'),name:String(config.name??'My method').slice(0,60),phases};
+ }
  const phases=method==='custom'?(config.phases??[]).filter(p=>p.type!=='finish').slice(0,15).map((p,i)=>({name:String(p.name??`Phase ${i+1}`).trim().slice(0,40)||`Phase ${i+1}`,type:'pattern',stickers:[...new Set((p.stickers??[]).filter(n=>Number.isInteger(n)&&n>=0&&n<8*size*size))].sort((a,b)=>a-b)})):
   [{name:'First block',type:'builtin'},{name:'E centers',type:'builtin'},{name:method==='nautilus'?'Last triple':'Last bottom triple',type:'builtin'}];
  if(method==='custom'){const selected=new Set();for(const phase of phases){for(const id of phase.stickers)selected.add(id);phase.stickers=[...selected].sort((a,b)=>a-b);}}
  return {method,phases:[...phases,{name:method==='nautilus'?'Last layer':method==='bencisco'?'Last three triples':'Finish',type:'finish'}]};
 }
+
 export const profileKey=profile=>JSON.stringify(profile);
 export function trackedBest(times,profile){
  return times.filter(t=>t.splitData&&profileKey(t.splitData.profile)===profileKey(profile)&&t.splitData.complete&&(!['bencisco','nautilus'].includes(profile.method)||(t.splitData.detectorVersion===DETECTOR_VERSION&&t.splitData.groups?.length>1))).reduce((best,t)=>!best||t.ms<best.ms?t:best,null);

@@ -35,19 +35,23 @@ A short tap selects a suffix on release and waits for one accepted turn, includi
 
 Escape pauses an active timed solve. The puzzle turns gray and **Press any key to resume** appears beneath it. The next key only resumes; it does not perform its binding. Every pause waits for a resume key, including pauses caused by Settings, confirmations, leaving the page, reloads, and size switches. Closing a dialog or returning focus does not resume timing. Escape’s Pause label and the square’s Pause button are hidden in free play and before timing starts.
 
-Backspace or Ctrl/Meta+Z undo player moves, stopping at the generated scramble. A finished timed solve becomes the new undo boundary. Later free-play moves can be undone and redone, including after reload, but undo cannot cross back into the completed solve. **Shift+Backspace**, Ctrl/Meta+Shift+Z, or Ctrl+Y redo. The binding editor also offers a separate cancel-pending-input command if desired.
+Backspace or Ctrl+Z (Windows/Linux) and Cmd+Z (macOS) undo player moves, stopping at the generated scramble. A finished timed solve becomes the new undo boundary. Later free-play moves can be undone and redone, including after reload, but undo cannot cross back into the completed solve. **Shift+Backspace**, Ctrl+Shift+Z, Ctrl+Y, and Cmd+Shift+Z redo. Both presets provide these shortcuts in every mode, including E– cntr. No default action requires the Windows/Super key. The binding editor also offers a separate cancel-pending-input command if desired.
 
 ## Editing and modes
 
-Open **Settings → Keyboard & bindings**. Move and face-axis rotation dropdowns combine face and direction in a 4×4 grid of all sixteen choices; vertex rotations offer T/T′. The default-on **Return keyboard to default after a solve** setting selects CIF after completion, or the mode you choose in **Default mode**. This choice is saved per puzzle size. Select a mode and an existing binding, or choose New binding. Enter a key, chord, or sequence, or use Record chord. Actions include explicit outer/slice/wide moves at depths 1–20, Rot around a face axis, depth/slice suffixes, held actions, mode switches, and commands.
+Open **Settings → Controls → Edit bindings**. Choose the puzzle and mode at the top; editing another puzzle leaves your live puzzle untouched. The action table lists every outer turn, every slice and wide turn at depths 1–20, rotations, suffixes, commands and mode actions, including unassigned actions. All depths remain available on every puzzle; entries that need more layers say so and can still be assigned. Filter by category, then use the subgroup dropdown to browse one slice depth or wide-turn width across all eight faces and both directions. Other categories group by face/axis, suffix kind or target mode. You can also search actions and keys. Every “All” option displays the complete matching list, without numbered pages. Use subgroups to narrow that list. Creating or renaming a mode immediately brings its switch and hold actions into view; deleting it removes those actions.
+
+Click an assigned key to replace it, **×** to unassign it, or **+** to add another key for that action. Press a key/chord and save, or type a tap sequence. Reassigning an occupied key requires **Replace existing key**; cancelling preserves its current action. Esc dismisses capture (type `Escape` in the field when assigning Escape itself).
+
+**Mode settings** provides naming, duplication, deletion, the active mode and default mode. The default-on **Reset mode after a solve** setting returns to that default after completion. **Virtual keyboard & input preferences** holds the overlay layout and input timing. **Presets & files** holds preset resets and per-puzzle keyboard import/export.
 
 - `F`: one physical key.
 - `A+F`: hold A, then F; chord order does not affect conflict detection.
 - `A F`: tap A, then F within the configured sequence timeout.
 - `KeyF`, `ShiftLeft`, `ShiftRight`, `ArrowUp`, `Numpad8`: explicit physical codes.
-- Ctrl/Control, Shift, Alt, and Meta match either side. Side-specific bindings are supported.
+- Ctrl/Control, Shift, Alt, and Meta match either side. Cmd/Command, Win/Windows, and Super are aliases for Meta. The editor shows that key as Cmd on macOS, Win on Windows, and Super on Linux; physical left/right variants remain assignable. Side-specific bindings are supported.
 
-A trigger can have one action per mode; different modes may reuse it, and an action may have multiple triggers. An immediate action cannot also begin a longer tap sequence. Held actions take single keys/chords. Add empty creates a blank table; Duplicate copies a mode; deleting one removes bindings targeting it.
+A trigger can have one action per mode; different modes may reuse it, and an action may have multiple triggers. An immediate action cannot also begin a longer tap sequence. Held actions take single keys/chords. New mode creates a blank table; Duplicate copies a mode; deleting one removes bindings targeting it.
 
 ## Timing, sound, and persistence
 

@@ -18,18 +18,18 @@ test('desktop island unifies controls, always includes undo/redo, and the timer 
 
 test('automatic method choice is saved per size; custom sticker patterns support 20x20',async({page})=>{
  test.setTimeout(60000);
- await page.goto('/');await ready(page);await configure(page);await page.locator('#split-method').selectOption('nautilus');await page.locator('#save-splits').click();await page.locator('#close-settings').click();
+ await page.goto('/');await ready(page);await configure(page);await page.locator('#split-method').selectOption('nautilus');await page.locator('#close-splits').click();await page.locator('#close-settings').click();
  expect((await snap(page)).splits.profile.method).toBe('nautilus');
- await choose(page,20);await configure(page);await expect(page.locator('#split-method option[value=nautilus]')).toHaveJSProperty('disabled',true);await page.locator('#split-method').selectOption('custom');
+ await choose(page,20);await configure(page);await expect(page.locator('#split-method option[value=nautilus]')).toHaveCount(0);await page.locator('#split-method').selectOption('custom');await page.locator('#method-name').fill('Large method');
  await page.getByLabel('Phase 1 name',{exact:true}).fill('U face');await page.getByRole('button',{name:'Select pieces (0)'}).click();
- await page.locator('#pattern-face-all').click();await expect(page.locator('#pattern-count')).toContainText('400 stickers');await page.locator('#close-phase-pattern').click();await page.locator('#save-splits').click();await page.locator('#close-settings').click();
+ await page.locator('#pattern-face-all').click();await expect(page.locator('#pattern-count')).toContainText('400 stickers');await page.locator('#close-phase-pattern').click();await page.locator('#save-splits').click();await page.locator('#close-splits').click();await page.locator('#close-settings').click();
  let current=await snap(page);expect(current.splits.profile.method).toBe('custom');expect(current.splits.profile.phases[0].stickers).toHaveLength(400);
  await page.reload();await ready(page);expect((await snap(page)).splits.profile.phases[0].stickers).toHaveLength(400);
  await choose(page,3);expect((await snap(page)).splits.profile.method).toBe('nautilus');
 });
 
 test('custom solved-piece goals replace manual markers and persist after a solve',async({page})=>{
- const config={method:'custom',phases:[{name:'U face',type:'pattern',stickers:[0,1,2,3,4,5,6,7,8]}]},profile=phaseProfile(3,config);
+ const config={method:'custom',customVersion:2,methodId:'face',name:'Face method',phases:[{name:'U face',type:'pattern',stickers:[0,1,2,3,4,5,6,7,8]},{name:'LL',type:'finish'}]},profile=phaseProfile(3,config);
  await page.addInitScript(({config})=>{
   localStorage.setItem('master-fto-settings-v1',JSON.stringify({animate:false,follow:false,phaseProfiles:{3:config}}));
   localStorage.setItem('master-fto-v1',JSON.stringify({size:3,solves:{3:{history:[{normal:[1,1,1],layer:'outer',dir:1,name:'U'}],redo:[],undoFloor:1,timer:{status:'ready'}}}}));
@@ -63,12 +63,10 @@ test('Nautilus recognizes the last-layer state separately from its last triple',
  await expect(page.locator('#split-rows tr').last()).toContainText('Last layer');await expect(page.locator('#split-rows tr').last()).toContainText('1.00');
 });
 
-test('exported solve diagnostics contain move history and detector samples without all past times',async({page},testInfo)=>{
- await page.goto('/');await ready(page);await page.locator('#settings').click();
- const downloadPromise=page.waitForEvent('download');await page.locator('#export-solve').click();const download=await downloadPromise;
- const path=testInfo.outputPath('solve-diagnostic.json');await download.saveAs(path);
- const {readFile}=await import('node:fs/promises');const exported=JSON.parse(await readFile(path,'utf8'));
- expect(exported.format).toBe('fto-solve-diagnostic-v1');expect(exported.splits.detectorVersion).toBe(2);expect(exported.splits.samples).toBeInstanceOf(Array);expect(exported.history).toBeInstanceOf(Array);expect(exported.timer.times).toBeUndefined();expect(exported.recordings).toBeUndefined();
+test('the old split diagnostic export is replaced by a complete user-data backup',async({page},testInfo)=>{
+ await page.goto('/');await ready(page);await page.locator('#settings').click();await expect(page.locator('#export-solve')).toHaveCount(0);
+ const downloaded=page.waitForEvent('download');await page.locator('#export-user-data').click();const download=await downloaded;const path=testInfo.outputPath('user-data.json');await download.saveAs(path);
+ const {readFile}=await import('node:fs/promises');const exported=JSON.parse(await readFile(path,'utf8'));expect(exported.format).toBe('fto-user-data-v1');expect(exported.entries['master-fto-v1']).toBeTruthy();expect(exported.entries['master-fto-settings-v1']).toBeTruthy();
 });
 
 test('compact summary uses right-side PB and ao5, with invisible but working scrollbars',async({page})=>{

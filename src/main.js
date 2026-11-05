@@ -5,9 +5,14 @@ import {randomStateFtoScramble,prepareFtoScramble,ftoScrambleStatus} from './fto
 import {TurnPacing} from './turn-pacing.js';
 import {TURN_ANIMATION_MS,parallelMoves,parallelBands,bandAngle} from './parallel-turns.js';
 import {SolveTimer,formatTime,averageOf5} from './solve-timer.js';
-import {PhaseTracker,phaseProfile} from './solve-phases.js';
+import {PhaseTracker,phaseProfile,profileKey} from './solve-phases.js';
 import {SolveRecorder} from './solve-recording.js';
-import {RecordingUI} from './recording-ui.js';
+import {RecordingAlbum,validateAlbumBackup} from './recording-album.js';
+import {clearRecordingLink,recordingPayload} from './recording-codec.js';
+import {HomeReplay} from './home-replay.js';
+import {migrateMethods,migrateCustomTrace} from './split-methods.js';
+import {exportUserData,validateUserData,restoreUserData} from './user-data.js';
+import {downloadJSON,RecordingUI} from './recording-ui.js';
 import {PhaseUI} from './phase-ui.js';
 import {KeyboardUI} from './keyboard-ui.js';
 import {ViewControls} from './view-controls.js';
@@ -18,6 +23,8 @@ import {FACES,solvedState,selected,applyMove,inverse,isSolved,scrambleMoves} fro
 import {HOME_POSITION,FIXED_FRAME,frameForCamera,transformedNormal,DEFAULT_LABEL_SWITCH_ANGLE,snappedViewRotation} from './orientation.js';
 const $=id=>document.getElementById(id);
 const storageKey='master-fto-v1';
+const album=new RecordingAlbum();
+let homeReplay=null,replayActive=false;
 let keyboard,phaseUI,initialized=false,renderedMoves=0,manualPaused=false,scrambleRequest=null;
 const isScrambling=()=>!!scrambleRequest||session.status==='scrambling';
 function cancelScrambleRequest(){const request=scrambleRequest;scrambleRequest=null;request?.abort();}
@@ -58,7 +65,7 @@ try{const saved=JSON.parse(localStorage.getItem(storageKey)||'null');if(saved){
  }
  history=structuredClone(solves[size]?.history??[]);redo=structuredClone(solves[size]?.redo??[]);undoFloor=solves[size]?.undoFloor??0;solveEnd=solves[size]?.solveEnd??null;state=history.reduce(applyMove,solvedState(size));
 }}catch{storageOK=false;size=3;solves={};history=[];redo=[];state=solvedState(size);}
-let recorder=new SolveRecorder(solves[size]?.recordings);
+let recorder=new SolveRecorder(solves[size]?.recordings,()=>Date.now(),{elapsedMs:solves[size]?.timer?.elapsedMs});
 let session=new SolveTimer(solves[size]?.timer);manualPaused=session.status==='paused';
 queue=structuredClone(solves[size]?.pending??[]);
 if(session.status==='scrambling'&&!queue.length)session.reset();
@@ -66,6 +73,9 @@ const settingsKey='master-fto-settings-v1';
 let preferences={},settingsOK=true,settingsTimer;
 try{const value=JSON.parse(localStorage.getItem(settingsKey)||'{}');if(value&&typeof value==='object')preferences=value;}catch{settingsOK=false;}
 let phaseProfiles=preferences.phaseProfiles&&typeof preferences.phaseProfiles==='object'?preferences.phaseProfiles:{};
+let phaseMethods=preferences.phaseMethods&&typeof preferences.phaseMethods==='object'?preferences.phaseMethods:{};
+migrateMethods(phaseProfiles,phaseMethods);
+for(const [n,saved] of Object.entries(solves)){saved.splits=migrateCustomTrace(saved.splits,+n);for(const time of saved.timer?.times??[])time.splitData=migrateCustomTrace(time.splitData,+n);for(const record of [saved.recordings?.last,saved.recordings?.pb])if(record){record.splitData=migrateCustomTrace(record.splitData,+n);if(record.previousBest)record.previousBest.splitData=migrateCustomTrace(record.previousBest.splitData,+n);}}
 const profileForSave=saved=>saved?.splits?.profile??phaseProfile(size,['running','paused','finished'].includes(saved?.timer?.status)?{method:'off'}:phaseProfiles[size]);
 let phaseTracker=new PhaseTracker(size,profileForSave(solves[size]),solves[size]?.splits);
 if(session.status==='ready'&&!solves[size]?.splits)phaseTracker.arm(state,session.times,{historyFloor:undoFloor});
@@ -99,11 +109,12 @@ function saveSettings(){
  if(detectClearedSolve())return;
  clearTimeout(settingsTimer);
  try{
-  localStorage.setItem(settingsKey,JSON.stringify({phaseProfiles,outerTurnBias,uTurnBias,eifUTurnBias,animationSpeed,disableSounds:$('disable-sounds').checked,follow:$('follow').checked,labelSwitchAngle,animate:$('animate').checked,animateScrambling:$('animate-scrambling').checked,showLabels:$('show-labels').checked,autoDefaultMode:$('auto-default-mode').checked,faceColors,view:{rotation:controls.rotation.toArray(),radius:controls.radius}}));settingsOK=true;
+  localStorage.setItem(settingsKey,JSON.stringify({phaseProfiles,phaseMethods,outerTurnBias,uTurnBias,eifUTurnBias,animationSpeed,disableSounds:$('disable-sounds').checked,follow:$('follow').checked,labelSwitchAngle,animate:$('animate').checked,animateScrambling:$('animate-scrambling').checked,showLabels:$('show-labels').checked,autoDefaultMode:$('auto-default-mode').checked,faceColors,view:{rotation:controls.rotation.toArray(),radius:controls.radius}}));settingsOK=true;
  }catch{settingsOK=false;}
  renderSaveStatus();
 }
 const sounds=new PuzzleSounds(()=>$('disable-sounds').checked);
+function playSound(kind='move'){recorder.event('sound',{kind});sounds.play(kind);}
 $('disable-sounds').onchange=saveSettings;$('auto-default-mode').onchange=saveSettings;
 function queueSettingsSave(){clearTimeout(settingsTimer);settingsTimer=setTimeout(saveSettings,150);}
 const viewport=$('viewport');
@@ -119,7 +130,7 @@ if(view&&Array.isArray(view.rotation)&&view.rotation.length===4&&view.rotation.e
 const displayedCamera=camera.clone(),renderCamera=camera.clone();
 let viewTween=null,viewFramePending=false;
 const puzzle=new THREE.Group();scene.add(puzzle);
-const materials=FACES.map(f=>new THREE.MeshBasicMaterial({color:faceColors[f.name],side:THREE.DoubleSide}));
+const materials=FACES.map(f=>new THREE.MeshBasicMaterial({color:faceColors[f.name],side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));
 const bodyMaterial=new THREE.MeshBasicMaterial({color:'#080e11'});
 const batches=[],animationGroups=[];
 function build(){
@@ -179,7 +190,7 @@ function draw(){
  });
  materials.forEach((material,i)=>material.color.set(session.status==='paused'?'#888888':faceColors[FACES[i].name]));
  renderer.render(scene,renderCamera);displayedCamera.copy(renderCamera);
- recorder.view({rotation:renderCamera.quaternion.clone().invert().toArray(),radius:controls.radius},{up:frame.up,front:frame.front,notation:frame.notation});renderedMoves=history.length;
+ if(!replayActive)recorder.view({rotation:renderCamera.quaternion.clone().invert().toArray(),radius:controls.radius},{up:frame.up,front:frame.front,notation:frame.notation});renderedMoves=history.length;
  if(initialized&&width>0&&height>0)document.documentElement.setAttribute('data-app-ready','');
  if(viewTween&&!viewFramePending){viewFramePending=true;requestAnimationFrame(()=>{viewFramePending=false;if(viewTween)draw();});}
 }
@@ -235,9 +246,12 @@ for(const name of ['undo','redo','reset','scramble','history'])$(`mobile-${name}
 $('mobile-pause').onclick=()=>toggleManualPause();
 for(const [name,target] of [['undo','undo'],['redo','redo'],['reset','freeplay-reset'],['scramble','scramble']])$(`mobile-${name}`).onclick=()=>$(target).click();
 function renderTimer(){
+ if(replayActive)return;
  const status=session.status;
  const text=status==='idle'?'00:00':formatTime(session.elapsed());if($('timer-value').textContent!==text)$('timer-value').textContent=text;
  $('history-pb').textContent=formatTime(session.bestMs);
+ $('share-current').hidden=session.status!=='finished'||!recorder.last;$('share-pb').hidden=!recorder.pb;
+ $('mobile-share-current').hidden=session.status!=='finished'||!recorder.last;$('mobile-share-current').style.order='1';$('history-share-pb').hidden=!recorder.pb;
  $('mobile-timer').textContent=text;renderMobileControls(status);
  $('timer-ao5').textContent=formatTime(averageOf5(session.times));
  $('timer-pb').textContent=formatTime(session.bestMs);$('timer-result').textContent=status==='finished'?(session.newBest?'New PB':`${session.completed} solved`):'';
@@ -265,7 +279,7 @@ function resumeManualPause(){if(scrambleRequest||session.status!=='paused'||docu
 $('pause').onclick=toggleManualPause;
 // Consume the resume key so it cannot also turn a face or select a suffix.
 window.addEventListener('keydown',event=>{
- if(!manualPaused||document.querySelector('dialog[open]')||event.repeat)return;
+ if(replayActive||!manualPaused||document.querySelector('dialog[open]')||event.repeat)return;
  recordKey('down',event);event.preventDefault();event.stopImmediatePropagation();resumeManualPause();
 },true);
 function layoutSolveSpace(){
@@ -286,11 +300,11 @@ function update(){
  $('mobile-undo').disabled=$('undo').disabled;$('mobile-redo').disabled=$('redo').disabled;$('mobile-scramble').disabled=scrambling;$('mobile-history').disabled=scrambling;
 
 }
-function armRecording(){recorder.arm({size,scramble:history.slice(0,undoFloor),view:{rotation:controls.rotation.toArray(),radius:controls.radius},keyboard:keyboard?.snapshot().config,colors:faceColors});}
+function armRecording(){recorder.arm({size,scramble:history.slice(0,undoFloor),view:{rotation:controls.rotation.toArray(),radius:controls.radius},keyboard:keyboard?.snapshot().config,colors:faceColors,previousBest:session.bestMs===null?null:{ms:session.bestMs,splitData:session.times.find(t=>t.ms===session.bestMs)?.splitData??null}});}
 function enqueue(action){
- if(queue.length+(active?.turns.length??0)>=500||isScrambling()||session.status==='paused')return false;
+ if(replayActive||queue.length+(active?.turns.length??0)>=500||isScrambling()||session.status==='paused')return false;
  if(['undo','redo'].includes(action.type)&&!actionMove(action,true))return false;
- const now=performance.now();pacing.input(now);if(viewTween)viewTween.deadline=Math.min(viewTween.deadline,now+animationDuration(pacing.duration()));if(session.start())recorder.event('start');action.elapsedMs=session.elapsed();action.recordId=recorder.accept(action);queue.push(action);if(action.type==='move')keyboard?.recordTurn();sounds.play();pump();return true;
+ const now=performance.now();pacing.input(now);if(viewTween)viewTween.deadline=Math.min(viewTween.deadline,now+animationDuration(pacing.duration()));if(session.start()){const config=structuredClone(keyboard?.config);if(config)config.activeMode=keyboard.engine.mode.id;recorder.begin({rotation:displayedCamera.quaternion.clone().invert().toArray(),radius:controls.radius},config,{pending:keyboard?.engine.pending,slicePending:keyboard?.engine.slicePending,pendingSource:keyboard?.engine.pendingSource,sliceSource:keyboard?.engine.sliceSource});}action.elapsedMs=session.elapsed();action.recordId=recorder.accept(action);queue.push(action);if(action.type==='move')keyboard?.recordTurn();playSound();pump();return true;
 }
 function pendingTimeline(prune=false){
  const past=history.slice();let future=redo.slice();const valid=[];
@@ -317,13 +331,14 @@ function commitAction(action,move){
  else if(action.type==='redo')history.push(redo.pop());
  else{history.push(move);redo=[];}
  if(action.source==='scramble'){
-  sounds.play();undoFloor=history.length;
+  playSound();undoFloor=history.length;
   if(!queue.some(a=>a.source==='scramble')){session.arm();armRecording();phaseTracker.arm(state,session.times,{historyFloor:undoFloor});}
  }else if(['running','paused'].includes(session.status)){
   const elapsed=Math.max(phaseTracker.groups.at(-1)?.ms??0,Number.isFinite(action.elapsedMs)?action.elapsedMs:session.elapsed()),solved=isSolved(state);
   if(action.type==='undo')phaseTracker.rewind(state,elapsed,{turnIndex:history.length-undoFloor});else phaseTracker.observe(state,elapsed,{finished:solved,turnIndex:history.length-undoFloor});
   if(solved&&session.finish(phaseTracker.serialize(),elapsed)){
-   recorder.finish(session.lastMs,session.newBest);
+   const recording=recorder.finish(session.lastMs,session.newBest,phaseTracker.serialize());
+   if(session.newBest&&recording)archivePB(recording);
    solveEnd=history.length;undoFloor=solveEnd;redo=[];
    if($('auto-default-mode').checked)keyboard?.returnToDefault();
   }
@@ -450,7 +465,7 @@ function selectSize(nextSize){
  active=null;
  controls.cancelAll();keyboard?.clear({selection:true});size=nextSize;keyboard?.setSize(size);
  const saved=structuredClone(solves[size]??{});
- history=saved.history??[];redo=saved.redo??[];undoFloor=saved.undoFloor??0;solveEnd=saved.solveEnd??null;session=new SolveTimer(saved.timer);recorder=new SolveRecorder(saved.recordings);phaseTracker=new PhaseTracker(size,profileForSave(saved),saved.splits);manualPaused=session.status==='paused';queue=saved.pending??[];
+ history=saved.history??[];redo=saved.redo??[];undoFloor=saved.undoFloor??0;solveEnd=saved.solveEnd??null;session=new SolveTimer(saved.timer);recorder=new SolveRecorder(saved.recordings,()=>Date.now(),{elapsedMs:saved.timer?.elapsedMs});phaseTracker=new PhaseTracker(size,profileForSave(saved),saved.splits);manualPaused=session.status==='paused';queue=saved.pending??[];
  if(saved.view?.rotation?.length===4&&saved.view.rotation.every(Number.isFinite)&&Number.isFinite(Math.hypot(...saved.view.rotation))&&Math.hypot(...saved.view.rotation)>1e-9&&Number.isFinite(saved.view.radius)){controls.rotation.fromArray(saved.view.rotation).normalize();controls.radius=THREE.MathUtils.clamp(saved.view.radius,controls.minDistance,controls.maxDistance);controls.update();}else controls.setPosition(HOME_POSITION);
  if(session.status==='scrambling'&&!queue.length)session.reset();
  state=history.reduce(applyMove,solvedState(size));frame=currentFrame();build();renderSize();resumeSession();save();saveSettings();update();pump();draw();
@@ -465,31 +480,26 @@ window.addEventListener('blur',()=>{controls.cancelAll();pauseSession();});
 window.addEventListener('focus',resumeSession);
 document.addEventListener('visibilitychange',()=>{if(document.hidden){controls.cancelAll();saveSettings();pauseSession();}else resumeSession();});
 $('show-labels').onchange=()=>{$('labels').hidden=!$('show-labels').checked;requestDraw();saveSettings();};
-$('settings').onclick=()=>{controls.cancelAll();$('settings-dialog').showModal();pauseSession();};
+$('settings').onclick=()=>{homeReplay?.stop();controls.cancelAll();$('settings-dialog').showModal();pauseSession();};
 $('close-settings').onclick=()=>$('settings-dialog').close();
 for(const [button,dialog,close] of [['puzzles','puzzle-dialog','close-puzzles'],['mobile-history','history-dialog','close-history'],['touch-turn-bias','touch-bias-dialog','close-touch-bias']]){
- $(button).onclick=()=>{controls.cancelAll();$(dialog).showModal();pauseSession();};
+ $(button).onclick=()=>{homeReplay?.stop();controls.cancelAll();$(dialog).showModal();pauseSession();};
  $(close).onclick=()=>$(dialog).close();
 }
 $('touch-bias-dialog').addEventListener('close',saveSettings);
 function markSplit(){
  if(session.status==='running'&&phaseTracker.manual(session.elapsed(),pendingTimeline().past.length-undoFloor)){save();renderTimer();}
 }
-phaseUI=new PhaseUI({getSize:()=>size,getConfig:()=>phaseProfiles[size],setConfig:config=>{
- phaseProfiles[size]=config;saveSettings();
- if(session.status==='idle')phaseTracker=new PhaseTracker(size,phaseProfile(size,config));save();renderTimer();
+phaseUI=new PhaseUI({getSize:()=>size,getConfig:target=>phaseProfiles[target??size],getMethods:target=>phaseMethods[target??size]??[],setMethods:(methods,target=size)=>{phaseMethods[target]=methods;saveSettings();},setConfig:(config,target=size)=>{
+ phaseProfiles[target]=config;saveSettings();
+ if(target===size&&session.status==='idle')phaseTracker=new PhaseTracker(size,phaseProfile(size,config));save();renderTimer();
 },mark:markSplit});
 $('mobile-split').innerHTML=icon('split');
-$('export-solve').onclick=()=>{
- const solve=currentSolve();delete solve.timer.times;delete solve.recordings;
- const url=URL.createObjectURL(new Blob([JSON.stringify({format:'fto-solve-diagnostic-v1',size,...solve},null,2)],{type:'application/json'}));
- const link=document.createElement('a');link.href=url;link.download=`fto-solve-${size}x${size}.json`;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
-};
 window.addEventListener('keydown',event=>{
  if(event.code!=='Enter'||event.repeat||event.target?.closest?.('input,select,textarea,[contenteditable=true]')||document.querySelector('dialog[open]'))return;
  if(session.status==='running'&&phaseTracker.profile.phases[phaseTracker.next]?.type==='manual'){event.preventDefault();event.stopImmediatePropagation();markSplit();}
 },true);
-$('about').onclick=()=>{controls.cancelAll();$('about-dialog').showModal();pauseSession();};
+$('about').onclick=()=>{homeReplay?.stop();controls.cancelAll();$('about-dialog').showModal();pauseSession();};
 $('close-about').onclick=()=>$('about-dialog').close();
 function renderColorSwatches(){
  const grid=$('face-color-swatches');grid.replaceChildren();
@@ -519,7 +529,7 @@ window.addEventListener('beforeprint',pauseSession);window.addEventListener('aft
 
 const raycaster=new THREE.Raycaster();
 controls.pick=(x,y)=>{
- if(manualPaused||isScrambling())return null;
+ if(replayActive||manualPaused||isScrambling())return null;
  const rect=renderer.domElement.getBoundingClientRect();
  raycaster.setFromCamera(new THREE.Vector2((x-rect.left)/rect.width*2-1,-(y-rect.top)/rect.height*2+1),displayedCamera);
  const hit=pickSurface(raycaster);
@@ -534,13 +544,13 @@ controls.pick=(x,y)=>{
  return hit;
 };
 controls.addEventListener('swipe',e=>{
- if(manualPaused||isScrambling())return;
+ if(replayActive||manualPaused||isScrambling())return;
  const move=chooseSwipeMove(e.hit.candidates,e.dx,e.dy,outerTurnBias/100,{...e.hit.uBias,upBias:uTurnBias/100,eifUpBias:eifUTurnBias/100});if(!move)return;
  const index=FACES.findIndex(f=>transformedNormal(f.normal,frame).every((v,i)=>v===move.normal[i]));
  if(index>=0)keyboard.pointerMove(FACES[index].name,e,{kind:'slice',depth:move.depth,dir:move.dir});
 });
 controls.addEventListener('tap',e=>{
- if(manualPaused||isScrambling())return;
+ if(replayActive||manualPaused||isScrambling())return;
  const rect=renderer.domElement.getBoundingClientRect();
  if(e.x<rect.left||e.x>rect.right||e.y<rect.top||e.y>rect.bottom)return;
  raycaster.setFromCamera(new THREE.Vector2((e.x-rect.left)/rect.width*2-1,-(e.y-rect.top)/rect.height*2+1),displayedCamera);
@@ -551,12 +561,12 @@ controls.addEventListener('tap',e=>{
 if(!storageOK)$('save-status').textContent='Saved solve could not be loaded';
 update();requestDraw();
 // Read-only diagnostics for verifying geometry and input behavior in a browser.
-window.fto={snapshot:()=>({size,recordings:{last:recorder.last?{ms:recorder.last.solveMs,events:recorder.last.events.length}:null,pb:recorder.pb?{ms:recorder.pb.solveMs,events:recorder.pb.events.length}:null,recording:!!recorder.attempt},scramblePool:ftoScrambleStatus(),generatingScramble:!!scrambleRequest,pointerMode,undoFloor,manualPaused,ready:document.documentElement.hasAttribute('data-app-ready'),animationMs:animationDuration(TURN_ANIMATION_MS),outerTurnBias,uTurnBias,eifUTurnBias,animationSpeed,animating:active?.turns.map(turn=>({move:structuredClone(turn.move),progress:Math.min(1,Math.max(0,(performance.now()-turn.started)/turn.duration))}))??[],renderedMoves,rotating:!!viewTween,viewOrbit:displayedCamera.quaternion.clone().invert().toArray(),stickerColors:materials.map(m=>m.color.getHexString()),keyboard:keyboard?.snapshot(),timer:session.snapshot(),splits:phaseTracker.serialize(),state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};
+window.fto={snapshot:()=>({size,replay:homeReplay?.active?{at:homeReplay.at,duration:homeReplay.presentation.duration,playing:homeReplay.playing,size:homeReplay.data.size,sounds:homeReplay.playedSounds,solved:isSolved(homeReplay.viewer.state),bodies:homeReplay.viewer.bodies.map(b=>b.mesh.quaternion.toArray())}:null,recordings:{last:recorder.last?{ms:recorder.last.solveMs,events:recorder.last.events.length}:null,pb:recorder.pb?{ms:recorder.pb.solveMs,events:recorder.pb.events.length}:null,recording:!!recorder.attempt},scramblePool:ftoScrambleStatus(),generatingScramble:!!scrambleRequest,pointerMode,undoFloor,manualPaused,ready:document.documentElement.hasAttribute('data-app-ready'),animationMs:animationDuration(TURN_ANIMATION_MS),outerTurnBias,uTurnBias,eifUTurnBias,animationSpeed,animating:active?.turns.map(turn=>({move:structuredClone(turn.move),progress:Math.min(1,Math.max(0,(performance.now()-turn.started)/turn.duration))}))??[],renderedMoves,rotating:!!viewTween,viewOrbit:displayedCamera.quaternion.clone().invert().toArray(),stickerColors:materials.map(m=>m.color.getHexString()),keyboard:keyboard?.snapshot(),timer:session.snapshot(),splits:phaseTracker.serialize(),state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};
 
 function executeMove(move){
   const face=FACES.find(f=>f.name===move.face);
   if(move.rotation){
-   if(isScrambling()||session.status==='paused')return false;
+   if(replayActive||isScrambling()||session.status==='paused')return false;
    const axis=new THREE.Vector3(...transformedNormal(face.normal,frame));
    if(move.vertex)axis.add(new THREE.Vector3(...transformedNormal(FACES.find(f=>f.name==='F').normal,frame)));
    axis.normalize();
@@ -565,12 +575,12 @@ function executeMove(move){
    const deadline=Math.min(viewTween?.deadline??Infinity,now+animationDuration(pacing.duration()));
    controls.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(axis,-move.dir*(move.vertex?Math.PI/2:2*Math.PI/3))).normalize();
    viewTween=$('animate').checked?{from,started:now,deadline}:null;
-   controls.update();frame=currentFrame();sounds.play();if(!viewTween)draw();save();return true;
+   controls.update();frame=currentFrame();playSound();if(!viewTween)draw();save();return true;
   }
   const notation={'1,1':'outer','2,1':'inner','1,2':'wide','1,3':'ultra'}[`${move.depth},${move.count}`]??'slice';
   return enqueue({type:'move',source:move.source,move:{normal:transformedNormal(face.normal,frame),name:face.name,layer:notation,depth:move.depth,count:move.count,dir:move.dir}});
  }
-function recordKey(edge,event){if(event.target?.closest?.('input,textarea,select,[contenteditable=true]'))return;recorder.event('key',{edge,code:event.code,repeat:!!event.repeat,modifiers:[!!event.shiftKey,!!event.ctrlKey,!!event.altKey,!!event.metaKey]});}
+function recordKey(edge,event){if(replayActive)return;if(event.target?.closest?.('input,textarea,select,[contenteditable=true]'))return;recorder.event('key',{edge,code:event.code,repeat:!!event.repeat,modifiers:[!!event.shiftKey,!!event.ctrlKey,!!event.altKey,!!event.metaKey]});}
 keyboard=new KeyboardUI({
  input:recordKey,
  context:()=>({size,scrambling:isScrambling(),canPause:['running','paused'].includes(session.status),manualPaused,defaultMove:{depth:1,count:1,dir:1}}),
@@ -585,16 +595,61 @@ keyboard=new KeyboardUI({
   if(command==='resume')resumeManualPause();
   if(command==='cancel'&&session.status!=='scrambling'){queue=[];save();update();}
  },
- suffix:()=>sounds.play('suffix'),
+ suffix:()=>playSound('suffix'),
  status:renderSaveStatus,
 });
 
-new RecordingUI({getSize:()=>size,getRecordings:()=>({last:recorder.last,pb:recorder.pb}),pause:pauseSession});
+homeReplay=new HomeReplay({pause:pauseSession,onStart:()=>{replayActive=true;keyboard.clear({selection:true});},onExit:()=>{clearRecordingLink();replayActive=false;timesKey='';build();update();draw();},sound:kind=>sounds.play(kind),onFrame:(data,replayFrame)=>{
+ $('history-title').textContent='Recorded solve splits';$('timer-value').textContent=formatTime(replayFrame.elapsed);$('timer-result').textContent=`Recording · ${replayFrame.stage}`;$('timer-pb').textContent=formatTime(data.previousBest?.ms??null);$('timer-ao5').textContent='—';$('share-current').hidden=false;$('share-pb').hidden=true;
+ const trace=data.splitData;
+ if(trace?.profile?.phases?.length){
+  const same=data.previousBest?.splitData&&profileKey(data.previousBest.splitData.profile)===profileKey(trace.profile);
+  const reference=same?{ms:data.previousBest.ms,groups:data.previousBest.splitData.groups}:null;
+  const shown={...trace,groups:trace.groups.filter(g=>g.ms<=replayFrame.elapsed),reference,complete:replayFrame.stage==='Solve'&&replayFrame.elapsed>=data.solveMs};
+  phaseUI.render({enabled:true,profile:trace.profile,detectorVersion:trace.detectorVersion,complete:shown.complete,groups:shown.groups,reference,serialize:()=>shown},replayFrame.elapsed,shown.complete?'finished':'running',true);
+  $('split-reference').textContent=reference?`Solver’s previous PB · ${formatTime(reference.ms)}`:data.previousBest?`Previous PB · ${formatTime(data.previousBest.ms)} · no matching split data`:'No previous PB recorded';$('history-split-reference').textContent=$('split-reference').textContent;
+ }else{document.querySelector('.splits-panel').hidden=true;document.querySelector('.time-columns').classList.add('without-splits');}
+}});
+const recordingUI=new RecordingUI({album,pauseForShare:()=>{if(homeReplay.active)homeReplay.pause();else pauseSession();},current:()=>homeReplay.active?homeReplay.sharedData:recorder.last,getSize:()=>size,getRecordings:()=>({last:recorder.last,pb:recorder.pb}),pause:()=>{homeReplay.stop();pauseSession();},play:data=>homeReplay.start(data)});
+for(const id of ['share-current','share-pb','mobile-share-current','history-share-pb','home-replay-share'])$(id).innerHTML=icon('share');
+function archivePB(recording,completedAt){
+ album.add(recording,{pb:true,completedAt,shouldSave:()=>!detectClearedSolve()}).catch(error=>{$('recording-storage-status').textContent=`Couldn’t save PB to the album: ${error.message}`;});
+}
+$('export-user-data').onclick=async()=>{
+ $('export-user-data').disabled=true;$('user-data-message').textContent='Preparing complete backup…';
+ try{pauseSession();saveSettings();keyboard.save();const data=exportUserData(localStorage);data.album=await album.export();downloadJSON(data,'fto-user-data.json');$('user-data-message').textContent='Backup downloaded, including your recording album.';}
+ catch(error){$('user-data-message').textContent=error.message;}finally{$('export-user-data').disabled=false;}
+};
+$('open-user-data-import').onclick=()=>{$('user-data-import-message').textContent='';$('user-data-import-dialog').showModal();};
+$('close-user-data-import').onclick=()=>$('user-data-import-dialog').close();
+$('choose-user-data-file').onclick=()=>$('import-user-data').click();
+$('import-user-data').onchange=event=>importUserDataFile(event.target.files[0]);
+const dataDrop=$('user-data-drop');
+for(const type of ['dragenter','dragover'])dataDrop.addEventListener(type,event=>{event.preventDefault();dataDrop.classList.add('drag-over');});
+for(const type of ['dragleave','drop'])dataDrop.addEventListener(type,event=>{event.preventDefault();dataDrop.classList.remove('drag-over');});
+dataDrop.addEventListener('drop',event=>importUserDataFile(event.dataTransfer.files[0]));
+let dataImportBusy=false;
+async function importUserDataFile(file){
+ if(!file||dataImportBusy)return;dataImportBusy=true;$('choose-user-data-file').disabled=true;
+ try{
+  if(file.size>128*1024*1024)throw Error('Backup must be smaller than 128 MB');
+  $('user-data-import-message').textContent='Checking backup…';const data=JSON.parse(await file.text()),summary=validateUserData(data);if(data.album)await validateAlbumBackup(data.album);$('user-data-import-message').textContent='';
+  const albumSummary=data.album?` and ${data.album.entries.length} album recordings`:'';
+  if(!await confirmPaused(`Restore ${file.name}? This replaces this device’s FTO data with ${summary.puzzles} puzzles and ${summary.times} saved times${albumSummary}, including all settings, methods and recordings.`,'Restore backup','Restore user data?'))return;
+  const before=exportUserData(localStorage);storageCleared=true;
+  try{restoreUserData(localStorage,data);if(data.album)await album.restoreValidated(data.album);}
+  catch(error){try{restoreUserData(localStorage,before);}finally{storageCleared=false;}throw error;}
+  location.reload();
+ }catch(error){$('user-data-import-message').textContent=error.message;}finally{dataImportBusy=false;$('import-user-data').value='';$('choose-user-data-file').disabled=false;}
+}
 for(const type of ['pointerdown','pointermove','pointerup','pointercancel','wheel'])renderer.domElement.addEventListener(type,event=>{
  if(type==='pointermove'&&!event.buttons)return;
  const box=renderer.domElement.getBoundingClientRect();recorder.event('pointer',{edge:type,x:(event.clientX-box.left)/box.width,y:(event.clientY-box.top)/box.height,button:event.button??0,pointerId:event.pointerId??0,deltaY:event.deltaY??0});
 },{capture:true,passive:true});
 initialized=true;resizeViewport();resumeSession();pump();draw();prepareFtoScramble();
+for(const saved of Object.values(solves)){const pb=saved.recordings?.pbIsLast?saved.recordings.last:saved.recordings?.pb;if(pb)archivePB(pb,pb.completedAt??saved.timer?.bestAt);}
+recordingUI.openSharedLink();
+window.addEventListener('hashchange',()=>{if(recordingPayload())recordingUI.openSharedLink();else homeReplay.stop();});
 let lastTimerSave=performance.now();
 setInterval(()=>{
  if(session.status==='running'){

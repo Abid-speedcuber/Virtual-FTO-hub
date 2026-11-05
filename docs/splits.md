@@ -1,8 +1,9 @@
 # Solve splits
 
-Splits default to Off on every size, with no split section or prompts on the home screen. Settings → Splits offers Bencisco,
-Nautilus, custom phases, or Off. Automatic presets are restricted to 3×3; custom
-phases are supported separately on every size from 2×2 through 20×20.
+Splits default to Off on every size, with no split section or prompts on the home screen. Settings → Solves → Configure splits offers Bencisco,
+Nautilus, saved named methods, or Off. Presets and existing methods apply immediately
+when selected; **Save method** is only used when creating or editing a method. Automatic presets are restricted to 3×3; custom
+phases are supported separately on every size from 2×2 through 20×20. The puzzle selector inside the editor changes which method library you edit without changing the live puzzle. Saved custom methods open directly in the phase editor; selecting a preset applies it immediately.
 
 ## Primary method references
 
@@ -54,7 +55,7 @@ Skipped separately from these unobserved boundaries.
 
 ## Custom phases
 
-Add named checkpoints by clicking whole physical pieces on the orbitable 3D FTO.
+Choose **Add method…**, name the method, and add checkpoints by clicking whole physical pieces on the orbitable 3D FTO.
 Dragging orbits, and clicking selects every sticker on that piece. Face controls
 also allow selecting or clearing a face. Each checkpoint includes the pieces
 from all earlier checkpoints, so phases always add solved structure.
@@ -68,7 +69,13 @@ and arbitrary color permutations are not accepted. Undo restores the compatible
 color assignments at the checkpoint it returns to. Manual split entry is no
 longer offered.
 
-Finish is automatic. Settings apply to the next scramble, preserving the current
+The last phase is the solved-puzzle checkpoint. Give it any name (for example
+LL or L3T); it is never followed by an extra Finish row. Earlier phases add solved
+pieces. Save as many named methods as needed for each puzzle size, then select
+one alongside the built-in presets. Existing custom configurations migrate into
+the method list; their final implicit Finish is merged with the last named phase.
+
+Settings apply to the next scramble, preserving the current
 attempt's phase definition. Per-size configurations and unfinished split progress
 survive reloads and puzzle switches.
 
@@ -95,8 +102,6 @@ Automatic records identify their detector version. Older automatic traces and
 full-solve totals with no separately observed phase boundary are not used as
 split-PB references. Their actual solve times and overall PBs are preserved.
 
-Settings → Splits → Export current solve downloads a diagnostic JSON with the
-current move history, checkpoint data, and accepted-move observations from the
-current attempt. Detailed observations stay with the current attempt rather than
-being duplicated in every historical time. Earlier attempts without move timestamps
-cannot have their missing split times reconstructed reliably.
+Settings → Your data → Export all user data includes the complete method library,
+selected methods, split history, PB recordings and current solve diagnostics,
+alongside every other app preference. See [user-data backups](user-data.md).

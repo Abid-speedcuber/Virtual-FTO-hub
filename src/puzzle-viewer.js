@@ -1,13 +1,15 @@
 import * as THREE from 'three';
 import {FACES,solvedState,selected} from './puzzle.js';
 import {ViewControls} from './view-controls.js';
+import {bodyGeometry} from './body-geometry.js';
+import {parallelBands} from './parallel-turns.js';
 import {HOME_POSITION} from './orientation.js';
 
 // A self-contained viewer for checkpoint editing and recorded solves.
 export class PuzzleViewer{
  constructor(host,{onSelect=null}={}){
   this.host=host;this.onSelect=onSelect;this.size=3;this.state=solvedState(3);this.selection=null;this.meshes=[];
-  this.scene=new THREE.Scene();this.scene.add(new THREE.Mesh(new THREE.OctahedronGeometry(1.995),new THREE.MeshBasicMaterial({color:'#080e11'})));this.camera=new THREE.PerspectiveCamera(36,1,.1,100);this.camera.position.copy(HOME_POSITION).multiplyScalar(.78);this.camera.lookAt(0,0,0);
+  this.scene=new THREE.Scene();this.bodies=[];this.bodyKey='';this.camera=new THREE.PerspectiveCamera(36,1,.1,100);this.camera.position.copy(HOME_POSITION).multiplyScalar(.78);this.camera.lookAt(0,0,0);
   this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});this.renderer.setPixelRatio(Math.min(devicePixelRatio,2));host.append(this.renderer.domElement);
   this.renderer.domElement.setAttribute('aria-label',onSelect?'Orbitable FTO. Drag to orbit; click a piece to select it.':'Recorded FTO solve');
   this.controls=new ViewControls(this.camera,this.renderer.domElement,{mode:'legacy'});
@@ -34,6 +36,20 @@ export class PuzzleViewer{
  face(normal){const target=new THREE.Vector3(...normal).normalize().multiplyScalar(10);this.controls.setPosition(target);}
  setPuzzle(size,state=solvedState(size),selection=null,motions=[]){this.size=size;this.state=state;this.selection=selection;this.render(motions);}
  render(motions=[]){
+  const bodyKey=JSON.stringify([this.size,motions.map(m=>m.move)]);
+  if(bodyKey!==this.bodyKey){
+   this.bodyKey=bodyKey;for(const body of this.bodies){this.scene.remove(body.mesh);body.mesh.geometry.dispose();body.mesh.material.dispose();}
+   const bands=motions.length?parallelBands(this.size,motions.map(m=>m.move)):[null];
+   this.bodies=bands.map(band=>{
+    const positions=band?bodyGeometry(this.size,band.move).turning:bodyGeometry(this.size).stationary;
+    const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+    const mesh=new THREE.Mesh(geometry,new THREE.MeshBasicMaterial({color:'#080e11',side:THREE.DoubleSide}));this.scene.add(mesh);return {mesh,band};
+   });
+  }
+  for(const {mesh,band} of this.bodies){
+   if(!band)continue;const angle=band.turns.reduce((n,t)=>{const m=motions[t.index],p=m.progress;return n-t.sign*m.move.dir*2*Math.PI/3*p*p*(3-2*p);},0);
+   mesh.quaternion.setFromAxisAngle(new THREE.Vector3(...band.move.normal).normalize(),angle);
+  }
   if(this.meshes.length!==this.state.length){for(const mesh of this.meshes){this.scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}this.meshes=[];}
   for(const sticker of this.state){
    const points=sticker.vertices.map(v=>new THREE.Vector3(...v).multiplyScalar(2/this.size)),center=points.reduce((a,p)=>a.add(p),new THREE.Vector3()).divideScalar(3);
@@ -43,7 +59,7 @@ export class PuzzleViewer{
    let mesh=this.meshes[sticker.id];
    if(!mesh){
     const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
-    mesh=new THREE.Mesh(geometry,new THREE.MeshBasicMaterial({color,side:THREE.DoubleSide}));mesh.frustumCulled=false;mesh.userData.id=sticker.id;this.meshes[sticker.id]=mesh;this.scene.add(mesh);
+    mesh=new THREE.Mesh(geometry,new THREE.MeshBasicMaterial({color,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));mesh.frustumCulled=false;mesh.userData.id=sticker.id;this.meshes[sticker.id]=mesh;this.scene.add(mesh);
    }else{mesh.geometry.attributes.position.array.set(vertices);mesh.geometry.attributes.position.needsUpdate=true;mesh.material.color.copy(color);}
   }
   this.draw();

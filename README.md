@@ -28,8 +28,10 @@ Move sounds use locally bundled **Gateron Black Ink recordings by Thomas Lai**, 
 
 **Settings → Splits → Configure splits** offers automatic Bencisco and Nautilus
 presets for 3×3, with four coarse checkpoints each. Every puzzle size also supports
-custom named phases based on cumulative solved pieces, selected on an orbitable
-3D FTO. Valid color-neutral schemes and physical rotations are accepted, and the
+reusable named methods based on cumulative solved pieces, selected on an orbitable
+3D FTO. Choose Add method…, name it, and name its final solved-puzzle phase
+(for example LL); there is no additional Finish row. Presets apply immediately
+when selected, while Save method saves a custom method to the list. Valid color-neutral schemes and physical rotations are accepted, and the
 same color relationships carry through later checkpoints. Splits default to Off;
 the home screen hides the split section entirely until enabled. Finish is automatic.
 
@@ -45,19 +47,40 @@ rules, cancellation limits, and storage details.
 2×2, 3×3 and 4×4 timed solves automatically retain the last completed recording
 and a separate PB recording until a faster PB replaces it. Both survive new
 scrambles, reset, size switches and reloads in the existing per-size solve storage.
-Only these two recordings are retained; ordinary past times stay compact.
+Every new PB is also archived permanently in the personal recording album,
+which is opened from the album icon in the topbar. Older PB videos stay there
+after a faster PB replaces them. Any shared recording can be saved manually;
+album rows show puzzle size, solve time, date, time and a [PB] badge.
 
-Settings → Recordings → Watch or share a solve (also available from History)
-opens the replay viewer. Play, pause, seek and change playback speed; download a
-`.ftoreplay.json` file to share or import one from someone else. Playback has its
+Settings → Solves → Watch or share a solve (also available from History)
+opens the recording chooser. Watch it directly on the home screen with the solver’s
+keyboard, recorded sounds and previous-PB splits. The action island becomes a
+progress bar. Play, pause, seek and change playback speed; download a
+`.ftoreplay.json` file or paste a link/recording text from someone else. Playback has its
 own 3D viewer and does not alter the live puzzle, times, bindings or PB.
 
 The versioned `fto-replay-v1` file stores the initial scramble, view, face colors
 and keyboard configuration, plus timestamped key transitions, pointer gestures,
-displayed camera poses, pauses, accepted actions, resolved turns and animation
+displayed camera poses, accepted actions, resolved turns and animation
 starts. Resolved turns ensure faithful playback even if bindings later change.
-Inspection and pauses are retained in the replay timeline; the official solve
-time remains separately recorded. Older times cannot acquire recordings retroactively.
+Recording starts at the first move, without inspection. Playback adds the actual
+scramble from perfect CIF at 160 ms per turn, a 1-second pause, a slow 2-second shortest orbit
+into the starting view, and a second 1-second pause. The full scramble is shown
+as a subtitle throughout this introduction. Paused intervals and time away after a reload are excluded from recordings.
+Older recordings also skip pauses during playback; the official solve time is stored separately. Share icons beside the current time and PB open a modal
+with Copy as link, Copy as text, Download as JSON and Save to album. Links use
+`https://ftoers.web.app/virtual/#replay=…`, with UTF-8 JSON compressed using gzip
+before Base64URL encoding. No recording upload or link-shortening server is used. Older times cannot acquire recordings retroactively.
+
+## Move your data to another computer
+
+Settings → Your data exports or restores a complete JSON backup: every puzzle’s
+progress, history, times, PB and last recordings, the complete recording album,
+splits, custom method list,
+keyboard profiles, colors, controls and display settings. Import validates the
+whole backup before offering Restore backup; restoration replaces this device’s
+FTO data and reloads the app. Other local-storage data is untouched. See the
+[backup guide](docs/user-data.md).
 
 ## Model and verification
 
@@ -74,7 +97,7 @@ Dependencies, generated builds, test reports, caches, and local environment/cred
 
 ## Keyboard presets and license
 
-In **Keyboard & bindings**, use **Reset to Abid's Default** or **Reset to csTimer's Default** to replace the current size's bindings/modes. Puzzle progress, timing, overlay preferences, and other sizes' profiles are preserved.
+In **Keyboard & bindings**, open **Presets & files** and use **Abid’s defaults** or **csTimer defaults** to replace the current size's bindings/modes. Puzzle progress, timing, overlay preferences, and other sizes' profiles are preserved.
 
 Abid's preset adds independent U-axis rotations: **Backquote** = nUw and **Minus (-)** = nUw′ for an n×n puzzle. They do not start timing, count toward TPS, or consume a selected move suffix.
 

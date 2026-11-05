@@ -6,7 +6,7 @@ async function choose(page,size){await page.locator('#puzzles').click();await pa
 
 test('topbar puzzle icon opens a modal and preserves per-size progress',async({page})=>{
  await page.goto('/');await ready(page);await expect(page.locator('#size,.size-picker')).toHaveCount(0);
- expect(await page.locator('.topbar-actions button').evaluateAll(els=>els.map(el=>el.id))).toEqual(['puzzles','settings','about']);
+ expect(await page.locator('.topbar-actions button').evaluateAll(els=>els.map(el=>el.id))).toEqual(['album','puzzles','settings','about']);
  await page.locator('#puzzles').click();await expect(page.locator('#puzzle-dialog')).toBeVisible();await expect(page.locator('#puzzle-choices button')).toHaveCount(19);await expect(page.locator('[data-size="3"]')).toHaveAttribute('aria-pressed','true');
  await page.locator('[data-size="4"]').click();await expect(page.locator('#puzzle-dialog')).toBeHidden();expect((await snap(page)).size).toBe(4);
  await page.keyboard.press('KeyF');await page.waitForFunction(()=>!window.fto.snapshot().busy);await choose(page,3);expect((await snap(page)).history).toHaveLength(0);await choose(page,4);expect((await snap(page)).history).toHaveLength(1);

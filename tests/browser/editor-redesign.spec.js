@@ -1,0 +1,48 @@
+import {test,expect} from '@playwright/test';
+const ready=page=>page.waitForFunction(()=>window.fto?.snapshot().ready);
+const snap=page=>page.evaluate(()=>window.fto.snapshot());
+async function openKeys(page){await page.goto('/');await ready(page);await page.locator('#settings').click();await page.locator('#edit-keyboard').click();}
+test('settings scroll internally; import has a picker, drop zone and useful errors',async({page})=>{
+ await page.goto('/');await ready(page);await page.locator('#settings').click();await expect(page.locator('.settings-nav')).toHaveCount(0);
+ const header=await page.locator('.settings-header').boundingBox();await page.locator('#open-user-data-import').click();await expect(page.locator('#user-data-import-dialog')).toBeVisible();await expect(page.locator('#user-data-drop')).toContainText('Drop your backup here');
+ const chooser=page.waitForEvent('filechooser');await page.locator('#choose-user-data-file').click();(await chooser);await page.locator('#import-user-data').setInputFiles({name:'bad.json',mimeType:'application/json',buffer:Buffer.from('{}')});await expect(page.locator('#user-data-import-message')).toContainText('Not an FTO');
+ await page.locator('#close-user-data-import').click();expect((await page.locator('.settings-header').boundingBox()).y).toBeCloseTo(header.y,0);expect(await page.locator('#settings-dialog').evaluate(el=>el.scrollTop)).toBe(0);
+ await page.locator('#settings-dialog').screenshot({path:'test-results/settings-no-tabs.png'});
+});
+test('action-first editor replaces, adds, unassigns and resolves conflicts without changing the live puzzle',async({page})=>{
+ test.setTimeout(60000);await openKeys(page);await expect(page.locator('#keyboard-puzzle')).toHaveValue('3');
+ await page.locator('#catalog-category').selectOption('turns');const U=page.locator('tr[data-action="move:U:1:outer:1:false"]');
+ await U.getByRole('button',{name:'Add key for U',exact:true}).click();await page.keyboard.press('F8');await page.locator('#bind-key-save').click();await expect(U.getByRole('button',{name:'Replace F8 for U',exact:true})).toBeVisible();
+ await U.getByRole('button',{name:'Replace F8 for U',exact:true}).click();await page.keyboard.press('F9');await page.locator('#bind-key-save').click();await expect(U.getByRole('button',{name:'Replace F9 for U',exact:true})).toBeVisible();await expect(U.getByRole('button',{name:'Replace F8 for U',exact:true})).toHaveCount(0);
+ await U.getByRole('button',{name:'Add key for U',exact:true}).click();await page.keyboard.press('KeyF');await page.locator('#bind-key-save').click();await expect(page.locator('#bind-key-message')).toContainText('assigned');await page.locator('#bind-key-replace').click();await expect(U.getByRole('button',{name:'Replace F for U',exact:true})).toBeVisible();
+ await U.getByRole('button',{name:'Unassign F9 from U',exact:true}).click();await expect(U.getByRole('button',{name:'Replace F9 for U',exact:true})).toHaveCount(0);
+ await page.locator('#keyboard-puzzle').selectOption('9');expect((await snap(page)).size).toBe(3);await page.locator('#catalog-search').fill("8R'");await expect(page.locator('#catalog-rows')).toContainText('8R′');await page.locator('#catalog-search').fill('9BLw');await expect(page.locator('#catalog-rows')).toContainText('9BLw');
+ const row=page.locator('tr[data-action="move:BL:1:wide:9:false"]');await row.getByRole('button',{name:'Add key for 9BLw',exact:true}).click();await page.keyboard.press('F8');await page.locator('#bind-key-save').click();
+ const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('master-fto-keyboard-v2')).profiles);expect(saved[9].modes[0].bindings.some(b=>b.trigger==='F8'&&b.action.depth===9&&b.action.face==='BL')).toBe(true);expect((await snap(page)).size).toBe(3);expect((await snap(page)).keyboard.config.modes[0].bindings.some(b=>b.trigger==='F'&&b.action.face==='U'&&b.action.dir===1)).toBe(true);
+ await page.locator('#keyboard-puzzle').selectOption('3');await page.locator('#catalog-search').fill('');await page.locator('#catalog-category').selectOption('actions');await page.locator('#keyboard-dialog').screenshot({path:'test-results/action-keybindings.png'});await page.locator('#close-keyboard').click();await page.locator('#close-settings').click();await page.keyboard.press('KeyF');await expect.poll(async()=>(await snap(page)).history.at(-1)).toMatchObject({name:'U',dir:1});await page.reload();await ready(page);expect((await snap(page)).keyboard.config.modes[0].bindings.some(b=>b.trigger==='F'&&b.action.face==='U'&&b.action.dir===1)).toBe(true);
+});
+test('custom methods open directly and edit a different puzzle without switching the live puzzle',async({page})=>{
+ await page.goto('/');await ready(page);await page.locator('#settings').click();await page.locator('#configure-splits').click();await expect(page.locator('#split-puzzle')).toHaveValue('3');await page.locator('#split-puzzle').selectOption('4');await page.locator('#split-method').selectOption('custom');await page.locator('#method-name').fill('Four finish');await page.getByLabel('Remove phase 1',{exact:true}).click();await page.getByLabel('Phase 1 name',{exact:true}).fill('LL');await page.locator('#save-splits').click();await expect(page.locator('#custom-phases')).toBeVisible();await expect(page.locator('#method-name')).toHaveValue('Four finish');await expect(page.locator('#edit-method')).toHaveCount(0);expect((await snap(page)).size).toBe(3);
+ await page.locator('#split-puzzle').selectOption('3');await expect(page.locator('#split-method option:checked')).toHaveText('Off');await page.locator('#split-puzzle').selectOption('4');await expect(page.locator('#method-name')).toHaveValue('Four finish');await page.locator('#splits-dialog').screenshot({path:'test-results/splits-direct-editor.png'});
+});
+for(const width of [390,320])test(`binding and split editors fit ${width}px`,async({page})=>{
+ await page.setViewportSize({width,height:844});await openKeys(page);
+ expect(await page.locator('.keyboard-editor-body').evaluate(el=>el.scrollWidth-el.clientWidth)).toBeLessThanOrEqual(1);await page.locator('#keyboard-dialog').screenshot({path:`test-results/keybindings-${width}.png`});await page.locator('#close-keyboard').click();await page.locator('#configure-splits').click();await page.locator('#split-method').selectOption('custom');expect(await page.locator('#splits-dialog').evaluate(el=>el.scrollWidth-el.clientWidth)).toBeLessThanOrEqual(1);
+});
+
+test('mode tools, chords and tap sequences save independently and the complete action list stays reachable',async({page})=>{
+ test.setTimeout(60000);await openKeys(page);await page.getByText('Mode settings',{exact:true}).click();await page.locator('#catalog-copy-mode').click();await page.locator('#catalog-mode-name').fill('Extra');await page.locator('#catalog-mode-name').press('Tab');const mode=await page.locator('#catalog-mode').inputValue();
+ await page.locator('#catalog-default-mode').selectOption(mode);await page.locator('#catalog-use-mode').click();await page.locator('#catalog-category').selectOption('actions');const reset=page.locator('tr[data-action="command:::reset"]');
+ await reset.getByRole('button',{name:'Add key for Reset puzzle',exact:true}).click();await page.keyboard.press('Control+F8');await expect(page.locator('#bind-key-trigger')).toHaveValue(/Ctrl.*F8|F8.*Ctrl/);await page.locator('#bind-key-save').click();
+ await reset.getByRole('button',{name:'Add key for Reset puzzle',exact:true}).click();await page.locator('#bind-key-trigger').fill('F9 F10');await page.locator('#bind-key-save').click();await expect(reset).toContainText('F9 F10');
+ await page.locator('#catalog-category').selectOption('all');await expect(page.locator('#catalog-rows tr')).toHaveCount(718);await expect(page.locator('#catalog-count')).toBeInViewport();
+ await page.locator('#close-keyboard').click();await page.locator('#close-settings').click();await page.reload();await ready(page);expect((await snap(page)).keyboard.config.defaultMode).toBe(mode);expect((await snap(page)).keyboard.config.modes.find(m=>m.id===mode).bindings.some(b=>b.trigger==='F9 F10')).toBe(true);
+});
+
+test('a backup can be dropped, cancelled safely, and restored from the import modal',async({page})=>{
+ test.setTimeout(60000);await page.goto('/');await ready(page);await page.locator('#settings').click();await page.locator('#open-user-data-import').click();
+ const data=await page.evaluate(async()=>{const {exportUserData}=await import('/src/user-data.js');const data=exportUserData(localStorage);data.entries['master-fto-roundtrip']='restored';return data;});
+ async function drop(){const transfer=await page.evaluateHandle(data=>{const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(data)],'backup.json',{type:'application/json'}));return dt;},data);await page.locator('#user-data-drop').dispatchEvent('drop',{dataTransfer:transfer});await transfer.dispose();}
+ await drop();await expect(page.locator('#confirm-message')).toContainText('saved times');await page.locator('#confirm-cancel').click();await expect(page.locator('#choose-user-data-file')).toBeEnabled();await expect(page.locator('#user-data-import-dialog')).toBeVisible();expect(await page.evaluate(()=>localStorage.getItem('master-fto-roundtrip'))).toBe(null);
+ await drop();await expect(page.locator('#confirm-dialog')).toBeVisible();await Promise.all([page.waitForEvent('load'),page.locator('#confirm-accept').click()]);await ready(page);expect(await page.evaluate(()=>localStorage.getItem('master-fto-roundtrip'))).toBe('restored');
+});

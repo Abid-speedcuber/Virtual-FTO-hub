@@ -3,7 +3,7 @@ export const FACE_NAMES=['U','R','F','BR','L','B','BL','D'];
 export const MODIFIERS=['Shift','Control','Alt','Meta'];
 export const SUFFIX_HOLD_MS=200;
 export const modifierOf=code=>/^(Shift|Control|Alt|Meta)(Left|Right)$/.exec(code)?.[1]??code;
-const aliases={ctrl:'Control',control:'Control',shift:'Shift',alt:'Alt',option:'Alt',cmd:'Meta',command:'Meta',meta:'Meta',space:'Space',spacebar:'Space',esc:'Escape',escape:'Escape',enter:'Enter',return:'Enter',tab:'Tab',backspace:'Backspace',capslock:'CapsLock',delete:'Delete',del:'Delete',insert:'Insert',home:'Home',end:'End',pageup:'PageUp',pagedown:'PageDown',up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',';':'Semicolon',"'":'Quote',',':'Comma','.':'Period','/':'Slash','[':'BracketLeft',']':'BracketRight','\\':'Backslash','`':'Backquote','-':'Minus','=':'Equal'};
+const aliases={ctrl:'Control',control:'Control',shift:'Shift',alt:'Alt',option:'Alt',cmd:'Meta',command:'Meta',meta:'Meta',win:'Meta',windows:'Meta',super:'Meta',space:'Space',spacebar:'Space',esc:'Escape',escape:'Escape',enter:'Enter',return:'Enter',tab:'Tab',backspace:'Backspace',capslock:'CapsLock',delete:'Delete',del:'Delete',insert:'Insert',home:'Home',end:'End',pageup:'PageUp',pagedown:'PageDown',up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight',';':'Semicolon',"'":'Quote',',':'Comma','.':'Period','/':'Slash','[':'BracketLeft',']':'BracketRight','\\':'Backslash','`':'Backquote','-':'Minus','=':'Equal'};
 export function codeName(token){
  if(aliases[token.toLowerCase()])return aliases[token.toLowerCase()];
  if(/^[a-z]$/i.test(token))return `Key${token.toUpperCase()}`;
@@ -25,6 +25,7 @@ const held=(pressed,key)=>pressed.has(key)||[...pressed].some(code=>modifierOf(c
 const strokeMatches=(stroke,pressed,code)=>intersects(stroke,[code])&&stroke.every(key=>held(pressed,key));
 const compatibleKey=(a,b)=>a===b||(modifierOf(a)===modifierOf(b)&&(MODIFIERS.includes(a)||MODIFIERS.includes(b)));
 const sameStroke=(a,b)=>a.length===b.length&&a.every(key=>b.some(other=>compatibleKey(key,other)));
+export function equivalentTrigger(a,b){const x=parseTrigger(a),y=parseTrigger(b);return x.length===y.length&&x.every((step,i)=>sameStroke(step,y[i]));}
 export const validModeName=name=>typeof name==='string'&&/^\S{1,6}(?: \S{1,6})?$/u.test(name);
 export function validateConfig(config,{legacyNames=false}={}){
  if(config?.suffixMode!==undefined&&!['toggle','one-shot'].includes(config.suffixMode))throw Error('Suffix behavior must be toggle or one-shot.');
@@ -63,6 +64,7 @@ export function validateConfig(config,{legacyNames=false}={}){
  }
  return config;
 }
+export const UNDO_REDO_SHORTCUTS=[['Ctrl+Z','undo'],['Meta+Z','undo'],['Backspace','undo'],['Shift+Backspace','redo'],['Ctrl+Shift+Z','redo'],['Meta+Shift+Z','redo'],['Ctrl+Y','redo']];
 export function defaultConfig(size=4){
  let id=0;const bindings=[],add=(trigger,action)=>bindings.push({id:`default-${++id}`,trigger,action});
  const move=(face,dir=1,kind='outer',depth=1)=>({type:'move',face,dir,kind,depth});
@@ -73,7 +75,7 @@ export function defaultConfig(size=4){
   add(`Shift+${n}`,{type:'depth',depth:n?n+10:20});
  }
  add('NumpadMultiply',{type:'depth',depth:18});
- for(const [trigger,command] of [['Ctrl+Z','undo'],['Meta+Z','undo'],['Backspace','undo'],['Shift+Backspace','redo'],['Ctrl+Shift+Z','redo'],['Meta+Shift+Z','redo'],['Ctrl+Y','redo'],['Escape','pause']])add(trigger,{type:'command',command});
+ for(const [trigger,command] of [...UNDO_REDO_SHORTCUTS,['Escape','pause']])add(trigger,{type:'command',command});
  add('Shift',{type:'hold-slice'});
  add('Backquote',{type:'rotate',face:'U',dir:1,kind:'outer',depth:1});add('Minus',{type:'rotate',face:'U',dir:-1,kind:'outer',depth:1});
  let modes=[{id:'cif',name:'CIF',bindings}];
@@ -93,9 +95,10 @@ export function defaultConfig(size=4){
   const center=[['F','U',1,'outer',1],['D','U',-1,'outer',1],['J','R',-1,'slice',2],['U','R',1,'slice',2],['K','R',-1,'outer',1],['I','R',1,'outer',1]].map(([trigger,face,dir,kind,depth])=>({id:`center-${trigger}`,trigger,action:move(face,dir,kind,depth)}));
   center.push({id:'center-rot-u',trigger:'Backquote',action:{type:'rotate',face:'U',dir:1,kind:'outer',depth:1}},{id:'center-rot-ui',trigger:'Minus',action:{type:'rotate',face:'U',dir:-1,kind:'outer',depth:1}},{id:'center-slice',trigger:'Shift',action:{type:'hold-slice'}},{id:'center-pause',trigger:'Escape',action:{type:'command',command:'pause'}},{id:'center-undo',trigger:'Backspace',action:{type:'command',command:'undo'}},{id:'center-redo',trigger:'Shift+Backspace',action:{type:'command',command:'redo'}},{id:'center-exit',trigger:'M',action:{type:'mode',mode:'cif'}},{id:'center-right',trigger:'Tab',action:{type:'mode',mode:'eif-r'}},{id:'center-left',trigger:'C',action:{type:'mode',mode:'eif-l'}});modes.push({id:'e-center',name:'E– cntr',bindings:center});
  }
+ const centerMode=modes.find(mode=>mode.id==='e-center');if(centerMode)for(const [trigger,command] of UNDO_REDO_SHORTCUTS.filter(([trigger])=>trigger.includes('+')&&trigger!=='Shift+Backspace'))centerMode.bindings.push({id:`center-shortcut-${trigger}`,trigger,action:{type:'command',command}});
  for(const mode of modes)for(const [trigger,dir] of [['Q',1],['P',1],['Z',-1],['Period',-1]])mode.bindings.push({id:`right-rotation-${mode.id}-${trigger}`,trigger,action:{type:'rotate',face:'R',dir,kind:'outer',depth:1}});
  for(const mode of modes)mode.bindings.push({id:`view-snap-${mode.id}`,trigger:'[',action:{type:'command',command:'snap-view'}});
- return {version:1,viewSnapVersion:1,preset:'abid',rotationVersion:1,rightRotationVersion:1,eifVersion:1,sliceVersion:1,centerVersion:2,undoVersion:1,suffixMode:'one-shot',activeMode:'cif',defaultMode:'cif',modes,display:{show:true,layout:'60',numpad:false,width:900,cornerVersion:3,opacity:100,showTPS:true,window:1},sequenceTimeout:1400};
+ return {version:1,platformShortcutVersion:1,viewSnapVersion:1,preset:'abid',rotationVersion:1,rightRotationVersion:1,eifVersion:1,sliceVersion:1,centerVersion:2,undoVersion:1,suffixMode:'one-shot',activeMode:'cif',defaultMode:'cif',modes,display:{show:true,layout:'60',numpad:false,width:900,cornerVersion:3,opacity:100,showTPS:true,window:1},sequenceTimeout:1400};
 }
 // Upgrade shipped bindings without replacing user-owned keys or modes.
 export function upgradeKeyboardDefaults(config){
@@ -111,6 +114,10 @@ export function upgradeKeyboardDefaults(config){
   mode.bindings.push({id,trigger,action});
   try{validateConfig(config);}catch{mode.bindings.pop();}
  };
+ if(config.platformShortcutVersion!==1){
+  for(const mode of config.modes.filter(mode=>['cif','eif-r','eif-l','e-center','default'].includes(mode.id)))for(const [trigger,command] of UNDO_REDO_SHORTCUTS)add(mode,trigger,{type:'command',command},`platform-${mode.id}-${trigger}`);
+  config.platformShortcutVersion=1;
+ }
  const center=config.modes.find(m=>m.id==='e-center');
  if(config.centerVersion!==2&&center){
   const old=[['F','U',-1,'outer',1],['H','U',1,'outer',1],['K','R',1,'outer',1],['D','R',-1,'outer',1],['S','R',-1,'wide',2],['L','R',1,'wide',2],['E','R',-1,'slice',2],['I','R',1,'slice',2]];

@@ -6,7 +6,7 @@ const U={normal:[1,1,1],layer:'slice',depth:1,count:1,dir:1,name:'U'},R={normal:
 const view={rotation:[0,0,0,1],radius:10};
 const arm=(recorder,size=3)=>recorder.arm({size,scramble:[U,R],view,keyboard:{preset:'abid'},colors:{U:'#ffffff'}});
 
-test('recordings retain raw keys, views, resolved turns, pauses and animation interruption on 2x2–4x4',()=>{
+test('recordings retain raw keys, views and interrupted turns while excluding pauses on 2x2–4x4',()=>{
  for(const size of [2,3,4]){
   let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder,size);
   now=20;recorder.event('key',{code:'KeyF',edge:'down',repeat:false});recorder.event('start');const id=recorder.accept({type:'move',elapsedMs:0});
@@ -14,10 +14,10 @@ test('recordings retain raw keys, views, resolved turns, pauses and animation in
   now=60;recorder.event('turn',{id,move:inverse(R)}); // animation was interrupted
   now=70;recorder.event('key',{code:'KeyF',edge:'up'});recorder.event('pause');now=700;recorder.event('resume');
   now=730;const second=recorder.accept({type:'move',elapsedMs:80});recorder.event('turn',{id:second,move:inverse(U)});recorder.finish(80,true);
-  const recording=validateRecording(recorder.last);assert.equal(recording.size,size);assert.equal(recording.events.find(e=>e.type==='key').at,20);
-  const during=recordingFrame(recording,40);assert.equal(during.motions.length,1);assert.deepEqual(during.keys,['KeyF']);
-  const interrupted=recordingFrame(recording,65);assert.equal(interrupted.motions.length,0);assert.equal(interrupted.view.radius,11);
-  const paused=recordingFrame(recording,500);assert.equal(paused.paused,true);assert.equal(paused.elapsed,50);
+  const recording=validateRecording(recorder.last);assert.equal(recording.size,size);assert.equal(recording.events.find(e=>e.type==='key').at,0);
+  const during=recordingFrame(recording,20);assert.equal(during.motions.length,1);assert.deepEqual(during.keys,['KeyF']);
+  const interrupted=recordingFrame(recording,45);assert.equal(interrupted.motions.length,0);assert.equal(interrupted.view.radius,11);
+  assert.equal(recording.duration,80);assert.ok(!recording.events.some(e=>['pause','resume'].includes(e.type)));const afterCut=recordingFrame(recording,55);assert.equal(afterCut.paused,false);assert.equal(afterCut.elapsed,55);
   const final=recordingFrame(recording,recording.duration);assert.ok(isSolved(final.state));assert.equal(final.elapsed,80);assert.equal(final.motions.length,0);
   assert.equal(signature(recordingFrame(recording,0).state),signature([U,R].reduce(applyMove,solvedState(size))));
  }
@@ -36,12 +36,12 @@ test('last solve changes each finish, PB stays until a new best, and both surviv
 test('an unfinished recording survives reload with its original event times and animation IDs',()=>{
  let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder);now=50;recorder.event('start');const id=recorder.accept({type:'move',elapsedMs:0});recorder.event('pause');
  const restored=new SolveRecorder(JSON.parse(JSON.stringify(recorder.serialize())),()=>now);now=500;restored.event('resume');assert.ok(restored.accept({type:'undo',elapsedMs:20})>id);
- assert.equal(restored.attempt.events[0].at,50);assert.equal(restored.attempt.events.at(-2).at,500);
+ assert.equal(restored.attempt.events[0].at,0);assert.equal(restored.attempt.events.at(-1).at,0);
 });
 
 test('shared recordings reject corrupt views, moves, event types, times and incomplete files',()=>{
- let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder);now=10;recorder.event('turn',{id:1,move:U});recorder.finish(10,true);
- for(const mutate of [d=>d.size=20,d=>d.initial.view.rotation=[0,0,0,0],d=>d.events[0].move.normal=[0,1,0],d=>d.events[0].at=-1,d=>d.events[0].type='script',d=>d.complete=false,d=>d.duration=0]){
+ let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder);recorder.event('start');now=10;recorder.event('turn',{id:1,move:U});recorder.finish(10,true);
+ for(const mutate of [d=>d.size=20,d=>d.initial.view.rotation=[0,0,0,0],d=>d.events.find(e=>e.type==='turn').move.normal=[0,1,0],d=>d.events[0].at=-1,d=>d.events[0].type='script',d=>d.complete=false,d=>d.duration=0]){
   const data=structuredClone(recorder.last);mutate(data);assert.throws(()=>validateRecording(data));
  }
 });
@@ -55,5 +55,5 @@ test('incremental playback matches independent seeking forwards and backwards',a
 
 test('a final accepted move that finishes during a pause replays the finished puzzle in color',()=>{
  let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder);now=10;recorder.event('start');now=50;recorder.event('pause');now=100;recorder.finish(40,true);
- assert.equal(recordingFrame(recorder.last,70).paused,true);assert.equal(recordingFrame(recorder.last,100).paused,false);
+ assert.equal(recorder.last.duration,40);assert.equal(recordingFrame(recorder.last,40).paused,false);
 });
