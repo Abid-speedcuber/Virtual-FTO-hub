@@ -105,6 +105,7 @@ export function upgradeKeyboardDefaults(config){
  // Retire the fixed Home view. Keep custom keys that used it, but point them
  // at hold-preserving snap instead; the bare Home default is removed.
  for(const mode of config.modes){
+  mode.bindings=mode.bindings.filter(b=>!((b.action.type==='depth'||b.action.type==='move'&&b.action.kind==='wide')&&b.action.depth===1));
   mode.bindings=mode.bindings.filter(b=>!(b.action.type==='command'&&b.action.command==='home'&&triggerKey(b.trigger)==='Home'));
   for(const binding of mode.bindings)if(binding.action.type==='command'&&binding.action.command==='home')binding.action.command='snap-view';
  }

@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bindingCatalog,bindingActionKey,bindingSubgroups,inBindingSubgroup} from '../src/binding-catalog.js';
+import {bindingCatalog,bindingActionKey,bindingSubgroups,inBindingSubgroup,relevantBindingAction} from '../src/binding-catalog.js';
 import {defaultConfig,validateConfig,equivalentTrigger} from '../src/keyboard-engine.js';
 test('catalog covers every valid layer, direction and supported action on every puzzle',()=>{
  for(let size=2;size<=20;size++){
   const config=defaultConfig(size),rows=bindingCatalog(size,config),keys=rows.map(row=>row.key);assert.equal(new Set(keys).size,keys.length);
   for(const row of rows)validateConfig({...config,modes:[...config.modes.map(mode=>({...mode,bindings:[]})),{id:'test',name:'Test',bindings:[{id:'one',trigger:'F',action:row.action}]}]});
-  for(const mode of config.modes)for(const binding of mode.bindings)assert.ok(keys.includes(bindingActionKey(binding.action)));
-  assert.ok(rows.some(row=>row.label===`${size}R′`));assert.ok(rows.some(row=>row.label===`${size===2?'':size}BLw`));assert.ok(rows.some(row=>row.label==='Suffix 9w'));assert.ok(rows.some(row=>row.action.command==='snap-view'));
+  for(const mode of config.modes)for(const binding of mode.bindings.filter(binding=>relevantBindingAction(binding.action,size)))assert.ok(keys.includes(bindingActionKey(binding.action)));
+  assert.ok(rows.some(row=>row.label===`${size}R′`));assert.ok(rows.some(row=>row.label===`${size===2?'':size}BLw`));assert.ok(rows.some(row=>row.label===`Suffix ${size}w`));assert.ok(rows.some(row=>row.action.command==='snap-view'));
  }
 });
 
@@ -15,15 +15,8 @@ test('conflict matching treats generic modifiers as overlaps with either physica
  assert.equal(equivalentTrigger('Ctrl+F','F+ControlLeft'),true);assert.equal(equivalentTrigger('Shift','ShiftRight'),true);assert.equal(equivalentTrigger('ShiftLeft','ShiftRight'),false);assert.equal(equivalentTrigger('F8 F9','F8'),false);
 });
 
-test('every puzzle lists unassigned slices and wide turns through depth 20',()=>{
- for(const size of [2,3,4,9,20]){
-  const config=defaultConfig(size),rows=bindingCatalog(size,config);
-  for(const face of ['U','R','F','BR','L','B','BL','D'])for(const dir of [1,-1])for(let depth=1;depth<=20;depth++)for(const kind of ['slice','wide']){
-   const key=bindingActionKey({type:'move',face,dir,kind,depth});assert.ok(rows.some(row=>row.key===key),`${size}: missing ${key}`);
-  }
-  const nine=rows.find(row=>row.label==='9BRw');assert.ok(nine);assert.equal(config.modes[0].bindings.some(binding=>bindingActionKey(binding.action)===nine.key),false);
-  if(size<9)assert.match(nine.detail,/larger puzzle/);
- }
+test('catalog contains every relevant slice and width, hiding larger-puzzle and 1w actions',()=>{
+ for(const size of [2,3,4,9,20]){const config=defaultConfig(size),rows=bindingCatalog(size,config);for(const face of ['U','R','F','BR','L','B','BL','D'])for(const dir of [1,-1])for(let depth=2;depth<=size;depth++)for(const kind of ['slice','wide'])assert.ok(rows.some(row=>row.key===bindingActionKey({type:'move',face,dir,kind,depth})));assert.equal(rows.some(row=>row.action.depth>size&&['move','depth'].includes(row.action.type)),false);assert.equal(rows.some(row=>row.label==='1Uw'||row.label==='Suffix 1w'),false);}
 });
 
 test('mode actions follow the current mode library, including newly added, renamed and deleted modes',()=>{
@@ -41,8 +34,8 @@ test('mode switch and hold entries stay together for all 40 modes',()=>{
 
 test('depth subgroups expose every face and direction together, and mode subgroups follow the library',()=>{
  const config=defaultConfig(3),rows=bindingCatalog(3,config);
- for(const category of ['slices','wide'])for(let depth=1;depth<=20;depth++){
-  assert.ok(bindingSubgroups(category,config).some(([value])=>value===`depth:${depth}`));
+ for(const category of ['slices','wide'])for(let depth=2;depth<=3;depth++){
+  assert.ok(bindingSubgroups(category,config,3).some(([value])=>value===`depth:${depth}`));
   const group=rows.filter(row=>row.category===category&&inBindingSubgroup(row,`depth:${depth}`));assert.equal(group.length,16);assert.equal(new Set(group.map(row=>row.action.face)).size,8);
  }
  config.modes.push({id:'custom',name:'New mode',bindings:[]});assert.ok(bindingSubgroups('modes',config).some(([value,label])=>value==='mode:custom'&&label==='New mode'));

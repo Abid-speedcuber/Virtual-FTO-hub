@@ -33,10 +33,9 @@ for(const size of [2,3,4])test(`${size}x${size} captures turns, keys, held view 
  const stored=await records(page),data=validateRecording(stored.last);expect(stored.pbIsLast).toBe(true);expect(data.size).toBe(size);expect(data.events.filter(e=>e.type==='turn')).toHaveLength(2);
  expect(data.events.filter(e=>e.type==='key').map(e=>e.code)).toContain('KeyK');data.initial.view.rotation.forEach((v,i)=>expect(v).toBeCloseTo(actualView[i],10));expect(isSolved(recordingFrame(data,data.duration).state)).toBe(true);
  await page.reload();await ready(page);expect((await snapshot(page)).recordings.pb.ms).toBe(data.solveMs);
- const before=await snapshot(page);await page.locator('#settings').click();await page.locator('#open-recordings').click();await expect(page.locator('#watch-recording')).toBeVisible();
- const download=page.waitForEvent('download');await page.locator('#recording-export').click();await page.locator('#share-json').click();expect((await download).suggestedFilename()).toContain('.ftoreplay.json');await page.locator('#close-share').click();
- await page.locator('#recording-import').setInputFiles({name:'shared.ftoreplay.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(data))});await expect(page.locator('#recording-title')).toContainText(`${size} × ${size}`);
- await page.locator('#watch-recording').click();await expect(page.locator('#home-replay-view canvas')).toBeVisible();
+ const before=await snapshot(page);await page.locator('#share-current').click();await expect(page.locator('#share-watch')).toBeVisible();
+ const download=page.waitForEvent('download');await page.locator('#share-json').click();expect((await download).suggestedFilename()).toContain('.ftoreplay.json');await page.locator('#close-share').click();
+ await page.locator('#album').click();await page.locator('#album-import-recording').click();await page.locator('#recording-import').setInputFiles({name:'shared.ftoreplay.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(data))});await expect(page.locator('#home-replay-view canvas')).toBeVisible();
  const duration=(await snapshot(page)).replay.duration;await page.locator('#home-replay-progress').evaluate((el,value)=>{el.value=String(value);el.dispatchEvent(new Event('input',{bubbles:true}));},duration);await expect(page.locator('#timer-value')).toHaveText(formatTime(data.solveMs));
  await page.locator('#home-replay-exit').click();expect(signature((await snapshot(page)).state)).toBe(signature(before.state));expect((await snapshot(page)).timer.completed).toBe(before.timer.completed);
 });
@@ -67,5 +66,5 @@ test('a newly scrambled solve is recorded automatically through the real scrambl
  for(const move of scrambled.history.toReversed())await page.keyboard.press(keys[move.name][move.dir===1?1:0]);
  await expect.poll(async()=>(await snapshot(page)).timer.status).toBe('finished');
  const saved=await records(page),data=validateRecording(saved.last);expect(saved.pbIsLast).toBe(true);expect(data.initial.scramble).toEqual(scrambled.history);expect(data.events.some(e=>e.type==='key')).toBe(true);expect(isSolved(recordingFrame(data,data.duration).state)).toBe(true);
- await page.locator('#settings').click();await page.locator('#open-recordings').click();await expect(page.locator('#watch-recording')).toBeVisible();await page.locator('#watch-recording').click();await page.locator('.solve-layout').screenshot({path:'test-results/solve-recording-player.png'});
+ await page.locator('#share-current').click();await page.locator('#share-watch').click();await page.locator('.solve-layout').screenshot({path:'test-results/solve-recording-player.png'});
 });

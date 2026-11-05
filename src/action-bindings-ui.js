@@ -10,26 +10,20 @@ const el=(tag,className,text)=>{const item=document.createElement(tag);if(classN
 export class ActionBindingsUI{
  constructor(owner){
   this.owner=owner;this.size=owner.size;this.mode=null;this.listening=false;
-  for(let size=2;size<=20;size++)$('keyboard-puzzle').append(new Option(size===2?'Baby FTO (2×2)':size===4?'Master FTO (4×4)':`${size} × ${size} FTO`,String(size)));
+  for(const id of ['keyboard-puzzle','keyboard-preferences-puzzle'])for(let size=2;size<=20;size++)$(id).append(new Option(size===2?'Baby FTO (2×2)':size===4?'Master FTO (4×4)':`${size} × ${size} FTO`,String(size)));
   for(const [value,label] of BINDING_CATEGORIES)$('catalog-category').append(new Option(label,value));
-  $('keyboard-puzzle').onchange=()=>{this.size=Number($('keyboard-puzzle').value);this.mode=null;this.render();};
-  $('catalog-mode').onchange=()=>{this.mode=$('catalog-mode').value;this.render();};
+  for(const id of ['keyboard-puzzle','keyboard-preferences-puzzle'])$(id).onchange=()=>{this.size=Number($(id).value);this.mode=null;this.render();};
+  $('customize-bindings').onclick=()=>{this.render();$('bindings-dialog').showModal();};$('close-bindings').onclick=()=>$('bindings-dialog').close();
+  this.installModeMenu();
   $('catalog-search').oninput=()=>{if($('catalog-search').value.trim()){$('catalog-category').value='all';$('catalog-subgroup').value='all';}this.renderRows();};
   $('catalog-category').oninput=()=>{$('catalog-search').value='';$('catalog-subgroup').value='all';this.renderRows();document.querySelector('.keyboard-editor-body').scrollTop=0;};
   $('catalog-subgroup').oninput=()=>{this.renderRows();document.querySelector('.keyboard-editor-body').scrollTop=0;};
-  $('catalog-default-mode').onchange=()=>this.change(config=>config.defaultMode=$('catalog-default-mode').value);
-  $('catalog-use-mode').onclick=()=>this.change(config=>config.activeMode=this.mode);
-  $('catalog-mode-name').onchange=()=>{if(this.change(config=>config.modes.find(m=>m.id===this.mode).name=$('catalog-mode-name').value.trim()))this.showModeActions();};
-  $('catalog-new-mode').onclick=()=>this.addMode(false);$('catalog-copy-mode').onclick=()=>this.addMode(true);
-  $('catalog-delete-mode').onclick=()=>{if(this.change(config=>{
-   const id=this.mode;config.modes=config.modes.filter(m=>m.id!==id);if(!config.modes.length)throw Error('Keep at least one mode.');
-   for(const mode of config.modes)mode.bindings=mode.bindings.filter(b=>!['mode','hold-mode'].includes(b.action.type)||b.action.mode!==id);
-   if(config.defaultMode===id)config.defaultMode=config.modes[0].id;if(config.activeMode===id)config.activeMode=config.modes[0].id;this.mode=config.modes[0].id;
-  }))this.showModeActions();};
   $('catalog-reset-abid').onclick=()=>this.reset('abid');$('catalog-reset-cstimer').onclick=()=>this.reset('cstimer');
   $('catalog-export').onclick=()=>downloadJSON(this.config(),`fto-${this.size}-keyboard.json`);
-  $('catalog-choose-import').onclick=()=>$('catalog-import').click();
-  $('catalog-import').onchange=async event=>{try{const file=event.target.files[0];if(!file)return;if(file.size>1024*1024)throw Error('Keyboard file is too large.');const config=JSON.parse(await file.text());validateConfig(config);config.display={...defaultConfig(this.size).display,...config.display};this.write(config);this.mode=null;this.render();this.message('Keyboard imported.');}catch(error){this.message(error.message);}finally{event.target.value='';}};
+  $('catalog-choose-import').onclick=()=>{$('keyboard-import-title').textContent=`Import ${this.size} × ${this.size} keyboard`;$('keyboard-import-message').textContent='';$('keyboard-import-dialog').showModal();};
+  $('close-keyboard-import').onclick=()=>$('keyboard-import-dialog').close();$('choose-keyboard-file').onclick=()=>$('catalog-import').click();
+  $('catalog-import').onchange=event=>this.importFile(event.target.files[0]);
+  const drop=$('keyboard-import-drop');for(const type of ['dragenter','dragover'])drop.addEventListener(type,event=>{event.preventDefault();drop.classList.add('drag-over');});for(const type of ['dragleave','drop'])drop.addEventListener(type,event=>{event.preventDefault();drop.classList.remove('drag-over');});drop.addEventListener('drop',event=>this.importFile(event.dataTransfer.files[0]));
   $('close-bind-key').onclick=()=>$('bind-key-dialog').close();$('bind-key-dialog').addEventListener('close',()=>{this.listening=false;this.pressed.clear();this.captured.clear();});
   $('bind-key-listen').onclick=()=>this.listen();$('bind-key-form').onsubmit=event=>{event.preventDefault();this.saveKey(false);};$('bind-key-replace').onclick=()=>this.saveKey(true);
   $('bind-key-trigger').oninput=()=>{$('bind-key-replace').hidden=true;$('bind-key-message').textContent='';};
@@ -42,18 +36,16 @@ export class ActionBindingsUI{
   if(this.size===this.owner.size){this.owner.commit(config);}
   else{this.owner.profiles[this.size]=structuredClone(config);this.owner.save();}
  }
- change(mutator){try{const config=structuredClone(this.config());mutator(config);this.write(config);this.render();this.message('Saved');return true;}catch(error){this.message(error.message);return false;}}
- open(){this.size=this.owner.size;this.mode=this.owner.engine.baseMode;$('catalog-search').value='';$('catalog-category').value='all';$('catalog-subgroup').value='all';this.render();this.message('');}
+ change(mutator){try{const config=structuredClone(this.config());mutator(config);this.write(config);this.render();this.message('Saved');return true;}catch(error){this.lastError=error.message;this.message(error.message);return false;}}
+ openPreferences(){this.size=this.owner.size;this.mode=this.owner.engine.baseMode;$('catalog-search').value='';$('catalog-category').value='all';$('catalog-subgroup').value='all';this.render();this.message('');}
  render(){
   const config=this.config();if(!config.modes.some(m=>m.id===this.mode))this.mode=config.activeMode??config.modes[0].id;
-  $('keyboard-puzzle').value=String(this.size);
-  for(const id of ['catalog-mode','catalog-default-mode']){$(id).replaceChildren(...config.modes.map(m=>new Option(m.name,m.id)));$(id).value=id==='catalog-mode'?this.mode:config.defaultMode;}
-  $('catalog-mode-name').value=config.modes.find(m=>m.id===this.mode).name;$('catalog-delete-mode').disabled=config.modes.length===1;
-  $('catalog-use-mode').textContent=config.activeMode===this.mode?'Active mode':'Use this mode';$('catalog-use-mode').disabled=config.activeMode===this.mode;
+  for(const id of ['keyboard-puzzle','keyboard-preferences-puzzle'])$(id).value=String(this.size);
+  this.renderModes();
   this.renderRows();
  }
  renderSubgroups(config,category){
-  const select=$('catalog-subgroup'),options=bindingSubgroups(category,config),signature=JSON.stringify(options);
+  const select=$('catalog-subgroup'),options=bindingSubgroups(category,config,this.size),signature=JSON.stringify(options);
   if(select.dataset.options!==signature){const selected=select.value;select.replaceChildren(...options.map(([value,label])=>new Option(label,value)));select.value=options.some(([value])=>value===selected)?selected:'all';select.dataset.options=signature;}
   select.disabled=options.length===1;
  }
@@ -99,7 +91,48 @@ export class ActionBindingsUI{
  showModeActions(){
   $('catalog-search').value='';$('catalog-category').value='modes';$('catalog-subgroup').value='all';this.render();document.querySelector('.keyboard-editor-body').scrollTop=0;
  }
- addMode(copy){if(this.change(config=>{const source=config.modes.find(m=>m.id===this.mode);let n=config.modes.length+1;while(config.modes.some(m=>m.name===`Mode ${n}`))n++;const id=uid();config.modes.push({id,name:`Mode ${n}`,bindings:copy?source.bindings.map(b=>({...structuredClone(b),id:uid()})):[]});this.mode=id;}))this.showModeActions();}
- reset(preset){const config=preset==='abid'?defaultConfig(this.size):cstimerConfig(this.size);config.display=structuredClone(this.owner.config.display);this.write(config);this.mode=null;this.render();this.message(`${preset==='abid'?"Abid’s":'csTimer'} defaults restored.`);}
- message(text){$('catalog-message').textContent=text;}
+ addMode(copy=false,sourceId=this.mode,name){return this.change(config=>{const source=config.modes.find(mode=>mode.id===sourceId);let n=config.modes.length+1;while(config.modes.some(mode=>mode.name===`Mode ${n}`))n++;const id=uid();config.modes.push({id,name:name??`Mode ${n}`,bindings:copy?source.bindings.map(binding=>({...structuredClone(binding),id:uid()})):[]});this.mode=id;});}
+ renderModes(){
+  const config=this.config(),list=$('catalog-mode-options');list.replaceChildren();const selected=config.modes.find(mode=>mode.id===this.mode);
+  const label=mode=>`${mode.name}${mode.id===config.defaultMode?' (Default)':''}`;$('catalog-mode-choice').textContent=label(selected);
+  for(const mode of config.modes){const row=el('div','mode-option'),choose=el('button',null,label(mode)),more=el('button','mode-more','⋯');choose.type=more.type='button';choose.setAttribute('role','option');choose.setAttribute('aria-selected',String(mode.id===this.mode));choose.dataset.mode=mode.id;choose.onclick=()=>{this.mode=mode.id;$('catalog-mode-picker').open=false;this.render();};choose.oncontextmenu=event=>{event.preventDefault();this.openModeMenu(mode.id,event.clientX,event.clientY);};choose.onkeydown=event=>{if(event.key==='ContextMenu'||event.key==='F10'&&event.shiftKey){event.preventDefault();const box=choose.getBoundingClientRect();this.openModeMenu(mode.id,box.left,box.bottom);}};more.setAttribute('aria-label',`Options for ${mode.name}`);more.onclick=()=>{const box=more.getBoundingClientRect();this.openModeMenu(mode.id,box.left,box.bottom);};row.append(choose,more);list.append(row);}
+  const add=el('button','new-mode-option','+ New mode');add.type='button';add.disabled=config.modes.length>=40;add.onclick=()=>{$('catalog-mode-picker').open=false;this.openModeName();};list.append(add);
+ }
+ openModeMenu(id,x,y){
+  this.menuMode=id;const menu=$('mode-context-menu'),config=this.config();$('mode-context-delete').disabled=config.modes.length===1;$('mode-context-default').disabled=config.defaultMode===id;
+  menu.hidden=false;menu.style.left=`${Math.max(8,Math.min(x,innerWidth-198))}px`;menu.style.top=`${Math.max(8,Math.min(y,innerHeight-180))}px`;
+ }
+ installModeMenu(){
+  const menu=$('mode-context-menu'),close=()=>menu.hidden=true;
+  $('catalog-mode-choice').oncontextmenu=event=>{event.preventDefault();this.openModeMenu(this.mode,event.clientX,event.clientY);};
+  $('mode-context-default').onclick=()=>{if(this.change(config=>config.defaultMode=this.menuMode))this.showModeActions();close();};
+  $('mode-context-duplicate').onclick=()=>{if(this.addMode(true,this.menuMode))this.showModeActions();close();};
+  $('mode-context-delete').onclick=()=>{if(this.change(config=>{const id=this.menuMode;config.modes=config.modes.filter(mode=>mode.id!==id);if(!config.modes.length)throw Error('Keep at least one mode.');for(const mode of config.modes)mode.bindings=mode.bindings.filter(binding=>!['mode','hold-mode'].includes(binding.action.type)||binding.action.mode!==id);if(config.defaultMode===id)config.defaultMode=config.modes[0].id;if(config.activeMode===id)config.activeMode=config.modes[0].id;if(this.mode===id)this.mode=config.modes[0].id;}))this.showModeActions();close();};
+  $('mode-context-rename').onclick=()=>{close();this.openModeName(this.menuMode);};
+  $('close-mode-name').onclick=()=>$('mode-name-dialog').close();
+  $('mode-name-form').onsubmit=event=>{event.preventDefault();const name=$('new-mode-name').value.trim();const saved=this.namingMode?this.change(config=>config.modes.find(mode=>mode.id===this.namingMode).name=name):this.addMode(false,this.mode,name);if(saved){$('mode-name-dialog').close();this.showModeActions();}else $('mode-name-message').textContent=this.lastError;};
+  document.addEventListener('pointerdown',event=>{if(!menu.contains(event.target))close();});
+  document.addEventListener('click',event=>{if(!$('catalog-mode-picker').contains(event.target))$('catalog-mode-picker').open=false;});
+  $('bindings-dialog').addEventListener('keydown',event=>{if(event.key==='Escape'&&!menu.hidden){event.preventDefault();event.stopPropagation();close();}});
+ }
+ openModeName(id=null){this.namingMode=id;$('mode-name-title').textContent=id?'Rename mode':'New mode';$('save-mode-name').textContent=id?'Save name':'Create mode';$('new-mode-name').value=id?this.config().modes.find(mode=>mode.id===id).name:'';$('mode-name-message').textContent='';$('mode-name-dialog').showModal();$('new-mode-name').focus();}
+ async reset(preset){
+  const size=this.size,name=preset==='abid'?"Abid’s":'csTimer’s';
+  const accepted=await this.owner.confirm(`Replace all bindings and modes for ${size} × ${size} FTO with ${name} defaults? Custom bindings and modes for this puzzle will be lost.`,'Replace bindings',`Use ${name} default bindings?`);
+  if(!accepted||this.size!==size)return;
+  const previous=this.config(),config=preset==='abid'?defaultConfig(size):cstimerConfig(size);config.display=structuredClone(this.owner.config.display);config.sequenceTimeout=previous.sequenceTimeout??1400;
+  this.write(config);this.mode=null;this.render();this.message(`${name} default bindings loaded.`);
+ }
+ async importFile(file){
+  if(!file||this.importBusy)return;this.importBusy=true;$('choose-keyboard-file').disabled=true;const size=this.size;
+  try{
+   if(file.size>1024*1024)throw Error('Keyboard file is too large.');$('keyboard-import-message').textContent='Checking keyboard…';
+   const config=JSON.parse(await file.text());validateConfig(config);config.display={...defaultConfig(size).display,...config.display};
+   const count=config.modes.reduce((total,mode)=>total+mode.bindings.length,0);
+   const accepted=await this.owner.confirm(`Import ${file.name} for ${size} × ${size} FTO? Its ${config.modes.length} modes and ${count} bindings will replace the current keyboard for this puzzle.`,'Import and replace','Replace keyboard bindings?');
+   if(!accepted){$('keyboard-import-message').textContent='Import cancelled.';return;}if(this.size!==size)throw Error('The selected puzzle changed. Import the file again.');
+   this.write(config);this.mode=null;this.render();$('keyboard-import-dialog').close();this.message('Keyboard imported.');
+  }catch(error){$('keyboard-import-message').textContent=error.message;}finally{this.importBusy=false;$('choose-keyboard-file').disabled=false;$('catalog-import').value='';}
+ }
+ message(text){$('catalog-message').textContent=text;$('bindings-message').textContent=text;}
 }

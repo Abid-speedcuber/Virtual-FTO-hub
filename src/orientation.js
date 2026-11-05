@@ -55,3 +55,6 @@ export function snappedViewRotation(frame){
  const matrix=new THREE.Matrix4().lookAt(toward,new THREE.Vector3(),up);
  return new THREE.Quaternion().setFromRotationMatrix(matrix).invert().normalize();
 }
+
+export const DEFAULT_CIF_FRAME=FRAMES.find(frame=>frame.up==='U'&&frame.front==='BR');
+export const defaultCifRotation=()=>snappedViewRotation(DEFAULT_CIF_FRAME);

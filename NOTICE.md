@@ -50,3 +50,15 @@ and public/audio/black-ink/LICENSE.md.
 
 Three.js is MIT-licensed, copyright Three.js authors. Its complete copyright and license
 notice is included in public/licenses/THREE-MIT.txt and distributed with the site.
+
+## WCA profile-link logo
+
+`public/wca-logo-themed.svg` is a custom two-color adaptation of the official
+Primary logo from https://www.worldcubeassociation.org/logo (WCA Logo Assets,
+1 Positive Primary). Colored regions use the app's green accent; dark outlines
+and lettering separate the regions. The registered mark is retained.
+This adaptation is not an official WCA color variant or an endorsement.
+The WCA logo is a registered trademark and is not part of this project's GPL
+license. It is used only for the creator's WCA profile link.
+Original monochrome reference: `public/wca-logo-mono.svg`.
+Usage policy: https://documents.worldcubeassociation.org/documents/policies/external/Logo%20Usage.pdf

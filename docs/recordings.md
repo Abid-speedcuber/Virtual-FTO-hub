@@ -9,9 +9,10 @@ preserve completed records. Every new PB is also saved to the album, retaining
 all historical PB recordings. Existing retained PB videos are imported into the
 album on first use; old times without recordings cannot acquire videos retroactively.
 
-Open **Settings → Recordings → Watch or share a solve**, or **Solve recordings**
-in History. Download a `.ftoreplay.json` file and share it directly. Recipients
-can import it and choose **Watch on home screen**. Playback supports play/pause,
+Open the recording album from the topbar or **Solve recordings** in History.
+Its fixed footer has **Import recording to watch**. Paste a recording link or
+JSON, drop a recording file, or use **Choose a file** to open it directly on the
+home screen. Playback supports play/pause,
 seeking and 0.25×–4× speed. The main puzzle area shows a separate viewer, the
 solver’s keyboard and recorded sounds; the action island becomes the progress
 bar. The split panel compares with the solver’s previous PB, when it uses the
@@ -100,9 +101,22 @@ sounds, timing and split comparisons. The modal displays the resulting link
 length. The URL fragment carries the data without a recording upload or server
 shortener. Opening the link loads a paused replay; it never changes the viewer’s
 times, PB or bindings. Pasted links, encoded payloads and JSON can also be opened
-through **Paste link or text** in the recording chooser.
+through **Import recording to watch** in the album.
 
 Decompression is bounded to 16 MB and imported data is validated before playback.
 The production build uses relative assets so this works under `/virtual/` as well
 as the root path. Very long recordings can be shared as JSON without depending
 on chat applications’ URL length limits.
+
+### Sharing and deleting album recordings
+
+The home-screen time share menu offers Watch solve and Save to album. Watch is
+hidden while a recording is already playing. Album, history and replay-control
+share menus contain only the sharing formats. Save is disabled when that exact
+recording is already in the album, including automatically archived PBs.
+
+Each album entry has Play, Share and Delete controls. Delete asks for confirmation
+and removes the album copy, while keeping solve times and last/PB recordings.
+Deleted PBs stay out of the album across reloads; their home-screen share menus
+allow saving them again. Re-saving retains the PB badge. Deletion markers travel
+with complete data backups. Older backups without markers remain compatible.

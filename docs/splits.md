@@ -1,6 +1,6 @@
 # Solve splits
 
-Splits default to Off on every size, with no split section or prompts on the home screen. Settings → Solves → Configure splits offers Bencisco,
+Splits default to Off on every size, with no split section or prompts on the home screen. Settings → Controls → Configure splits offers Bencisco,
 Nautilus, saved named methods, or Off. Presets and existing methods apply immediately
 when selected; **Save method** is only used when creating or editing a method. Automatic presets are restricted to 3×3; custom
 phases are supported separately on every size from 2×2 through 20×20. The puzzle selector inside the editor changes which method library you edit without changing the live puzzle. Saved custom methods open directly in the phase editor; selecting a preset applies it immediately.

@@ -39,11 +39,13 @@ Backspace or Ctrl+Z (Windows/Linux) and Cmd+Z (macOS) undo player moves, stoppin
 
 ## Editing and modes
 
-Open **Settings → Controls → Edit bindings**. Choose the puzzle and mode at the top; editing another puzzle leaves your live puzzle untouched. The action table lists every outer turn, every slice and wide turn at depths 1–20, rotations, suffixes, commands and mode actions, including unassigned actions. All depths remain available on every puzzle; entries that need more layers say so and can still be assigned. Filter by category, then use the subgroup dropdown to browse one slice depth or wide-turn width across all eight faces and both directions. Other categories group by face/axis, suffix kind or target mode. You can also search actions and keys. Every “All” option displays the complete matching list, without numbered pages. Use subgroups to narrow that list. Creating or renaming a mode immediately brings its switch and hold actions into view; deleting it removes those actions.
+Open **Settings → Controls → Edit keyboard and binding** for overlay layout, input preferences, presets and keyboard import/export. **Customize bindings** opens the separate action editor. Its puzzle selector changes which profile you edit without changing the live puzzle.
 
-Click an assigned key to replace it, **×** to unassign it, or **+** to add another key for that action. Press a key/chord and save, or type a tap sequence. Reassigning an occupied key requires **Replace existing key**; cancelling preserves its current action. Esc dismisses capture (type `Escape` in the field when assigning Escape itself).
+The catalogue lists every relevant outer turn, slice, wide turn, rotation, suffix, command and mode action for that size. Widths and slices stop at the puzzle’s layer count; there is no 1w. Each “All” option displays its complete matching list. Category and subgroup dropdowns narrow it by depth, width, face, suffix kind or target mode.
 
-**Mode settings** provides naming, duplication, deletion, the active mode and default mode. The default-on **Reset mode after a solve** setting returns to that default after completion. **Virtual keyboard & input preferences** holds the overlay layout and input timing. **Presets & files** holds preset resets and per-puzzle keyboard import/export.
+Click an assigned key to replace it, **×** to unassign it, or **+** to add another key. Press a key/chord and save, or type a tap sequence. Reassigning an occupied key requires **Replace existing key**. Esc dismisses capture; type `Escape` in the field when assigning Escape itself.
+
+The Mode dropdown selects the bindings you edit, without activating that mode. **+ New mode** creates one. Right-click a mode (or tap its **⋯** button) to rename, duplicate, delete or make it the default. The default is labeled **(Default)**. Runtime mode changes use your keyboard bindings. The default-on **Reset mode after a solve** setting returns to the default after completion.
 
 - `F`: one physical key.
 - `A+F`: hold A, then F; chord order does not affect conflict detection.
@@ -57,15 +59,15 @@ A trigger can have one action per mode; different modes may reuse it, and an act
 
 Press highlights track key-down and key-up directly, with no minimum duration, afterglow, fade, or polling delay. Visible timing remains limited by rendering/display refresh. Selected suffix indicators are separate from held-key highlights. Move labels stay fixed for a physical press after a suffix is consumed.
 
-TPS measures accepted manual turn input in a trailing 1-, 3-, or 5-second window. Pointer turns and keyboard turns count; suffixes, mode changes, rotations, undo/redo, automatic scrambles, and repeat/unmapped input do not. Reset input stats clears peak and total.
+TPS measures accepted manual turn input in a trailing 1-, 3-, or 5-second window. Pointer turns and keyboard turns count; suffixes, mode changes, rotations, undo/redo, automatic scrambles, and repeat/unmapped input do not. **Reset TPS and turn count** clears the current TPS window, peak TPS and accepted manual-turn count. It leaves the puzzle and solve history intact.
 
 Move audio uses locally bundled Gateron Black Ink recordings from tplai/kbsim (MIT; license and attribution accompany the samples). Suffixes use a soft tone. Disable sounds is saved separately from keymaps.
 
-Size-specific profiles live in `master-fto-keyboard-v2` local storage. Overlay preferences are shared. Untouched legacy defaults upgrade; customized keyboards retain their moves. Shipped Escape-cancel bindings migrate to Pause, and modes gain missing Backspace undo and Shift+Backspace redo bindings without replacing custom key actions. Shipped older center moves upgrade to the new six-move layout once. Temporary keys, suffix selections, and TPS do not survive reloads. Export/import applies to the current size and validates the entire configuration before replacing it.
+Size-specific profiles live in `master-fto-keyboard-v2` local storage. Overlay preferences are shared. Untouched legacy defaults upgrade; customized keyboards retain their moves. Shipped Escape-cancel bindings migrate to Pause, and modes gain missing Backspace undo and Shift+Backspace redo bindings without replacing custom key actions. Shipped older center moves upgrade to the new six-move layout once. Temporary keys, suffix selections, and TPS do not survive reloads. Export/import applies to the current size. Import opens a drag-and-drop/file-picker modal, validates the entire configuration, then asks for confirmation before replacing the keyboard.
 
 ## Switching default presets
 
-The two reset buttons replace bindings and modes for the current size only. They keep puzzle progress, timer, TPS counters, overlay layout/visibility/size, and the sequence timeout. Resets select CIF and clear transient key/suffix state. Both presets include EIF-R/EIF-L on every size and Abid's E– cntr moves only on 3×3.
+**Use Abid’s default bindings** and **Use csTimer’s default bindings** ask for confirmation before replacing bindings and modes for the current puzzle size. They keep puzzle progress, timer, TPS counters, overlay layout/visibility/size, and the sequence timeout. Resets select CIF and clear transient key/suffix state. Both presets include EIF-R/EIF-L on every size and Abid's E– cntr moves only on 3×3.
 
 **Abid:** Backquote rotates nUw; Minus (-) rotates nUw′. Q/P rotate around R; Z/Period rotate around R′, including in EIF and center modes. These independent rotations ignore width/slice suffixes and leave them selected for the next turn. Tab/C select EIF-R/EIF-L; M selects centers on 3×3.
 

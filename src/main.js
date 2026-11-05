@@ -20,7 +20,7 @@ import {bodyGeometry} from './body-geometry.js';
 import {swipeCandidates,chooseSwipeMove} from './swipe.js';
 import {pickSurface,pickFaceNormal} from './picking.js';
 import {FACES,solvedState,selected,applyMove,inverse,isSolved,scrambleMoves} from './puzzle.js';
-import {HOME_POSITION,FIXED_FRAME,frameForCamera,transformedNormal,DEFAULT_LABEL_SWITCH_ANGLE,snappedViewRotation} from './orientation.js';
+import {HOME_POSITION,FIXED_FRAME,frameForCamera,transformedNormal,DEFAULT_LABEL_SWITCH_ANGLE,snappedViewRotation,defaultCifRotation} from './orientation.js';
 const $=id=>document.getElementById(id);
 const storageKey='master-fto-v1';
 const album=new RecordingAlbum();
@@ -104,7 +104,7 @@ for(const [id,key,fallback] of [['disable-sounds','disableSounds',false],['follo
 }
 let labelSwitchAngle=Number.isFinite(preferences.labelSwitchAngle)?THREE.MathUtils.clamp(preferences.labelSwitchAngle,0,40):DEFAULT_LABEL_SWITCH_ANGLE;
 for(const id of ['label-switch-angle','label-switch-angle-value'])$(id).value=String(labelSwitchAngle);
-function renderSaveStatus(){ $('save-status').textContent=storageOK&&settingsOK&&keyboard?.storageOK!==false?'Saved on this device':'Local storage unavailable'; }
+function renderSaveStatus(){const ok=storageOK&&settingsOK&&keyboard?.storageOK!==false;$('save-status').hidden=ok;$('save-status').textContent=ok?'':'Local storage unavailable';}
 function saveSettings(){
  if(detectClearedSolve())return;
  clearTimeout(settingsTimer);
@@ -122,7 +122,7 @@ const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(36,1,.1,100);camera.position.copy(HOME_POSITION);camera.lookAt(0,0,0);
 const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0x000000,0);renderer.outputColorSpace=THREE.SRGBColorSpace;viewport.prepend(renderer.domElement);
 renderer.domElement.setAttribute('aria-label','Interactive FTO. Drag a sticker to turn a slice; drag the background to orbit.');
-const controls=new ViewControls(camera,renderer.domElement);
+const controls=new ViewControls(camera,renderer.domElement);controls.rotation.copy(defaultCifRotation());controls.update();
 const view=solves[size]?.view??preferences.view;
 if(view&&Array.isArray(view.rotation)&&view.rotation.length===4&&view.rotation.every(Number.isFinite)&&Number.isFinite(Math.hypot(...view.rotation))&&Math.hypot(...view.rotation)>1e-9&&Number.isFinite(view.radius)){
  controls.rotation.fromArray(view.rotation).normalize();controls.radius=THREE.MathUtils.clamp(view.radius,controls.minDistance,controls.maxDistance);controls.update();
@@ -449,14 +449,14 @@ for(const id of ['label-switch-angle','label-switch-angle-value'])$(id).onchange
 };
 $('animate').onchange=()=>{if(!$('animate').checked)viewTween=null;saveSettings();requestDraw();};$('animate-scrambling').onchange=saveSettings;
 const puzzleName=value=>value===2?'Baby FTO (2x2)':value===4?'Master FTO (4x4)':`${value} × ${value} FTO`;
-$('puzzles').innerHTML=puzzleIcon();
+$('puzzles').innerHTML=puzzleIcon()+'<span class="puzzle-button-name"></span>';
 for(let value=2;value<=20;value++){
  const button=document.createElement('button');button.type='button';button.dataset.size=String(value);button.textContent=puzzleName(value);
- button.onclick=()=>{if(size!==value)selectSize(value);$('puzzle-dialog').close();};$('puzzle-choices').append(button);
+ button.onclick=()=>{selectSize(value);$('puzzle-dialog').close();};$('puzzle-choices').append(button);
 }
 function renderSize(){
  for(const button of $('puzzle-choices').children)button.setAttribute('aria-pressed',String(Number(button.dataset.size)===size));
- $('puzzles').title=`Choose puzzle · ${puzzleName(size)}`;keyboard?.render();
+ $('puzzles').title=`Choose puzzle · ${puzzleName(size)}`;$('puzzles').querySelector('.puzzle-button-name').textContent=puzzleName(size);keyboard?.render();
 }
 function selectSize(nextSize){
  cancelScrambleRequest();$('scramble-error').hidden=true;
@@ -466,7 +466,7 @@ function selectSize(nextSize){
  controls.cancelAll();keyboard?.clear({selection:true});size=nextSize;keyboard?.setSize(size);
  const saved=structuredClone(solves[size]??{});
  history=saved.history??[];redo=saved.redo??[];undoFloor=saved.undoFloor??0;solveEnd=saved.solveEnd??null;session=new SolveTimer(saved.timer);recorder=new SolveRecorder(saved.recordings,()=>Date.now(),{elapsedMs:saved.timer?.elapsedMs});phaseTracker=new PhaseTracker(size,profileForSave(saved),saved.splits);manualPaused=session.status==='paused';queue=saved.pending??[];
- if(saved.view?.rotation?.length===4&&saved.view.rotation.every(Number.isFinite)&&Number.isFinite(Math.hypot(...saved.view.rotation))&&Math.hypot(...saved.view.rotation)>1e-9&&Number.isFinite(saved.view.radius)){controls.rotation.fromArray(saved.view.rotation).normalize();controls.radius=THREE.MathUtils.clamp(saved.view.radius,controls.minDistance,controls.maxDistance);controls.update();}else controls.setPosition(HOME_POSITION);
+ controls.rotation.copy(defaultCifRotation());controls.radius=HOME_POSITION.length();controls.update();
  if(session.status==='scrambling'&&!queue.length)session.reset();
  state=history.reduce(applyMove,solvedState(size));frame=currentFrame();build();renderSize();resumeSession();save();saveSettings();update();pump();draw();
 }
@@ -558,7 +558,7 @@ controls.addEventListener('tap',e=>{
  const index=FACES.findIndex(f=>transformedNormal(f.normal,frame).every((v,i)=>v===normal[i]));
  if(index>=0)keyboard.pointerMove(FACES[index].name,e);
 });
-if(!storageOK)$('save-status').textContent='Saved solve could not be loaded';
+if(!storageOK){$('save-status').textContent='Saved solve could not be loaded';$('save-status').hidden=false;}
 update();requestDraw();
 // Read-only diagnostics for verifying geometry and input behavior in a browser.
 window.fto={snapshot:()=>({size,replay:homeReplay?.active?{at:homeReplay.at,duration:homeReplay.presentation.duration,playing:homeReplay.playing,size:homeReplay.data.size,sounds:homeReplay.playedSounds,solved:isSolved(homeReplay.viewer.state),bodies:homeReplay.viewer.bodies.map(b=>b.mesh.quaternion.toArray())}:null,recordings:{last:recorder.last?{ms:recorder.last.solveMs,events:recorder.last.events.length}:null,pb:recorder.pb?{ms:recorder.pb.solveMs,events:recorder.pb.events.length}:null,recording:!!recorder.attempt},scramblePool:ftoScrambleStatus(),generatingScramble:!!scrambleRequest,pointerMode,undoFloor,manualPaused,ready:document.documentElement.hasAttribute('data-app-ready'),animationMs:animationDuration(TURN_ANIMATION_MS),outerTurnBias,uTurnBias,eifUTurnBias,animationSpeed,animating:active?.turns.map(turn=>({move:structuredClone(turn.move),progress:Math.min(1,Math.max(0,(performance.now()-turn.started)/turn.duration))}))??[],renderedMoves,rotating:!!viewTween,viewOrbit:displayedCamera.quaternion.clone().invert().toArray(),stickerColors:materials.map(m=>m.color.getHexString()),keyboard:keyboard?.snapshot(),timer:session.snapshot(),splits:phaseTracker.serialize(),state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};
@@ -582,6 +582,7 @@ function executeMove(move){
  }
 function recordKey(edge,event){if(replayActive)return;if(event.target?.closest?.('input,textarea,select,[contenteditable=true]'))return;recorder.event('key',{edge,code:event.code,repeat:!!event.repeat,modifiers:[!!event.shiftKey,!!event.ctrlKey,!!event.altKey,!!event.metaKey]});}
 keyboard=new KeyboardUI({
+ confirm:confirmPaused,
  input:recordKey,
  context:()=>({size,scrambling:isScrambling(),canPause:['running','paused'].includes(session.status),manualPaused,defaultMove:{depth:1,count:1,dir:1}}),
  move:executeMove,
@@ -610,10 +611,10 @@ homeReplay=new HomeReplay({pause:pauseSession,onStart:()=>{replayActive=true;key
   $('split-reference').textContent=reference?`Solver’s previous PB · ${formatTime(reference.ms)}`:data.previousBest?`Previous PB · ${formatTime(data.previousBest.ms)} · no matching split data`:'No previous PB recorded';$('history-split-reference').textContent=$('split-reference').textContent;
  }else{document.querySelector('.splits-panel').hidden=true;document.querySelector('.time-columns').classList.add('without-splits');}
 }});
-const recordingUI=new RecordingUI({album,pauseForShare:()=>{if(homeReplay.active)homeReplay.pause();else pauseSession();},current:()=>homeReplay.active?homeReplay.sharedData:recorder.last,getSize:()=>size,getRecordings:()=>({last:recorder.last,pb:recorder.pb}),pause:()=>{homeReplay.stop();pauseSession();},play:data=>homeReplay.start(data)});
+const recordingUI=new RecordingUI({album,confirm:confirmPaused,isReplaying:()=>homeReplay.active,pauseForShare:()=>{if(homeReplay.active)homeReplay.pause();else pauseSession();},current:()=>homeReplay.active?homeReplay.sharedData:recorder.last,getSize:()=>size,getRecordings:()=>({last:recorder.last,pb:recorder.pb}),pause:()=>{homeReplay.stop();pauseSession();},play:data=>homeReplay.start(data)});
 for(const id of ['share-current','share-pb','mobile-share-current','history-share-pb','home-replay-share'])$(id).innerHTML=icon('share');
 function archivePB(recording,completedAt){
- album.add(recording,{pb:true,completedAt,shouldSave:()=>!detectClearedSolve()}).catch(error=>{$('recording-storage-status').textContent=`Couldn’t save PB to the album: ${error.message}`;});
+ album.add(recording,{pb:true,automatic:true,completedAt,shouldSave:()=>!detectClearedSolve()}).catch(error=>{$('album-message').textContent=`Couldn’t save PB to the album: ${error.message}`;});
 }
 $('export-user-data').onclick=async()=>{
  $('export-user-data').disabled=true;$('user-data-message').textContent='Preparing complete backup…';

@@ -1,5 +1,5 @@
 import {validateRecording,withoutInspection} from './solve-recording.js';
-import {recordingLink,recordingJSON,parseRecordingText,recordingPayload,decodeRecording,clearRecordingLink} from './recording-codec.js';
+import {recordingLink,recordingJSON,parseRecordingText,recordingPayload,decodeRecording,clearRecordingLink,recordingID} from './recording-codec.js';
 import {icon} from './icons.js';
 import {formatTime} from './solve-timer.js';
 const $=id=>document.getElementById(id);
@@ -7,29 +7,42 @@ export function downloadJSON(data,name){
  const url=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'})),link=document.createElement('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 export class RecordingUI{
- constructor({getSize,getRecordings,pause,play,current,album,pauseForShare}){
-  Object.assign(this,{getSize,getRecordings,pause,play,current,album,pauseForShare});this.data=null;this.shareVersion=0;this.linkVersion=0;
-  $('open-recordings').onclick=()=>this.open();$('history-recordings').onclick=()=>this.open();$('close-recordings').onclick=()=>{this.linkVersion++;clearRecordingLink();$('recordings-dialog').close();};
-  $('recording-last').onclick=()=>this.load(this.getRecordings().last);$('recording-pb').onclick=()=>this.load(this.getRecordings().pb);
-  $('recording-import').onchange=async event=>{try{const file=event.target.files[0];if(!file)return;if(file.size>16*1024*1024)throw Error('Recording must be smaller than 16 MB');this.load(validateRecording(JSON.parse(await file.text())));}catch(error){$('recording-message').textContent=error.message;}finally{event.target.value='';}};
-  $('recording-export').onclick=()=>this.share(this.data);$('watch-recording').onclick=()=>{if(this.data)this.play(this.data);};
-  $('mobile-share-current').onclick=()=>this.share(this.getRecordings().last);$('history-share-pb').onclick=()=>this.share(this.getRecordings().pb);$('home-replay-share').onclick=()=>this.share(this.current?.());
-  $('share-current').onclick=()=>this.share(this.current?.()??this.getRecordings().last);$('share-pb').onclick=()=>this.share(this.getRecordings().pb);
+ constructor({getSize,getRecordings,pause,play,current,album,pauseForShare,confirm,isReplaying=()=>false}){
+  Object.assign(this,{getSize,getRecordings,pause,play,current,album,pauseForShare,confirm,isReplaying});this.shareVersion=0;this.linkVersion=0;this.albumStateVersion=0;this.albumVersion=0;this.importVersion=0;this.importBusy=false;
+  $('history-recordings').onclick=()=>this.openAlbum();
+  $('mobile-share-current').onclick=()=>this.share(this.getRecordings().last,{home:true});$('history-share-pb').onclick=()=>this.share(this.getRecordings().pb);$('home-replay-share').onclick=()=>this.share(this.current?.());
+  $('share-current').onclick=()=>this.share(this.current?.()??this.getRecordings().last,{home:true});$('share-pb').onclick=()=>this.share(this.getRecordings().pb,{home:true});
   $('share-watch').innerHTML=icon('resume')+'Watch solve';$('share-watch').onclick=()=>{if(this.shareData)this.play(this.shareData);};
   $('close-share').onclick=()=>$('share-dialog').close();$('share-link').onclick=()=>this.copy(this.shareLink,'Link copied');$('share-text').onclick=()=>this.copy(this.shareText,'Recording text copied');
   $('share-json').onclick=()=>{if(this.shareData)downloadJSON(this.shareData,`fto-${this.shareData.size}x${this.shareData.size}-${Math.round(this.shareData.solveMs)}.ftoreplay.json`);};
-  $('share-album').onclick=async()=>{if(!this.shareData)return;$('share-album').disabled=true;try{await this.album.add(this.shareData);$('share-album').textContent='Saved to album';$('share-message').textContent='Saved to your recording album.';}catch(error){$('share-message').textContent=error.message;$('share-album').disabled=false;}};
-  $('album').innerHTML=icon('album');$('album').onclick=()=>this.openAlbum();$('close-album').onclick=()=>$('album-dialog').close();
-  $('recording-paste-open').onclick=()=>{$('recording-paste').value='';$('paste-message').textContent='';$('paste-dialog').showModal();};$('close-paste').onclick=()=>$('paste-dialog').close();
-  $('recording-paste-load').onclick=async()=>{try{this.load(await parseRecordingText($('recording-paste').value));$('paste-dialog').close();}catch(error){$('paste-message').textContent=error.message;}};
+  $('share-album').onclick=async()=>{
+   if(!this.shareData||$('share-album').disabled||$('share-album').hidden)return;
+   const data=this.shareData,version=this.shareVersion;$('share-album').disabled=true;
+   try{const pb=this.getRecordings().pb,isPB=!!pb&&await recordingID(pb)===await recordingID(data);await this.album.add(data,{pb:isPB});if(version!==this.shareVersion)return;await this.refreshAlbumState();$('share-message').textContent='Saved to your recording album.';}catch(error){if(version===this.shareVersion){$('share-message').textContent=error.message;await this.refreshAlbumState();}}
+  };
+  this.album.addEventListener('change',()=>{if($('share-dialog').open&&!$('share-album').hidden)this.refreshAlbumState();});
+  window.addEventListener('focus',()=>{if($('share-dialog').open&&!$('share-album').hidden)this.refreshAlbumState();});
+  $('album').innerHTML=icon('video');$('album').onclick=()=>this.openAlbum();$('close-album').onclick=()=>$('album-dialog').close();
+  $('album-import-recording').onclick=()=>this.openImport();
+  $('close-paste').onclick=()=>{this.cancelImport();$('paste-dialog').close();};$('paste-dialog').addEventListener('cancel',()=>this.cancelImport());
+  $('recording-paste-load').onclick=()=>this.watchImported($('recording-paste').value);
+  $('choose-recording-file').onclick=()=>$('recording-import').click();$('recording-import').onchange=event=>this.watchImported(event.target.files[0]);
+  const drop=$('recording-drop');for(const type of ['dragenter','dragover'])drop.addEventListener(type,event=>{event.preventDefault();drop.classList.add('drag-over');});for(const type of ['dragleave','drop'])drop.addEventListener(type,event=>{event.preventDefault();drop.classList.remove('drag-over');});drop.addEventListener('drop',event=>this.watchImported(event.dataTransfer.files[0]));
+
 
  }
- async share(original){
+ async share(original,{home=false}={}){
   if(!original)return;const version=++this.shareVersion;
-  try{this.shareData=withoutInspection(validateRecording(original));this.shareText=recordingJSON(this.shareData);}catch(error){$('recording-message').textContent=error.message;return;}
+  try{this.shareData=withoutInspection(validateRecording(original));this.shareText=recordingJSON(this.shareData);}catch(error){this.openImport();$('paste-message').textContent=error.message;return;}
   (this.pauseForShare??this.pause)();$('share-title').textContent=`Share ${this.shareData.size} × ${this.shareData.size} · ${formatTime(this.shareData.solveMs)}`;
-  this.shareLink=null;$('share-link').disabled=true;$('share-album').disabled=false;$('share-album').textContent='Save to album';$('share-message').textContent='';$('share-output').hidden=true;$('share-link-size').textContent='Preparing compact link…';$('share-dialog').showModal();
+  this.shareLink=null;$('share-link').disabled=true;$('share-watch').hidden=!home||this.isReplaying();$('share-album').hidden=!home;$('share-album').disabled=true;$('share-album').textContent='Checking album…';$('share-message').textContent='';$('share-output').hidden=true;$('share-link-size').textContent='Preparing compact link…';$('share-dialog').showModal();if(home)this.refreshAlbumState();
   try{const link=await recordingLink(this.shareData);if(version!==this.shareVersion)return;this.shareLink=link;$('share-link').disabled=false;$('share-link-size').textContent=`Link: ${link.length.toLocaleString()} characters`;}catch(error){if(version===this.shareVersion)$('share-link-size').textContent=error.message;}
+ }
+ async refreshAlbumState(){
+  const data=this.shareData,version=this.shareVersion,refresh=++this.albumStateVersion;
+  if(!data||$('share-album').hidden)return;
+  try{const saved=await this.album.has(await recordingID(data));if(version!==this.shareVersion||refresh!==this.albumStateVersion)return;$('share-album').disabled=saved;$('share-album').textContent=saved?'Saved to album':'Save to album';if(!saved&&$('share-message').textContent==='Saved to your recording album.')$('share-message').textContent='';}
+  catch(error){if(version===this.shareVersion&&refresh===this.albumStateVersion){$('share-album').disabled=true;$('share-album').textContent='Album unavailable';$('share-message').textContent=error.message;}}
  }
  async copy(text,message){
   if(!text)return;
@@ -37,9 +50,12 @@ export class RecordingUI{
   catch{$('share-output').value=text;$('share-output').hidden=false;$('share-output').focus();$('share-output').select();$('share-message').textContent='Select and copy the text below.';}
  }
  async openAlbum(){
-  this.pause();$('album-dialog').showModal();$('album-message').textContent='Loading recordings…';$('album-list').replaceChildren();
+  this.pause();$('album-dialog').showModal();await this.renderAlbum();
+ }
+ async renderAlbum(){
+  const version=++this.albumVersion;$('album-message').textContent='Loading recordings…';$('album-list').replaceChildren();
   try{
-   const entries=await this.album.list();$('album-message').textContent=entries.length?'':'Save a recording from Share. New PBs are saved here automatically.';
+   const entries=await this.album.list();if(version!==this.albumVersion)return;$('album-message').textContent=entries.length?'':'Save a recording from Share. New PBs are saved here automatically.';
    for(const entry of entries){
     const row=document.createElement('li');row.dataset.id=entry.id;row.className='album-entry';
     const info=document.createElement('div');info.className='album-info';const title=document.createElement('strong');title.textContent=`${entry.size} × ${entry.size} FTO · ${formatTime(entry.solveMs)}`;info.append(title);
@@ -47,20 +63,27 @@ export class RecordingUI{
     const date=new Date(entry.completedAt),stamp=document.createElement('time');stamp.dateTime=entry.completedAt;stamp.textContent=`${date.toLocaleDateString()} · ${date.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;info.append(stamp);
     const watch=document.createElement('button');watch.innerHTML=icon('resume');watch.className='album-play';watch.setAttribute('aria-label',`Play ${entry.size} × ${entry.size} solve ${formatTime(entry.solveMs)}`);watch.title='Play solve';watch.onclick=async()=>{try{this.play(await this.album.get(entry.id));}catch(error){$('album-message').textContent=error.message;}};
     const share=document.createElement('button');share.innerHTML=icon('share');share.setAttribute('aria-label',`Share ${entry.size} × ${entry.size} solve ${formatTime(entry.solveMs)}`);share.className='share-recording';share.onclick=async()=>{try{await this.share(await this.album.get(entry.id));}catch(error){$('album-message').textContent=error.message;}};
-    row.append(info,watch,share);$('album-list').append(row);
+    const remove=document.createElement('button');remove.innerHTML=icon('trash');remove.className='album-delete';remove.setAttribute('aria-label',`Delete ${entry.size} × ${entry.size} solve ${formatTime(entry.solveMs)}`);remove.title='Delete recording';remove.onclick=async()=>{
+     remove.disabled=true;try{if(!await this.confirm(`Delete the ${entry.size} × ${entry.size} recording (${formatTime(entry.solveMs)}) from your album? Its solve time and personal-best result will be kept.`,'Delete recording','Delete album recording?'))return;await this.album.remove(entry.id);await this.renderAlbum();}catch(error){$('album-message').textContent=error.message;}finally{remove.disabled=false;}
+    };
+    const actions=document.createElement('div');actions.className='album-actions';actions.append(watch,share,remove);row.append(info,actions);$('album-list').append(row);
    }
   }catch(error){$('album-message').textContent=error.message;}
  }
+ openImport(){
+  this.pause();this.linkVersion++;this.importVersion++;this.importBusy=false;$('recording-paste').value='';$('recording-import').value='';$('paste-message').textContent='';this.setImportBusy(false);if(!$('paste-dialog').open)$('paste-dialog').showModal();
+ }
+ cancelImport(){this.linkVersion++;this.importVersion++;this.importBusy=false;clearRecordingLink();}
+ setImportBusy(busy){$('recording-paste-load').disabled=busy;$('choose-recording-file').disabled=busy;}
+ async watchImported(input){
+  if(input===undefined||this.importBusy)return;this.importBusy=true;this.linkVersion++;clearRecordingLink();const version=++this.importVersion;this.setImportBusy(true);$('paste-message').textContent='Opening recording…';
+  try{if(typeof input!=='string'&&input.size>16*1024*1024)throw Error('Recording must be smaller than 16 MB');const text=typeof input==='string'?input:await input.text(),data=await parseRecordingText(text);if(version!==this.importVersion||!$('paste-dialog').open)return;this.play(data);}
+  catch(error){if(version===this.importVersion)$('paste-message').textContent=error.message;}
+  finally{if(version===this.importVersion){this.importBusy=false;this.setImportBusy(false);$('recording-import').value='';}}
+ }
  async openSharedLink(){
   let payload;try{payload=recordingPayload();}catch{return;}if(!payload)return;
-  const version=++this.linkVersion;this.pause();history.replaceState(history.state,'',location.pathname+location.search+'#replay='+payload);if(!$('recordings-dialog').open)$('recordings-dialog').showModal();$('recording-message').textContent='Opening shared recording…';
-  try{const data=await decodeRecording(payload);if(version!==this.linkVersion)return;this.load(data);this.play(this.data);}catch(error){if(version!==this.linkVersion)return;clearRecordingLink();$('recording-message').textContent=error.message;}
- }
- open(){this.pause();$('recordings-dialog').showModal();const records=this.getRecordings();$('recording-last').disabled=!records.last;$('recording-pb').disabled=!records.pb;this.load(records.last??records.pb);}
- load(data){
-  this.data=null;$('replay-content').hidden=true;$('recording-export').disabled=true;$('recording-message').textContent='';
-  if(!data){$('recording-message').textContent=[2,3,4].includes(this.getSize())?'Complete a new timed solve, or import a shared recording.':'Automatic recording is available for 2×2–4×4. You can import a supported recording.';return;}
-  try{this.data=withoutInspection(validateRecording(data));}catch(error){$('recording-message').textContent=error.message;return;}
-  $('replay-content').hidden=false;$('recording-export').disabled=false;$('recording-title').textContent=`${data.size} × ${data.size} FTO · ${formatTime(data.solveMs)}`;
+  this.openImport();const version=++this.linkVersion;history.replaceState(history.state,'',location.pathname+location.search+'#replay='+payload);$('paste-message').textContent='Opening shared recording…';
+  try{const data=await decodeRecording(payload);if(version!==this.linkVersion)return;this.play(data);}catch(error){if(version!==this.linkVersion)return;clearRecordingLink();$('paste-message').textContent=error.message;}
  }
 }

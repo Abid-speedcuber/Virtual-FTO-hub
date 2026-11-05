@@ -9,25 +9,27 @@ export function bindingCatalog(size,config){
  const rows=[],add=(category,label,action,detail='')=>rows.push({category,label,action,detail,key:bindingActionKey(action)});
  for(const face of FACE_NAMES)for(const dir of [1,-1]){
   const suffix=dir<0?'′':'';add('turns',face+suffix,{type:'move',face,dir,kind:'outer',depth:1});
-  for(let depth=1;depth<=20;depth++)add('slices',`${depth}${face}${suffix}`,{type:'move',face,dir,kind:'slice',depth},`${depth===1?'First slice':`Slice ${depth}`}${depth>size?` · needs ${depth} layers`:''}`);
-  for(let depth=1;depth<=20;depth++)add('wide',`${depth===2?'':depth}${face}w${suffix}`,{type:'move',face,dir,kind:'wide',depth},`${depth} layer${depth===1?'':'s'}${depth>size?' · needs a larger puzzle':''}`);
+  for(let depth=2;depth<=size;depth++)add('slices',`${depth}${face}${suffix}`,{type:'move',face,dir,kind:'slice',depth},`${depth===1?'First slice':`Slice ${depth}`}${depth>size?` · needs ${depth} layers`:''}`);
+  for(let depth=2;depth<=size;depth++)add('wide',`${depth===2?'':depth}${face}w${suffix}`,{type:'move',face,dir,kind:'wide',depth},`${depth} layer${depth===1?'':'s'}${depth>size?' · needs a larger puzzle':''}`);
   add('rotations',`Rot ${face}${suffix}`,{type:'rotate',face,dir,kind:'outer',depth:1},'120°');
  }
  for(const dir of [1,-1])add('rotations',`Rot T${dir<0?'′':''}`,{type:'rotate',face:'U',dir,kind:'outer',depth:1,vertex:true},'90°');
- for(let depth=1;depth<=20;depth++)add('suffixes',`Suffix ${depth}w`,{type:'depth',depth},depth>size?`Next turn width · needs ${depth} layers`:'Next turn width');
+ for(let depth=2;depth<=size;depth++)add('suffixes',`Suffix ${depth}w`,{type:'depth',depth},depth>size?`Next turn width · needs ${depth} layers`:'Next turn width');
  for(const [type,label] of [['suffix-slice','Slice next'],['hold-slice','Hold slice'],['hold-wide','Hold wide'],['hold-reverse','Hold reverse']])add('suffixes',label,{type});
- for(const [command,label] of [['undo','Undo'],['redo','Redo'],['scramble','Scramble'],['reset','Reset puzzle'],['pause','Pause / resume'],['snap-view','Snap CIF / EIF view'],['fit','Fit puzzle'],['cancel','Clear pending input'],['reset-tps','Reset input stats']])add('actions',label,{type:'command',command});
+ for(const [command,label] of [['undo','Undo'],['redo','Redo'],['scramble','Scramble'],['reset','Reset puzzle'],['pause','Pause / resume'],['snap-view','Snap CIF / EIF view'],['fit','Fit puzzle'],['cancel','Clear pending input'],['reset-tps','Reset TPS and turn count']])add('actions',label,{type:'command',command});
  for(const mode of config.modes){add('modes',`Switch to ${mode.name}`,{type:'mode',mode:mode.id});add('modes',`Hold ${mode.name}`,{type:'hold-mode',mode:mode.id});}
  add('modes','Cycle modes',{type:'next-mode'});
  const seen=new Set(rows.map(row=>row.key));
- for(const mode of config.modes)for(const binding of mode.bindings){const key=bindingActionKey(binding.action);if(!seen.has(key)){seen.add(key);add('other',actionLabel(binding.action)||binding.action.type,binding.action,'Saved action');}}
+ for(const mode of config.modes)for(const binding of mode.bindings){if(!relevantBindingAction(binding.action,size))continue;const key=bindingActionKey(binding.action);if(!seen.has(key)){seen.add(key);add('other',actionLabel(binding.action)||binding.action.type,binding.action,'Saved action');}}
  const order=BINDING_CATEGORIES.map(([key])=>key);return rows.sort((a,b)=>order.indexOf(a.category)-order.indexOf(b.category));
 }
 
-export function bindingSubgroups(category,config){
- if(category==='slices'||category==='wide')return [['all',category==='slices'?'All depths':'All widths'],...Array.from({length:20},(_,i)=>[`depth:${i+1}`,category==='slices'?`Depth ${i+1}`:`${i+1} layer${i?'s':''}`])];
+export function relevantBindingAction(action,size){return action.type==='depth'||action.type==='move'&&['slice','wide'].includes(action.kind)?action.depth>=2&&action.depth<=size:true;}
+
+export function bindingSubgroups(category,config,size=20){
+ if(category==='slices'||category==='wide')return [['all',category==='slices'?'All depths':'All widths'],...Array.from({length:size-1},(_,i)=>[`depth:${i+2}`,category==='slices'?`Depth ${i+2}`:`${i+2} layers`])];
  if(category==='turns'||category==='rotations')return [['all','All axes'],...FACE_NAMES.map(face=>[`face:${face}`,face]),...(category==='rotations'?[['vertex','T · vertex']]:[])];
- if(category==='suffixes')return [['all','All suffixes'],['widths','Widths 1–20'],['slice','Slice next'],['holds','Held modifiers']];
+ if(category==='suffixes')return [['all','All suffixes'],['widths',`Widths 2–${size}`],['slice','Slice next'],['holds','Held modifiers']];
  if(category==='modes')return [['all','All modes'],...config.modes.map(mode=>[`mode:${mode.id}`,mode.name]),['cycle','Cycle modes']];
  return [['all','All groups']];
 }

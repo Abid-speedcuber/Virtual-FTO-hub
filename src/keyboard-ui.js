@@ -43,8 +43,8 @@ function migrateNames(config){
  config.commandVersion=1;config.sliceVersion=1;config.rotationVersion=1;return upgradeKeyboardDefaults(upgradeEIFDefaults(config));
 }
 export class KeyboardUI{
- constructor({context,move,command,status,suffix,input}){
-  this.input=input;this.suffix=suffix;this.size=context().size;this.profiles={};this.context=context;this.move=move;this.command=command;this.status=status;this.storageOK=true;this.meter=new TurnMeter();this.pressedLabels=new Map();this.pointerKeys=new Map();
+ constructor({context,move,command,status,suffix,input,confirm}){
+  this.confirm=confirm;this.input=input;this.suffix=suffix;this.size=context().size;this.profiles={};this.context=context;this.move=move;this.command=command;this.status=status;this.storageOK=true;this.meter=new TurnMeter();this.pressedLabels=new Map();this.pointerKeys=new Map();
   this.config=defaultConfig(this.size);
   try{const saved=JSON.parse(localStorage.getItem('master-fto-keyboard-v2')||'null');if(saved){this.profiles=saved.profiles??{};for(const config of Object.values(this.profiles)){validateConfig(config,{legacyNames:true});migrateNames(config);}this.config=this.profiles[this.size]??defaultConfig(this.size);this.config.display={...defaultConfig(this.size).display,...saved.display};}
   else{const stored=JSON.parse(localStorage.getItem('master-fto-keyboard-v1')||'null');if(stored){validateConfig(stored,{legacyNames:true});this.config={...(untouchedLegacy(stored)?defaultConfig(this.size):stored),display:{...this.config.display,...stored.display,cornerVersion:stored.display?.cornerVersion??0}};}}}
@@ -77,7 +77,7 @@ export class KeyboardUI{
  blocked(event){return document.documentElement.classList.contains('replaying')||!!document.querySelector('dialog[open]')||event?.target?.closest?.('input,select,textarea,[contenteditable=true]');}
  install(){
   $('show-keyboard').onchange=()=>{this.config.display.show=$('show-keyboard').checked;this.renderSettings();this.render();this.save();};
-  $('edit-keyboard').onclick=()=>{this.clear();this.catalog.open();$('keyboard-dialog').showModal();};
+  $('edit-keyboard').onclick=()=>{this.clear();this.catalog.openPreferences();$('keyboard-dialog').showModal();};
   $('close-keyboard').onclick=()=>$('keyboard-dialog').close();
   $('keyboard-dialog').addEventListener('close',()=>{this.clear();});
   for(const [id,key] of [['keyboard-layout','layout'],['keyboard-numpad','numpad'],['keyboard-width','width'],['keyboard-opacity','opacity'],['keyboard-tps','showTPS'],['keyboard-window','window']]){

@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import {solvedState,applyMove,FACES,moveRange} from './puzzle.js';
-import {HOME_POSITION,frameForCamera,snappedViewRotation} from './orientation.js';
+import {HOME_POSITION,snappedViewRotation,DEFAULT_CIF_FRAME} from './orientation.js';
 import {migrateCustomTrace} from './split-methods.js';
 import {KeyboardEngine,validateConfig,defaultConfig} from './keyboard-engine.js';
 import {RecordingTimeline,withoutInspection,withoutPauses} from './solve-recording.js';
 export class ReplayPresentation{
  constructor(original){
   this.data=withoutPauses(withoutInspection(original));this.data.splitData=migrateCustomTrace(this.data.splitData,this.data.size);if(this.data.previousBest)this.data.previousBest.splitData=migrateCustomTrace(this.data.previousBest.splitData,this.data.size);this.soundEvents=recordedSounds(this.data);this.timeline=new RecordingTimeline(this.data);this.turnMs=160;this.scrambleMs=this.data.initial.scramble.length*this.turnMs;this.pauseMs=1000;this.orbitMs=2000;this.orbitStart=this.scrambleMs+this.pauseMs;this.readyStart=this.orbitStart+this.orbitMs;this.introMs=this.readyStart+this.pauseMs;this.duration=this.introMs+this.data.duration;
-  const camera=new THREE.PerspectiveCamera();camera.position.copy(HOME_POSITION);camera.lookAt(0,0,0);const homeFrame=frameForCamera(camera),rotation=snappedViewRotation(homeFrame);this.scrambleTokens=formatScramble(this.data.initial.scramble,this.data.size,homeFrame);this.home={rotation:rotation.toArray(),radius:HOME_POSITION.length()};
+  const homeFrame=DEFAULT_CIF_FRAME,rotation=snappedViewRotation(homeFrame);this.scrambleTokens=formatScramble(this.data.initial.scramble,this.data.size,homeFrame);this.home={rotation:rotation.toArray(),radius:HOME_POSITION.length()};
   this.states=[solvedState(this.data.size)];for(const move of this.data.initial.scramble)this.states.push(applyMove(this.states.at(-1),move));
  }
  frame(at){

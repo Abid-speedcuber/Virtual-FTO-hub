@@ -24,7 +24,7 @@ test('replay runs on home with solver bindings, audible events, previous-PB spli
  test.setTimeout(90000);const pageErrors=[];page.on('pageerror',e=>pageErrors.push(e.message));const data=await seedFinished(page);await page.goto('/');await ready(page);const before=await snap(page);
  await expect(page.locator('#keyboard-svg [data-code=KeyF] text')).toContainText('R');await expect(page.locator('#share-current')).toBeVisible();await expect(page.locator('#share-pb')).toBeVisible();
  const download=page.waitForEvent('download');await page.locator('#share-pb').click();await page.locator('#share-json').click();const file=await download;await page.locator('#close-share').click();const shared=JSON.parse(await readFile(await file.path(),'utf8'));expect(shared.duration).toBe(100);
- await page.locator('#settings').click();await expect(page.locator('#export-solve')).toHaveCount(0);await page.locator('#open-recordings').click();await page.locator('#watch-recording').click();
+ await expect(page.locator('#export-solve')).toHaveCount(0);await page.locator('#share-current').click();await page.locator('#share-watch').click();
  await expect(page.locator('#home-replay-view canvas')).toBeVisible();await expect(page.locator('#mobile-controls')).toBeHidden();await expect(page.locator('#home-replay-progress')).toBeVisible();await expect(page.locator('#keyboard-overlay')).toBeHidden();
  const duration=(await snap(page)).replay.duration,intro=duration-data.duration;
  await range(page,'#home-replay-progress',intro);await expect(page.locator('#replay-keyboard [data-code=KeyF]')).toHaveClass(/pressed/);await expect(page.locator('#replay-keyboard [data-code=KeyF] text')).toContainText('U');
@@ -63,7 +63,7 @@ test('inspection motion and inputs are not recorded; the first turn captures the
 
 test('compact recording controls provide sharing and the solver’s PB splits without the live action bar',async({page})=>{
  test.setTimeout(60000);await seedFinished(page);await page.setViewportSize({width:390,height:844});await page.goto('/');await ready(page);await expect(page.locator('#mobile-share-current')).toBeVisible();
- await page.locator('#settings').click();await page.locator('#open-recordings').click();await page.locator('#watch-recording').click();await expect(page.locator('#mobile-controls')).toBeHidden();await expect(page.locator('#home-replay-progress')).toBeVisible();await expect(page.locator('#home-replay-share')).toBeVisible();
+ await page.locator('#mobile-share-current').click();await page.locator('#share-watch').click();await expect(page.locator('#mobile-controls')).toBeHidden();await expect(page.locator('#home-replay-progress')).toBeVisible();await expect(page.locator('#home-replay-share')).toBeVisible();
  const duration=(await snap(page)).replay.duration;await range(page,'#home-replay-progress',duration);await page.locator('#home-replay-splits').click();await expect(page.locator('#history-title')).toHaveText('Recorded solve splits');await expect(page.locator('#history-split-reference')).toContainText('Solver’s previous PB');await expect(page.locator('#history-times')).toBeHidden();await expect(page.locator('#history-split-rows')).toContainText('LL');
  await page.locator('#close-history').click();await page.locator('#home-replay-exit').click();await expect(page.locator('#mobile-controls')).toBeVisible();expect((await snap(page)).replay).toBe(null);
 });

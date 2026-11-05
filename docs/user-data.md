@@ -1,19 +1,20 @@
 # Full user-data backups
 
-Open **Settings → Your data → Export all user data**. The downloaded
+Open **Settings → Your data → Export data as JSON**. The downloaded
 `fto-user-data.json` contains every `master-fto-` local-storage entry plus the
 complete IndexedDB recording album, including:
 
 - Every puzzle size’s current state, scramble boundary, undo/redo and pending turns.
 - Completed times, PBs, saved splits, last/PB recordings and unfinished recording.
 - Every manually saved album recording and every archived historical PB, including
-  its puzzle size, solve time, date/time and PB label.
+  its puzzle size, solve time, date/time and PB label. Album deletion markers are
+  included so deleted PB clips do not reappear on the other computer.
 - All keyboard presets, custom bindings, modes, default modes and overlay settings.
 - The per-size named-method library and selected split method.
 - Face colors, camera hold/zoom, pointer controls, biases, animation and audio settings.
 
 An active solve is paused before exporting. On the other computer, open
-**Import all user data**, then drop the backup into the import modal or use
+**Import data as JSON**, then drop the backup into the import modal or use
 **Choose a file**. Review the puzzle, time and album
 recording counts, and choose **Restore backup**. This replaces the destination app’s data; it does not
 merge two different histories. The app reloads after restoring. Imported times,
