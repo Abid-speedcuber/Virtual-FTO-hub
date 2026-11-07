@@ -40,6 +40,24 @@ test('repeat, blur/cancel and unknown OS modifiers do not create extra moves or 
  tap(e,'Digit8');e.keyDown('ShiftLeft');e.clear();assert.equal(e.pending,null);assert.equal(e.pressed.size,0);assert.equal(e.holds.length,0);
  const custom=defaultConfig();custom.modes[0].bindings.find(b=>b.trigger==='Escape').action.command='cancel';e.configure(custom);tap(e,'Digit8');tap(e,'Escape');assert.equal(e.pending,null);
 });
+test('bindings require the exact active modifier set',()=>{
+ const e=new KeyboardEngine(config([['R',action('B')],['Ctrl+R',action('U')]]));
+ assert.equal(tap(e,'KeyR').action.face,'B');
+ e.syncModifiers({code:'KeyR',shiftKey:false,ctrlKey:true,altKey:false,metaKey:false});
+ assert.equal(tap(e,'KeyR').action.face,'U');
+ e.syncModifiers({code:'KeyR',shiftKey:false,ctrlKey:false,altKey:true,metaKey:false});
+ assert.equal(tap(e,'KeyR').action,undefined);
+});
+test('logical modifier flags support desktop Ctrl and Alt remapping',()=>{
+ const e=new KeyboardEngine(config([['Ctrl+Z',{type:'command',command:'undo'}]]));
+ e.syncModifiers({code:'AltLeft',shiftKey:false,ctrlKey:true,altKey:false,metaKey:false});
+ e.keyDown('AltLeft');
+ assert.equal(e.keyDown('KeyZ').action.command,'undo');
+ e.keyUp('KeyZ');e.keyUp('AltLeft');
+ e.syncModifiers({code:'ControlLeft',shiftKey:false,ctrlKey:false,altKey:true,metaKey:false});
+ e.keyDown('ControlLeft');
+ assert.equal(e.keyDown('KeyZ').action,undefined);
+});
 test('tap sequence timeout does not execute stale sequences',()=>{
  const e=new KeyboardEngine(config([['A F',action('U')]]));e.keyDown('KeyA',{now:1000});e.keyUp('KeyA');assert.equal(e.keyDown('KeyF',{now:5000}).action,undefined);
 });

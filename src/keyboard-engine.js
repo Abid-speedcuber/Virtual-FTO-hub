@@ -22,7 +22,15 @@ export const displayCode=code=>code.replace(/^Key/,'').replace(/^Digit/,'').repl
 export const displayTrigger=text=>parseTrigger(text).map(s=>s.map(displayCode).join('+')).join(' ');
 const intersects=(a,b)=>a.some(x=>b.includes(x)||b.includes(modifierOf(x))||b.some(y=>modifierOf(y)===x));
 const held=(pressed,key)=>pressed.has(key)||[...pressed].some(code=>modifierOf(code)===key);
-const strokeMatches=(stroke,pressed,code)=>intersects(stroke,[code])&&stroke.every(key=>held(pressed,key));
+const modifierFlags=[['Shift','shiftKey'],['Control','ctrlKey'],['Alt','altKey'],['Meta','metaKey']];
+const strokeMatches=(stroke,pressed,code,logicalModifiers,allowedModifiers=new Set())=>{
+ const strokeModifiers=new Set(stroke.filter(key=>MODIFIERS.includes(modifierOf(key))).map(modifierOf));
+ const activeModifiers=logicalModifiers??new Set([...pressed].map(modifierOf).filter(modifier=>MODIFIERS.includes(modifier)));
+ const unmatched=[...activeModifiers].filter(modifier=>!strokeModifiers.has(modifier)&&!allowedModifiers.has(modifier));
+ if(unmatched.length||[...strokeModifiers].some(modifier=>!activeModifiers.has(modifier)))return false;
+ const currentCodeMatches=intersects(stroke,[code])||(MODIFIERS.includes(modifierOf(code))&&strokeModifiers.size>0);
+ return currentCodeMatches&&stroke.every(key=>held(pressed,key)||MODIFIERS.includes(key)&&activeModifiers.has(key));
+};
 const compatibleKey=(a,b)=>a===b||(modifierOf(a)===modifierOf(b)&&(MODIFIERS.includes(a)||MODIFIERS.includes(b)));
 const sameStroke=(a,b)=>a.length===b.length&&a.every(key=>b.some(other=>compatibleKey(key,other)));
 export function equivalentTrigger(a,b){const x=parseTrigger(a),y=parseTrigger(b);return x.length===y.length&&x.every((step,i)=>sameStroke(step,y[i]));}
@@ -175,7 +183,7 @@ export function actionLabel(action){
 }
 export class KeyboardEngine{
  constructor(config=defaultConfig()){
-  this.configure(config);this.pressed=new Set();this.holds=[];this.sequence=[];this.pending=null;this.lastStroke=0;
+ this.configure(config);this.pressed=new Set();this.logicalModifiers=null;this.holds=[];this.sequence=[];this.pending=null;this.lastStroke=0;
  }
  configure(config){
   validateConfig(config);this.config={...structuredClone(config),suffixMode:'one-shot'};
@@ -183,7 +191,7 @@ export class KeyboardEngine{
   this.compiled=new Map(this.config.modes.map(m=>[m.id,m.bindings.map(b=>({...b,steps:parseTrigger(b.trigger)}))]));
   this.clear();
  }
- clear({selection=true}={}){this.pressed?.clear();this.holds=[];this.suffixPresses=[];this.sequence=[];if(selection){this.pending=null;this.pendingSource=null;this.slicePending=false;this.sliceSource=null;}}
+ clear({selection=true}={}){this.pressed?.clear();this.logicalModifiers=null;this.holds=[];this.suffixPresses=[];this.sequence=[];if(selection){this.pending=null;this.pendingSource=null;this.slicePending=false;this.sliceSource=null;}}
  get effectiveHolds(){return this.holds.filter(h=>h.keys.every(key=>held(this.pressed,key))&&!this.holds.some(other=>other!==h&&other.keys.length>h.keys.length&&h.keys.every(key=>other.keys.includes(key))));}
  get mode(){const id=this.effectiveHolds.filter(h=>h.action.type==='hold-mode').at(-1)?.action.mode??this.baseMode;return this.config.modes.find(m=>m.id===id)??this.config.modes[0];}
  setMode(id){if(!this.config.modes.some(m=>m.id===id))return;this.baseMode=id;this.config.activeMode=id;this.sequence=[];}
@@ -211,23 +219,25 @@ export class KeyboardEngine{
  // Pointer-generated virtual chords omit these flags and retain their holds.
  syncModifiers(event,protectedCodes=new Set()){
   const released=[];
-  for(const [modifier,flag] of [['Shift','shiftKey'],['Control','ctrlKey'],['Alt','altKey'],['Meta','metaKey']]){
+  if(modifierFlags.some(([,flag])=>typeof event[flag]==='boolean'))this.logicalModifiers=new Set(modifierFlags.filter(([,flag])=>event[flag]).map(([modifier])=>modifier));
+  for(const [modifier,flag] of modifierFlags){
    if(event[flag]===false)for(const code of [...this.pressed])if(modifierOf(code)===modifier&&code!==event.code&&!protectedCodes.has(code)){this.keyUp(code,{cancel:true});released.push(code);}
   }
   return released;
+ }
+ modifierContext(){
+  const allowed=new Set(this.effectiveHolds.flatMap(hold=>hold.keys.map(modifierOf)).filter(modifier=>MODIFIERS.includes(modifier)));
+  for(const binding of this.compiled.get(this.mode.id))if(binding.action.type.startsWith('hold-')&&binding.steps.length===1&&binding.steps[0].every(key=>MODIFIERS.includes(key))&&binding.steps[0].every(key=>held(this.pressed,key)))for(const key of binding.steps[0])allowed.add(modifierOf(key));
+  return allowed;
  }
  // Custom non-modifier keys can serve as modifiers, e.g. hold A, then F.
  find(code,sequence=this.sequence,pressed=this.pressed){
   const bindings=this.compiled.get(this.mode.id),candidates=[];
   for(const binding of bindings){
    const steps=binding.steps,last=steps.at(-1);
-   if(!strokeMatches(last,pressed,code))continue;
+   if(!strokeMatches(last,pressed,code,this.logicalModifiers,this.modifierContext()))continue;
    const preceding=steps.slice(0,-1);
    if(preceding.length>sequence.length||!preceding.every((s,i)=>s.join('+')===sequence[sequence.length-preceding.length+i]?.join('+')))continue;
-   // Unbound OS modifiers must not accidentally invoke a bare move.
-   const extras=MODIFIERS.filter(m=>held(pressed,m)&&!last.includes(m)&&!last.some(k=>modifierOf(k)===m));
-   const allowed=[...this.effectiveHolds,...this.suffixPresses.filter(p=>!p.superseded)].flatMap(h=>h.keys.map(modifierOf));
-   if(extras.some(m=>!allowed.includes(m)))continue;
    candidates.push(binding);
   }
   return candidates.sort((a,b)=>(b.steps.length-a.steps.length)*20+b.steps.at(-1).length-a.steps.at(-1).length)[0]??null;
@@ -237,7 +247,7 @@ export class KeyboardEngine{
   for(const binding of this.compiled.get(this.mode.id))for(let n=0;n<binding.steps.length-1;n++){
    const before=binding.steps.slice(0,n),stroke=binding.steps[n];
    if(before.length>this.sequence.length||!before.every((step,i)=>step.join('+')===this.sequence[this.sequence.length-before.length+i]?.join('+')))continue;
-   if(strokeMatches(stroke,this.pressed,code))candidates.push({binding,sequence:[...before,stroke],score:(n+1)*20+stroke.length});
+   if(strokeMatches(stroke,this.pressed,code,this.logicalModifiers,this.modifierContext()))candidates.push({binding,sequence:[...before,stroke],score:(n+1)*20+stroke.length});
   }
   return candidates.sort((a,b)=>b.score-a.score)[0];
  }
