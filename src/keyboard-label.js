@@ -7,7 +7,7 @@ export function renderKeyLabel(label,text,width=1){
   label.dataset.labelLayout=signature;label.dataset.fitted='';label.removeAttribute('textLength');label.removeAttribute('lengthAdjust');label.textContent=text;
   label.setAttribute('font-size',text.length>8?'.17':text.length>5?'.20':text.length>3?'.26':'.33');
   const words=text.split(' ');
-  if(words.length===2&&words.every(word=>word.length<=6)){
+  if(words.length===2&&words.every(word=>word.length<=7)){
    label.replaceChildren();for(const [i,line] of words.entries()){const span=document.createElementNS(NS,'tspan');span.setAttribute('x',label.getAttribute('x'));span.setAttribute('dy',i?'.29':'-.14');span.textContent=line+(i?'':' ');label.append(span);}label.setAttribute('font-size','.23');
   }
  }

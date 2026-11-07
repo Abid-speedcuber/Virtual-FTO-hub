@@ -35,12 +35,9 @@ function migrateNames(config){
     for(const trigger of bound.length?sides.filter(code=>!shifts.includes(code)):['Shift'])mode.bindings.push({id:uid(),trigger,action:{type:'hold-slice'}});
    }
   }
-  if(config.rotationVersion!==1&&config.preset!=='cstimer'&&['cif','eif-r','eif-l','e-center'].includes(mode.id)){
-   for(const [trigger,dir] of [['Backquote',1],['Minus',-1]])if(!mode.bindings.some(b=>parseTrigger(b.trigger)[0].includes(trigger)))mode.bindings.push({id:uid(),trigger,action:{type:'rotate',face:'U',dir,kind:'outer',depth:1}});
-  }
   mode.name=name;used.add(name.toLowerCase());
  }
- config.commandVersion=1;config.sliceVersion=1;config.rotationVersion=1;return upgradeKeyboardDefaults(upgradeEIFDefaults(config));
+ config.commandVersion=1;config.sliceVersion=1;return upgradeKeyboardDefaults(upgradeEIFDefaults(config));
 }
 export class KeyboardUI{
  constructor({context,move,command,status,suffix,input,confirm}){

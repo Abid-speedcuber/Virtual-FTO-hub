@@ -586,7 +586,8 @@ function executeMove(move){
    const from=displayedCamera.quaternion.clone().invert(),now=performance.now();pacing.input(now);
    // Retargeting may shorten a transition, but can never postpone its finish.
    const deadline=Math.min(viewTween?.deadline??Infinity,now+animationDuration(pacing.duration()));
-   controls.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(axis,-move.dir*(move.vertex?Math.PI/2:2*Math.PI/3))).normalize();
+   const angle=(move.angle??(move.vertex?90:120))*Math.PI/180;
+   controls.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(axis,-move.dir*angle)).normalize();
    viewTween=$('animate').checked?{from,started:now,deadline}:null;
    controls.update();frame=currentFrame();playSound();if(!viewTween)draw();save();return true;
   }

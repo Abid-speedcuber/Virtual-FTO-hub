@@ -2,7 +2,7 @@ import {FACE_NAMES,actionLabel} from './keyboard-engine.js';
 export const BINDING_CATEGORIES=[['all','All actions'],['turns','Outer turns'],['slices','Inner slices'],['wide','Wide turns'],['rotations','Rotations'],['suffixes','Suffixes'],['actions','Actions'],['modes','Modes'],['other','Other saved bindings']];
 export function bindingActionKey(a){
  if(a.type==='move')return [a.type,a.face,a.dir,a.kind==='default'?'outer':a.kind,a.kind==='default'?1:a.depth,a.followDirection===true].join(':');
- if(a.type==='rotate')return [a.type,a.vertex?'T':a.face,a.dir].join(':');
+ if(a.type==='rotate')return [a.type,a.vertex?'T':a.face,a.dir,a.angle??''].join(':');
  return [a.type,a.depth??'',a.mode??'',a.command??''].join(':');
 }
 export function bindingCatalog(size,config){
@@ -14,6 +14,7 @@ export function bindingCatalog(size,config){
   add('rotations',`Rot ${face}${suffix}`,{type:'rotate',face,dir,kind:'outer',depth:1},'120°');
  }
  for(const dir of [1,-1])add('rotations',`Rot T${dir<0?'′':''}`,{type:'rotate',face:'U',dir,kind:'outer',depth:1,vertex:true},'90°');
+ for(const face of FACE_NAMES)for(const dir of [1,-1])add('rotations',`Rot half-${face}${dir<0?'′':''}`,{type:'rotate',face,dir,kind:'outer',depth:1,angle:60},'60°');
  for(let depth=2;depth<=size;depth++)add('suffixes',`Suffix ${depth}w`,{type:'depth',depth},depth>size?`Next turn width · needs ${depth} layers`:'Next turn width');
  for(const [type,label] of [['suffix-slice','Slice next'],['hold-slice','Hold slice'],['hold-wide','Hold wide'],['hold-reverse','Hold reverse']])add('suffixes',label,{type});
  for(const [command,label] of [['undo','Undo'],['redo','Redo'],['scramble','Scramble'],['reset','Reset puzzle'],['pause','Pause / resume'],['snap-view','Snap CIF / EIF view'],['fit','Fit puzzle'],['cancel','Clear pending input'],['reset-tps','Reset TPS and turn count']])add('actions',label,{type:'command',command});

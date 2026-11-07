@@ -45,6 +45,7 @@ export function validateConfig(config,{legacyNames=false}={}){
    const a=binding.action;
    if(!a||!['move','rotate','depth','suffix-slice','hold-slice','hold-wide','hold-reverse','hold-mode','mode','next-mode','command'].includes(a.type))throw Error('Unknown binding action.');
    if(['move','rotate'].includes(a.type)&&(!FACE_NAMES.includes(a.face)||![1,-1].includes(a.dir)||!['default','outer','slice','wide'].includes(a.kind)||!Number.isInteger(a.depth)||a.depth<1||a.depth>20))throw Error('Move bindings need a face, direction, and depth from 1–20.');
+   if(a.type==='rotate'&&(a.angle!==undefined&&![60,90,120].includes(a.angle)))throw Error('Rotations must be 60°, 90°, or 120°.');
    if(a.type==='rotate'&&a.vertex!==undefined&&typeof a.vertex!=='boolean')throw Error('Invalid rotation axis.');
    if(a.type==='depth'&&(!Number.isInteger(a.depth)||a.depth<1||a.depth>20))throw Error('Next-move depth must be 1–20.');
    if(['hold-mode','mode'].includes(a.type)&&!ids.has(a.mode))throw Error('Select an existing target mode.');
@@ -98,7 +99,7 @@ export function defaultConfig(size=4){
  const centerMode=modes.find(mode=>mode.id==='e-center');if(centerMode)for(const [trigger,command] of UNDO_REDO_SHORTCUTS.filter(([trigger])=>trigger.includes('+')&&trigger!=='Shift+Backspace'))centerMode.bindings.push({id:`center-shortcut-${trigger}`,trigger,action:{type:'command',command}});
  for(const mode of modes)for(const [trigger,dir] of [['Q',1],['P',1],['Z',-1],['Period',-1]])mode.bindings.push({id:`right-rotation-${mode.id}-${trigger}`,trigger,action:{type:'rotate',face:'R',dir,kind:'outer',depth:1}});
  for(const mode of modes)mode.bindings.push({id:`view-snap-${mode.id}`,trigger:'[',action:{type:'command',command:'snap-view'}});
- return {version:1,platformShortcutVersion:1,viewSnapVersion:1,preset:'abid',rotationVersion:1,rightRotationVersion:1,eifVersion:1,sliceVersion:1,centerVersion:2,undoVersion:1,suffixMode:'one-shot',activeMode:'cif',defaultMode:'cif',modes,display:{show:true,layout:'60',numpad:false,width:900,cornerVersion:3,opacity:100,showTPS:true,window:1},sequenceTimeout:1400};
+ return {version:1,platformShortcutVersion:1,viewSnapVersion:1,preset:'abid',rightRotationVersion:1,eifVersion:1,sliceVersion:1,centerVersion:2,undoVersion:1,suffixMode:'one-shot',activeMode:'cif',defaultMode:'cif',modes,display:{show:true,layout:'60',numpad:false,width:900,cornerVersion:3,opacity:100,showTPS:true,window:1},sequenceTimeout:1400};
 }
 // Upgrade shipped bindings without replacing user-owned keys or modes.
 export function upgradeKeyboardDefaults(config){
@@ -168,7 +169,7 @@ export function upgradeEIFDefaults(config){
  config.eifVersion=1;return config;
 }
 export function actionLabel(action){
- if(action.type==='rotate')return `Rot ${action.vertex?'T':action.face}${action.dir<0?'′':''}`;
+ if(action.type==='rotate')return action.angle===60?`Rot half-${action.face}${action.dir<0?'′':''}`:`Rot ${action.vertex?'T':action.face}${action.dir<0?'′':''}`;
  if(action.type==='move')return `${action.kind==='slice'?action.depth:action.kind==='wide'&&action.depth>2?action.depth:''}${action.face}${action.kind==='wide'?'w':''}${action.dir<0?'′':''}`;
  return ({depth:action.depth===2?'Wide':`${action.depth}w`,'suffix-slice':'Slice next','hold-slice':'Slice','hold-wide':'Wide','hold-reverse':'Reverse','hold-mode':'Hold mode',mode:'Mode','next-mode':'Next mode',command:{undo:'Undo',redo:'Redo',scramble:'Scramble','snap-view':'Snap view',home:'Snap view',fit:'Fit',reset:'Reset',pause:'Pause',cancel:'Clear','reset-tps':'Reset TPS'}[action.command]})[action.type]??'';
 }
@@ -276,7 +277,7 @@ export class KeyboardEngine{
   return {handled:true,action,binding};
  }
  resolve(action,context){
-  if(action.type==='rotate')return {face:action.face,layer:'slice',depth:1,count:context.size,dir:action.dir,label:actionLabel(action),valid:true,rotation:true,...(action.vertex?{vertex:true}:{})};
+  if(action.type==='rotate')return {face:action.face,layer:'slice',depth:1,count:context.size,dir:action.dir,label:actionLabel(action),valid:true,rotation:true,...(action.angle!==undefined?{angle:action.angle}:{}),...(action.vertex?{vertex:true}:{})};
   const holds=this.effectiveHolds.map(h=>h.action.type),suffixes=this.activeSuffixes;
   const depth=suffixes.filter(p=>p.action.type==='depth').at(-1)?.action.depth??this.pending;
   let start=1,count=1,dir=action.dir;
