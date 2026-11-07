@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';
-import {withSettings,scramble,confirmAction} from './helpers.js';
+import {withSettings,scramble,confirmAction,assignBinding} from './helpers.js';
 const snap=page=>page.evaluate(()=>window.fto.snapshot());
 const ready=page=>page.waitForFunction(()=>window.fto?.snapshot().ready);
 async function setup(page){await page.goto('/');await ready(page);await page.locator('#size').selectOption('3');await withSettings(page,async()=>{await page.locator('#animate').uncheck();await page.locator('#show-keyboard').check();});}
@@ -18,7 +18,7 @@ test('Wide, Rot, E– cntr, and Shift+Backspace work with current and persisted 
  await page.keyboard.press('KeyF');const turned=await snap(page);await page.keyboard.press('Backspace');expect((await snap(page)).history).toHaveLength(0);await page.keyboard.press('Shift+Backspace');expect((await snap(page)).state).toEqual(turned.state);await page.reload();await ready(page);await page.keyboard.press('Backspace');await page.keyboard.press('Shift+Backspace');expect((await snap(page)).state).toEqual(turned.state);
 });
 test('legacy mouse clicks stack a custom slice suffix and width, then consume both',async({page})=>{
- await setup(page);await page.locator('#size').selectOption('10');await withSettings(page,()=>page.locator('#pointer-mode').selectOption('legacy'));await page.locator('#settings').click();await page.locator('#edit-keyboard').click();await page.locator('#binding-new').click();await page.locator('#binding-trigger').fill("'");await page.locator('#binding-type').selectOption('suffix-slice');await page.locator('#binding-save').click();await page.locator('#close-keyboard').click();await page.locator('#close-settings').click();
+ await setup(page);await page.locator('#size').selectOption('10');await withSettings(page,()=>page.locator('#pointer-mode').selectOption('legacy'));await page.locator('#settings').click();await page.locator('#edit-keyboard').click();await assignBinding(page,'suffix-slice:::',"'");await page.locator('#close-bindings').click();await page.locator('#close-keyboard').click();await page.locator('#close-settings').click();
  await page.keyboard.press('Digit8');await page.keyboard.press('Quote');const label=await page.locator('.face-label:not([hidden])').filter({hasText:/^F$/}).boundingBox();await page.mouse.click(label.x+label.width/2,label.y+label.height/2,{button:'right'});expect((await snap(page)).history.at(-1)).toMatchObject({name:'F',depth:8,count:1,dir:-1});expect((await snap(page)).keyboard).toMatchObject({pending:null,slicePending:false});await page.mouse.click(label.x+label.width/2,label.y+label.height/2);expect((await snap(page)).history.at(-1)).toMatchObject({depth:1,count:1,dir:1});
 });
 test('downloaded mechanical recordings decode and play locally while suffix tone remains separate',async({page})=>{

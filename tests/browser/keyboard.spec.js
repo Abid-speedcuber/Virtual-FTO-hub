@@ -1,6 +1,6 @@
 import {installKeyboard} from './keyboard-fixture.js';
 import {test,expect} from '@playwright/test';
-import {withSettings,scramble,chooseMove} from './helpers.js';
+import {withSettings,scramble,assignBinding} from './helpers.js';
 test.beforeEach(async({page})=>{await installKeyboard(page);});
 const ready=page=>page.waitForFunction(()=>window.fto?.snapshot().keyboard);
 const snapshot=page=>page.evaluate(()=>window.fto.snapshot());
@@ -13,11 +13,8 @@ async function setup(page,size='20'){
 async function editor(page){await page.locator('#settings').click();await page.locator('#edit-keyboard').click();}
 async function closeEditor(page){await page.locator('#close-keyboard').click();await page.locator('#close-settings').click();}
 async function bind(page,trigger,{type='move',face='U',dir='-1',kind='outer',depth='1',mode}={}){
- await page.locator('#binding-new').click();await page.locator('#binding-trigger').fill(trigger);await page.locator('#binding-type').selectOption(type);
- if(type==='move'){await chooseMove(page,face,dir);await page.locator('#binding-kind').selectOption(kind);}
- if(await page.locator('#binding-depth').isVisible())await page.locator('#binding-depth').fill(depth);
- if(mode)await page.locator('#binding-target-mode').selectOption(mode);
- await page.locator('#binding-save').click();
+ const action=type==='move'?`move:${face}:${Number(dir)}:${kind}:${Number(depth)}:false`:type==='depth'?`depth:${Number(depth)}::`:type==='hold-mode'?`hold-mode::${mode}:`:type==='suffix-slice'?'suffix-slice:::':`${type}:::`;
+ await assignBinding(page,action,trigger);
 }
 test('physical keyboard shows resolved actions, lights real input, and persists its display',async({page})=>{
  await setup(page);
@@ -48,18 +45,17 @@ test('editable chords and tap sequences execute exact actions with move labels i
 });
 test('mode cycle and held modes reuse a key without duplicate actions in one mode',async({page})=>{
  await setup(page);await editor(page);
- await page.locator('#mode-name').fill('CIF');await page.locator('#mode-rename').click();
- await page.locator('#mode-name').fill('EIF');await page.locator('#mode-clone').click();
- const eif=await page.locator('#binding-mode').inputValue();
- await page.locator('.binding-edit').filter({hasText:/^F$/}).click();await chooseMove(page,'U',-1);await page.locator('#binding-save').click();
- await bind(page,'F',{face:'R'});await expect(page.locator('#binding-message')).toContainText('already has an action');
- await page.locator('#binding-mode').selectOption('default');await bind(page,'Space',{type:'hold-mode',mode:eif});await closeEditor(page);
+ await page.getByRole('button',{name:'+ New mode',exact:true}).click();await page.locator('#new-mode-name').fill('EIF');await page.locator('#save-mode-name').click();
+ const eif=await page.evaluate(()=>window.fto.snapshot().keyboard.config.modes.at(-1).id);
+ await page.locator('tr[data-action="move:U:-1:outer:1:false"] .binding-chip button').first().click();await page.locator('#bind-key-save').click();
+ await bind(page,'F',{face:'R'});await expect(page.locator('#bind-key-message')).toContainText('assigned');
+ await page.locator('#catalog-mode-choice').click();await page.getByRole('option',{name:/CIF \(Default\)/}).click();await page.locator('tr').filter({hasText:'Hold EIF'}).locator('.add-key').click();await page.locator('#bind-key-trigger').fill('Space');await page.locator('#bind-key-save').click();await closeEditor(page);
  await page.keyboard.press('KeyM');expect((await snapshot(page)).keyboard.modeName).toBe('EIF');await page.keyboard.press('KeyF');expect((await snapshot(page)).history.at(-1)).toMatchObject({name:'U',dir:-1});
  await page.keyboard.press('KeyM');await page.keyboard.down('Space');expect((await snapshot(page)).keyboard.modeName).toBe('EIF');await page.keyboard.press('KeyF');await page.keyboard.up('Space');expect((await snapshot(page)).keyboard.modeName).toBe('CIF');
  expect((await snapshot(page)).keyboard.stats.total).toBe(2);
 });
 test('recording a binding never turns the puzzle; repeated keys and focus loss leave no stuck input',async({page})=>{
- await setup(page);await editor(page);await page.locator('#binding-record').click();await page.keyboard.press('Control+KeyA');await expect(page.locator('#binding-trigger')).toHaveValue(/Ctrl.*A|A.*Ctrl/);expect((await snapshot(page)).history).toHaveLength(0);
+ await setup(page);await editor(page);await page.locator('#bind-key-listen').click();await page.keyboard.press('Control+KeyA');await expect(page.locator('#bind-key-trigger')).toHaveValue(/Ctrl.*A|A.*Ctrl/);expect((await snapshot(page)).history).toHaveLength(0);
  await closeEditor(page);await page.keyboard.down('KeyF');await page.keyboard.down('KeyF');expect((await snapshot(page)).history).toHaveLength(1);
  await page.evaluate(()=>window.dispatchEvent(new Event('blur')));expect((await snapshot(page)).keyboard.pressed).toHaveLength(0);await page.keyboard.up('KeyF');await expect(page.locator('[data-code="KeyF"]')).not.toHaveClass(/pressed/);
 });
@@ -75,11 +71,11 @@ test('import is atomic, exported bindings round trip, and recording preferences 
  await setup(page);await editor(page);
  const initial=(await snapshot(page)).keyboard.config;
  const bad=structuredClone(initial);bad.modes[0].bindings.push({...bad.modes[0].bindings[0],id:'duplicate'});
- await page.locator('#keyboard-import').setInputFiles({name:'invalid.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bad))});
- await expect(page.locator('#binding-message')).toContainText('already has an action');expect((await snapshot(page)).keyboard.config.modes[0].bindings).toHaveLength(initial.modes[0].bindings.length);
+ await page.locator('#catalog-import').setInputFiles({name:'invalid.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bad))});
+ await expect(page.locator('#catalog-message')).toContainText('already has an action');expect((await snapshot(page)).keyboard.config.modes[0].bindings).toHaveLength(initial.modes[0].bindings.length);
  const valid=structuredClone(initial);valid.display={...valid.display,layout:'iso',numpad:true,width:360,opacity:70,window:3};valid.sequenceTimeout=2100;
- await page.locator('#keyboard-import').setInputFiles({name:'keyboard.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(valid))});await expect(page.locator('#binding-message')).toHaveText('Keyboard imported.');
- const downloadPromise=page.waitForEvent('download');await page.locator('#keyboard-export').click();const download=await downloadPromise;expect(download.suggestedFilename()).toBe('fto-keyboard.json');
+ await page.locator('#catalog-import').setInputFiles({name:'keyboard.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(valid))});await expect(page.locator('#catalog-message')).toHaveText('Keyboard imported.');
+ const downloadPromise=page.waitForEvent('download');await page.locator('#catalog-export').click();const download=await downloadPromise;expect(download.suggestedFilename()).toBe('fto-keyboard.json');
  const stream=await download.createReadStream();const chunks=[];for await(const chunk of stream)chunks.push(chunk);const exported=JSON.parse(Buffer.concat(chunks).toString());expect(exported.display).toMatchObject(valid.display);expect(exported.modes[0].bindings).toEqual(valid.modes[0].bindings);
  await closeEditor(page);await page.reload();await ready(page);expect((await snapshot(page)).keyboard.config.display).toMatchObject(valid.display);expect((await snapshot(page)).keyboard.config.sequenceTimeout).toBe(2100);
  await expect(page.locator('[data-code="IntlBackslash"]')).toBeVisible();await expect(page.locator('[data-code="Numpad0"]')).toBeVisible();

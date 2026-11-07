@@ -36,13 +36,8 @@ for(const options of [{auto:true,defaultMode:'cif',expected:'cif'},{auto:false,d
 
 test('move and rotation pickers contain 4x4 direction grids and save the chosen action',async({page})=>{
  await page.goto('/');await ready(page);await page.locator('#settings').click();await expect(page.locator('#auto-default-mode')).toBeChecked();await expect(page.locator('#pointer-mode option[value="legacy"]')).toHaveText('Orbit + click');await page.locator('#edit-keyboard').click();
- await page.locator('#keyboard-default-mode').selectOption('eif-r');await page.locator('#binding-new').click();await page.locator('#binding-trigger').fill('X');
- await page.locator('#binding-move-choice').click();await expect(page.locator('#binding-move-options [role="option"]')).toHaveCount(16);await expect(page.locator('#binding-direction')).toHaveCount(0);
- expect(await page.locator('#binding-move-options').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(4);
- await page.locator('#binding-move-picker').screenshot({path:'test-results/move-direction-picker.png'});
- await page.locator('#binding-move-options').getByRole('option',{name:'R′',exact:true}).click();await page.locator('#binding-save').click();
+ await page.locator('#catalog-category').selectOption('turns');await page.locator('tr[data-action="move:R:-1:outer:1:false"] .add-key').click();await page.locator('#bind-key-trigger').fill('X');await page.locator('#bind-key-save').click();
  expect((await snap(page)).keyboard.config.modes[0].bindings.find(b=>b.trigger==='X').action).toMatchObject({type:'move',face:'R',dir:-1});
- await page.locator('#binding-new').click();await page.locator('#binding-trigger').fill('N');await page.locator('#binding-type').selectOption('rotate');await page.locator('#binding-move-choice').click();await expect(page.locator('#binding-move-options [role="option"]')).toHaveCount(16);
- await page.locator('#binding-move-options').getByRole('option',{name:'D′',exact:true}).click();await page.locator('#binding-save').click();expect((await snap(page)).keyboard.config.modes[0].bindings.find(b=>b.trigger==='N').action).toMatchObject({type:'rotate',face:'D',dir:-1});
+ await page.locator('#catalog-category').selectOption('rotations');await page.locator('tr[data-action="rotate:D:-1"] .add-key').click();await page.locator('#bind-key-trigger').fill('N');await page.locator('#bind-key-save').click();expect((await snap(page)).keyboard.config.modes[0].bindings.find(b=>b.trigger==='N').action).toMatchObject({type:'rotate',face:'D',dir:-1});
  await page.locator('#close-keyboard').click();await page.locator('#auto-default-mode').uncheck();await page.locator('#close-settings').click();await page.reload();await ready(page);await page.locator('#settings').click();await expect(page.locator('#auto-default-mode')).not.toBeChecked();await page.locator('#edit-keyboard').click();await expect(page.locator('#keyboard-default-mode')).toHaveValue('eif-r');
 });

@@ -1,14 +1,13 @@
 import {regressionKeyboard} from './keyboard-fixture.js';
 import {test,expect} from '@playwright/test';
-import {withSettings,scramble,chooseMove} from './helpers.js';
+import {withSettings,scramble,assignBinding} from './helpers.js';
 const ready=page=>page.waitForFunction(()=>window.fto?.snapshot().ready);
 const snap=page=>page.evaluate(()=>window.fto.snapshot());
 const size=async(page,n)=>withSettings(page,()=>page.locator('#size').selectOption(String(n)));
 const key=async(page,code)=>page.keyboard.press(code);
 const binding=async(page,trigger,type,face='U',kind='outer',depth=1)=>{
- await page.locator('#binding-new').click();await page.locator('#binding-trigger').fill(trigger);await page.locator('#binding-type').selectOption(type);
- if(['move','rotate'].includes(type)){await chooseMove(page,face);if(type==='move')await page.locator('#binding-kind').selectOption(kind);}
- if(await page.locator('#binding-depth').isVisible())await page.locator('#binding-depth').fill(String(depth));await page.locator('#binding-save').click();await expect(page.locator('#binding-message')).toHaveText('Binding saved.');
+ const action=type==='move'?`move:${face}:1:${kind}:${Number(depth)}:false`:type==='suffix-slice'?'suffix-slice:::':`rotate:${face}:1`;
+ await assignBinding(page,action,trigger);await expect(page.locator('#bindings-message')).toHaveText('Saved');
 };
 async function edit(page,action){await page.locator('#settings').click();await page.locator('#edit-keyboard').click();await action();await page.locator('#close-keyboard').click();await page.locator('#close-settings').click();}
 test.beforeEach(async({page})=>{await page.goto('/');await ready(page);await withSettings(page,async()=>{await page.locator('#animate').uncheck();await page.locator('#show-keyboard').check();});});
