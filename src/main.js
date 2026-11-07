@@ -588,6 +588,12 @@ function executeMove(move){
    const deadline=Math.min(viewTween?.deadline??Infinity,now+animationDuration(pacing.duration()));
    const angle=(move.angle??(move.vertex?90:120))*Math.PI/180;
    controls.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(axis,-move.dir*angle)).normalize();
+   if(move.angle===60&&move.face==='F'){
+    controls.update();
+    const target=snappedViewRotation(frameForCamera(camera,labelSwitchAngle));
+    controls.rotation.copy(target);
+    controls.update();
+   }
    viewTween=$('animate').checked?{from,started:now,deadline}:null;
    controls.update();frame=currentFrame();playSound();if(!viewTween)draw();save();return true;
   }
