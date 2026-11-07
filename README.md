@@ -16,7 +16,7 @@ Use `npm ci`, then `npm run dev` and open http://127.0.0.1:5173. Node.js 20.19+ 
 - The overlay shows actual actions at physical key positions. ANSI, ISO, and 60% layouts are available. Unbound keys are blank; keys omitted by a compact layout never light another position. Press highlights follow key-down/up without afterglow. TPS counts accepted manual turns, excluding suffixes, modes, rotations, undo/redo, and automatic scrambles.
 - Undo uses Backspace or Ctrl/⌘ Z. Redo uses **Shift+Backspace**, Ctrl/⌘ Shift Z, or Ctrl Y. Undo stops at the generated scramble.
 
-Scramble requires confirmation, arms the timer, and animates each computer turn by default. Animate turns and Animate scrambling can be changed independently in Settings → Animation & sound. Animation speed in the same section adjusts turns, view rotations, and scrambling from 0.25× to 3×. Timing starts on the first accepted manual turn and stops when solved. Reset requires confirmation when discarding progress and returns to solved free play, preserving PBs and times.
+The Scramble button requires confirmation. In free play or after a finished solve, three quick unmodified Tab presses start a new scramble without confirmation; other states and open dialogs keep their normal key behavior. Scrambling arms the timer, and animates each computer turn by default. Animate turns and Animate scrambling can be changed independently in Settings → Animation & sound. Animation speed in the same section adjusts turns, view rotations, and scrambling from 0.25× to 3×. Timing starts on the first accepted manual turn and stops when solved. Reset requires confirmation when discarding progress and returns to solved free play, preserving PBs and times.
 
 **Escape / Pause** pauses an active timed solve, grays every sticker, and shows Resume in the control bar. The resume key is consumed, so it does not also make a move or select a suffix. Manual pauses survive reloads and size switches; focus changes and closing Settings do not end them. The Pause button/key label is absent during free play and inspection.
 
@@ -109,3 +109,5 @@ This project is distributed under **GPL-3.0-only**; see [LICENSE](LICENSE) and [
 The logo and favicon are rasterized from the actual 2×2 geometry, square-on: green above, purple left, yellow right, orange below. With Vite running, regenerate them using `node scripts/render-logo.mjs` followed by `python3 scripts/make-icons.py` (Pillow required).
 
 **Settings → Customize color scheme** opens the eight face swatches. Click a swatch to use the native color picker; colors update live and save across reloads and puzzle sizes. Reset to default colors restores the factory palette.
+
+Replay shows the solver’s rolling TPS and a clickable solve-start marker on the progress bar. The color editor uses canonical CIF labels (white U, green F) with an orbitable reference FTO. App labels do not select text; editable/import/copy fields remain selectable.

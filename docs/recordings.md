@@ -120,3 +120,8 @@ and removes the album copy, while keeping solve times and last/PB recordings.
 Deleted PBs stay out of the album across reloads; their home-screen share menus
 allow saving them again. Re-saving retains the PB badge. Deletion markers travel
 with complete data backups. Older backups without markers remain compatible.
+
+Playback shows rolling TPS using accepted manual moves and the solver’s recorded
+TPS window. Rotations, suffixes and undo/redo are excluded; seeking and playback
+speed use source solve time. The marked tick on the progress bar jumps to the
+first solve event after scrambling, reorientation and the introduction pauses.

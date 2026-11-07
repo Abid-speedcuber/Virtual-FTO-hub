@@ -9,6 +9,7 @@ import {PhaseTracker,phaseProfile,profileKey} from './solve-phases.js';
 import {SolveRecorder} from './solve-recording.js';
 import {RecordingAlbum,validateAlbumBackup} from './recording-album.js';
 import {clearRecordingLink,recordingPayload} from './recording-codec.js';
+import {CIF_COLOR_FACES,faceColorLabel,ColorSchemeReference} from './color-scheme.js';
 import {HomeReplay} from './home-replay.js';
 import {migrateMethods,migrateCustomTrace} from './split-methods.js';
 import {exportUserData,validateUserData,restoreUserData} from './user-data.js';
@@ -20,7 +21,7 @@ import {bodyGeometry} from './body-geometry.js';
 import {swipeCandidates,chooseSwipeMove} from './swipe.js';
 import {pickSurface,pickFaceNormal} from './picking.js';
 import {FACES,solvedState,selected,applyMove,inverse,isSolved,scrambleMoves} from './puzzle.js';
-import {HOME_POSITION,FIXED_FRAME,frameForCamera,transformedNormal,DEFAULT_LABEL_SWITCH_ANGLE,snappedViewRotation,defaultCifRotation} from './orientation.js';
+import {HOME_POSITION,DEFAULT_CIF_FRAME,frameForCamera,transformedNormal,DEFAULT_LABEL_SWITCH_ANGLE,snappedViewRotation,defaultCifRotation} from './orientation.js';
 const $=id=>document.getElementById(id);
 const storageKey='master-fto-v1';
 const album=new RecordingAlbum();
@@ -169,7 +170,7 @@ function renderTurns(now=performance.now()){
 }
 build();
 const labels=FACES.map(f=>{const el=document.createElement('span');el.className='face-label';el.textContent=f.name;$('labels').append(el);return el;});
-function currentFrame(){return $('follow').checked?frameForCamera(camera,labelSwitchAngle):FIXED_FRAME;}
+function currentFrame(){return $('follow').checked?frameForCamera(camera,labelSwitchAngle):DEFAULT_CIF_FRAME;}
 frame=currentFrame();
 function draw(){
  scheduled=false;
@@ -399,12 +400,12 @@ async function confirmPaused(message,label,title='Replace this solve?'){
  dialog.showModal();return result;
 }
 $('undo').onclick=()=>enqueue({type:'undo'});$('redo').onclick=()=>enqueue({type:'redo'});
-$('scramble').onclick=async()=>{
+async function startScramble({skipConfirmation=false}={}){
  if(isScrambling())return;
  const timed=['ready','running','paused'].includes(session.status);
  const title=timed?'Replace this solve?':'Start a new timed solve?';
  const message=timed?`Discard this attempt and scramble the ${size} × ${size} FTO for a new timed solve?`:`Scramble the ${size} × ${size} FTO and start a new timed solve?${history.length>(solveEnd??0)||active?' This clears the current free-play moves.':''} Saved times are kept.`;
- if(!await confirmPaused(message,'Scramble',title))return;
+ if(!(skipConfirmation&&['idle','finished'].includes(session.status))&&!await confirmPaused(message,'Scramble',title))return;
  const scrambleSize=size,request=new AbortController();scrambleRequest=request;
  $('scramble-error').hidden=true;controls.cancelAll();keyboard?.clear({selection:true});update();
  let moves;
@@ -423,6 +424,15 @@ $('scramble').onclick=async()=>{
  if($('animate-scrambling').checked){build();queue=moves.map(move=>({type:'move',move,source:'scramble'}));save();update();requestDraw();pump();}
  else{state=moves.reduce(applyMove,state);history=moves;undoFloor=history.length;build();session.arm();armRecording();phaseTracker.arm(state,session.times,{historyFloor:undoFloor});save();update();requestDraw();}
 };
+$('scramble').onclick=()=>startScramble();
+let scrambleTabs=[];
+window.addEventListener('keydown',event=>{
+ const eligible=['idle','finished'].includes(session.status)&&!replayActive&&!isScrambling()&&!document.querySelector('dialog[open]')&&!event.target?.closest?.('input,textarea,select,[contenteditable=true]');
+ if(event.code!=='Tab'||!eligible||event.shiftKey||event.ctrlKey||event.metaKey||event.altKey){scrambleTabs=[];return;}if(event.repeat)return;
+ const now=performance.now();if(scrambleTabs.length&&now-scrambleTabs.at(-1)>400)scrambleTabs=[];scrambleTabs=scrambleTabs.filter(at=>now-at<=800);scrambleTabs.push(now);
+ if(scrambleTabs.length===3){scrambleTabs=[];event.preventDefault();event.stopImmediatePropagation();startScramble({skipConfirmation:true});}
+},true);
+window.addEventListener('blur',()=>{scrambleTabs=[];});
 async function resetSolve(){
  const timed=['ready','running','paused'].includes(session.status);
  if((history.length||active||queue.length)&&!await confirmPaused(timed?'Reset the puzzle to solved and discard this attempt? Saved times are kept.':'Reset the puzzle to solved and clear free-play moves? Saved times are kept.','Reset','Reset puzzle?'))return;
@@ -501,20 +511,23 @@ window.addEventListener('keydown',event=>{
 },true);
 $('about').onclick=()=>{homeReplay?.stop();controls.cancelAll();$('about-dialog').showModal();pauseSession();};
 $('close-about').onclick=()=>$('about-dialog').close();
+let colorReference=null;
 function renderColorSwatches(){
  const grid=$('face-color-swatches');grid.replaceChildren();
- for(const face of FACES){
-  const label=document.createElement('label');label.className='face-color-swatch';
-  const name=document.createElement('span');name.textContent=face.name;
-  const input=document.createElement('input');input.type='color';input.value=faceColors[face.name];input.id=`face-color-${face.name}`;input.setAttribute('aria-label',`${face.name} face color`);
+ for(const face of CIF_COLOR_FACES){
+  const label=document.createElement('label');label.className='face-color-swatch';label.dataset.face=face.name;
+  const name=document.createElement('span');name.textContent=faceColorLabel(face.name,faceColors[face.physical.name]);
+  const input=document.createElement('input');input.type='color';input.value=faceColors[face.physical.name];input.id=`face-color-${face.name}`;input.setAttribute('aria-label',`${face.name} face color`);
   const value=document.createElement('span');value.className='face-color-value';value.textContent=input.value;
-  const update=()=>{faceColors[face.name]=input.value;value.textContent=input.value;requestDraw();saveSettings();};
-  input.addEventListener('input',update);input.addEventListener('change',update);
-  label.append(name,input,value);grid.append(label);
+  const update=()=>{faceColors[face.physical.name]=input.value;value.textContent=input.value;name.textContent=faceColorLabel(face.name,input.value);colorReference?.update(faceColors);requestDraw();saveSettings();};
+  input.addEventListener('input',update);input.addEventListener('change',update);label.append(name,input,value);grid.append(label);
  }
+ colorReference?.update(faceColors);
 }
-$('customize-colors').onclick=()=>{renderColorSwatches();$('color-scheme-dialog').showModal();pauseSession();};
+$('customize-colors').onclick=()=>{renderColorSwatches();$('color-scheme-dialog').showModal();pauseSession();colorReference=new ColorSchemeReference($('color-reference'),name=>{const input=$(`face-color-${name}`);input.focus();input.click();});colorReference.update(faceColors);colorReference.viewer.resize();};
 $('close-color-scheme').onclick=()=>$('color-scheme-dialog').close();
+$('color-scheme-dialog').addEventListener('close',()=>{colorReference?.dispose();colorReference=null;});
+$('reset-color-reference').onclick=()=>colorReference?.resetView();
 $('reset-face-colors').onclick=()=>{faceColors=Object.fromEntries(FACES.map(face=>[face.name,face.color]));renderColorSwatches();requestDraw();saveSettings();};
 for(const dialog of document.querySelectorAll('dialog')){
  dialog.addEventListener('close',resumeSession);

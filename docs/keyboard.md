@@ -31,6 +31,8 @@ Both pointer modes use the same suffix and held-action engine as keyboard turns.
 
 A short tap selects a suffix on release and waits for one accepted turn, including a pointer turn. Until release or hold activation, it does not change the move legends or hide Shift’s Slice legend. Holding a suffix for 200 ms, or using it with a turn sooner, activates it as a held modifier: it applies to every keyboard or pointer turn until release. Releasing a held suffix does not leave a one-shot selection behind. Held width and slice suffixes can stack. Unbound keys, held actions, mode changes, and rejected turns do not consume it. Selected suffix keys remain lit after release and affected moves glow faintly. Tap the same suffix again to cancel it. Full-size pointer turns become view rotations too.
 
+In free play and finished states, triple-Tab (three presses within 0.8 seconds, each at most 0.4 seconds apart) starts a new scramble without confirmation. Single/double Tab still switch modes. Holding Tab, modified Tab, active solves, replay, dialogs and text fields do not invoke this shortcut.
+
 ## Pause, undo, and redo
 
 Escape pauses an active timed solve. The puzzle turns gray and **Press any key to resume** appears beneath it. The next key only resumes; it does not perform its binding. Every pause waits for a resume key, including pauses caused by Settings, confirmations, leaving the page, reloads, and size switches. Closing a dialog or returning focus does not resume timing. Escape’s Pause label and the square’s Pause button are hidden in free play and before timing starts.

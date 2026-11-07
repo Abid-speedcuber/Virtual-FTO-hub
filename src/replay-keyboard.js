@@ -1,11 +1,12 @@
 import {KeyboardEngine,defaultConfig,validateConfig} from './keyboard-engine.js';
 import {renderKeyLabel} from './keyboard-label.js';
+import {ReplayTurnStats} from './replay-stats.js';
 import {keyboardLayout} from './keyboard-layout.js';
 const NS='http://www.w3.org/2000/svg';
 export class ReplayKeyboard{
  constructor(host,data){
   this.data=data;try{validateConfig(data.initial.keyboard,{legacyNames:true});this.config=structuredClone(data.initial.keyboard);}catch{this.config=defaultConfig(data.size);}
-  host.replaceChildren();const title=document.createElement('div');title.className='keyboard-readout';this.title=title;host.append(title);
+  host.replaceChildren();const title=document.createElement('div');title.className='keyboard-readout';this.title=title;this.modeLabel=document.createElement('span');this.statsLabel=document.createElement('span');this.statsLabel.className='replay-keyboard-stats';this.statsLabel.setAttribute('aria-label','Recorded input statistics');title.append(this.modeLabel,this.statsLabel);host.append(title);this.stats=new ReplayTurnStats(data);
   const board=document.createElementNS(NS,'svg'),layout=keyboardLayout(this.config.display??{layout:'60'});board.setAttribute('viewBox',`-.04 -.04 ${layout.width} ${layout.height}`);host.append(board);this.layout=layout;this.keys=new Map();
   for(const key of layout.keys){
    const group=document.createElementNS(NS,'g');group.classList.add('keycap');group.dataset.code=key.code;
@@ -29,7 +30,7 @@ export class ReplayKeyboard{
    if(e.type==='reset-input'||e.type==='pause'){this.paused=e.type==='pause';this.engine.clear({selection:true});this.pressedLabels.clear();}
   }
   this.engine.activateSuffixes(Math.max(0,at));this.engine.expire(Math.max(0,at));
-  this.title.textContent=`Solver’s keyboard · ${this.engine.mode.name}`;
+  this.modeLabel.textContent=`Solver’s keyboard · ${this.engine.mode.name}`;this.turnStats=this.stats.at(at);this.statsLabel.textContent=`${this.turnStats.tps.toFixed(1)} TPS`;this.statsLabel.title=`${this.stats.seconds}s window · Peak ${this.turnStats.peak.toFixed(1)} TPS · ${this.turnStats.total} turns`;
   for(const [code,{group,text,width}] of this.keys){group.classList.toggle('pressed',this.engine.pressed.has(code));const context={size:this.data.size,canPause:at>=0&&at<this.data.duration,manualPaused:this.paused,defaultMove:{depth:1,count:1,dir:1}},state=this.engine.keyState(code,context);group.classList.toggle('selected',state.selected);group.classList.toggle('affected',state.affected);renderKeyLabel(text,this.engine.pressed.has(code)&&this.pressedLabels.has(code)?this.pressedLabels.get(code):state.label,width);}
  }
 }
