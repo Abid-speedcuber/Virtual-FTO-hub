@@ -42,6 +42,6 @@ export function parseRotation(raw){
 }
 
 export function remappedFace(action,mapping){
- if(action.type==='move'||(action.type==='rotate'&&!action.vertex))return mapping[action.face];
+ if(action.type==='move'||(action.type==='rotate'&&!action.vertex&&!action.pair))return mapping[action.face];
  return undefined;
 }

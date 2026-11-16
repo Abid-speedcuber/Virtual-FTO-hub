@@ -95,7 +95,7 @@ export function phaseProfile(size,config={}){
 
 export const profileKey=profile=>JSON.stringify(profile);
 export function trackedBest(times,profile){
- return times.filter(t=>t.splitData&&profileKey(t.splitData.profile)===profileKey(profile)&&t.splitData.complete&&(!['bencisco','nautilus'].includes(profile.method)||(t.splitData.detectorVersion===DETECTOR_VERSION&&t.splitData.groups?.length>1))).reduce((best,t)=>!best||t.ms<best.ms?t:best,null);
+ return times.filter(t=>!t.dnf&&t.splitData&&profileKey(t.splitData.profile)===profileKey(profile)&&t.splitData.complete&&(!['bencisco','nautilus'].includes(profile.method)||(t.splitData.detectorVersion===DETECTOR_VERSION&&t.splitData.groups?.length>1))).reduce((best,t)=>!best||t.ms<best.ms?t:best,null);
 }
 export class PhaseTracker{
  constructor(size,profile,saved=null){

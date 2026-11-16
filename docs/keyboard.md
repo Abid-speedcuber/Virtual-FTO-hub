@@ -31,7 +31,7 @@ Both pointer modes use the same suffix and held-action engine as keyboard turns.
 
 A short tap selects a suffix on release and waits for one accepted turn, including a pointer turn. Until release or hold activation, it does not change the move legends or hide Shift’s Slice legend. Holding a suffix for 200 ms, or using it with a turn sooner, activates it as a held modifier: it applies to every keyboard or pointer turn until release. Releasing a held suffix does not leave a one-shot selection behind. Held width and slice suffixes can stack. Unbound keys, held actions, mode changes, and rejected turns do not consume it. Selected suffix keys remain lit after release and affected moves glow faintly. Tap the same suffix again to cancel it. Full-size pointer turns become view rotations too.
 
-In free play and finished states, triple-Tab (three presses within 0.8 seconds, each at most 0.4 seconds apart) starts a new scramble without confirmation. Single/double Tab still switch modes. Holding Tab, modified Tab, active solves, replay, dialogs and text fields do not invoke this shortcut.
+Triple-Escape (three presses within 0.8 seconds, each at most 0.4 seconds apart) starts a new scramble without confirmation, including during a running or paused solve. A started, unfinished solve is recorded as DNF. A ready scramble that has not been started is replaced without adding a result. Holding Escape, modified Escape, replay, dialogs and text fields do not invoke the shortcut. Tab keeps its normal mode bindings.
 
 ## Pause, undo, and redo
 
@@ -47,7 +47,7 @@ The catalogue lists every relevant outer turn, slice, wide turn, rotation, suffi
 
 Click an assigned key to replace it, **×** to unassign it, or **+** to add another key. Press a key/chord and save, or type a tap sequence. Reassigning an occupied key requires **Replace existing key**. Esc dismisses capture; type `Escape` in the field when assigning Escape itself.
 
-The Mode dropdown selects the bindings you edit, without activating that mode. **+ New mode** creates one. Right-click a mode (or tap its **⋯** button) to rename, duplicate, delete or make it the default. The default is labeled **(Default)**. Runtime mode changes use your keyboard bindings. The default-on **Reset mode after a solve** setting returns to the default after completion.
+The Mode dropdown selects the bindings you edit, without activating that mode. **+ New mode** creates one. Right-click a mode (or tap its **⋯** button) to rename, duplicate, delete or make it the default. The default is labeled **(Default)**. Runtime mode changes use your keyboard bindings. The default-on **Reset mode before and after a solve** setting returns to the default for a new solve and after completion. **Start next solve right away** automatically presents the next scramble when a solve finishes.
 
 - `F`: one physical key.
 - `A+F`: hold A, then F; chord order does not affect conflict detection.
@@ -80,3 +80,17 @@ For csTimer, Tab selects EIF-R (or returns to CIF), Shift+Tab selects EIF-L (or 
 Source and GPLv3 attribution for the adapted csTimer mapping are recorded in [NOTICE.md](../NOTICE.md). Presets and edits save per size and export through the existing JSON controls.
 
 Whole-puzzle rotations follow **Animate turns**, including csTimer’s 90° T rotations and full-width suffix rotations. The view interpolates smoothly and catches up fast rotation input without queuing old poses. Independent rotation keys still preserve selected suffixes and do not affect timing or TPS.
+
+### All puzzle orientations
+
+The Rotations category includes all 47 changes of hold using `{x,y}` notation: the current x face becomes U and the current y face becomes F. For example, `{F,D}` puts the current F face on top and D in front. These actions work from CIF and EIF, including during rotation animations. `{U,F}` is the unchanged hold and is omitted; equal or opposite face pairs are invalid.
+
+Existing 120° rotations, half-U/half-F rotations, and T/T′ retain their original behavior and bindings. T/T′ are available in every preset. Their details show face-pair search aliases, including `{U,R}` for half-U and `{L,R}` for T in CIF. Some legacy axes reach different face pairs in EIF, so explicit face-pair actions are listed separately for consistent control in either hold.
+
+Search accepts `{U,R}` or `{U, R}` in both action pickers. In the main action search, a valid pair also offers **Apply** to remap the current mode's face bindings; assigning a key to a rotation uses the action row below it.
+
+### Choose a key's type
+
+In Keyboard view, **Ctrl-click a key** (or press **Ctrl + that key** while the binding editor is open) to choose Move / rotation, Suffix, Held modifier, or Action / mode. This dialog changes the key type and optionally records a replacement key or chord for the old suffix or modifier. The converted key stays unassigned; assign its new action separately from Keyboard view. This also lets Meta, Context Menu, and other physical modifier keys act as ordinary move keys. Types are saved for the selected puzzle size and mode.
+
+The dialog lists dependent chords and sequences, plus the turns produced by the existing suffix or hold action. Record an unassigned replacement key or chord to move the old function and its dependent bindings together. Occupied replacements are rejected without changing any bindings. Only suffixes supported by the current puzzle size and combinations that actually change a turn appear in the preview. Unsupported number suffixes are plain unassigned move keys. Leave the replacement empty to unassign those dependent bindings and remove the old modified turns; the base move keys remain assigned. Cancel closes the dialog without changing anything.

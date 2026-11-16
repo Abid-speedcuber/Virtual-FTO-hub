@@ -40,8 +40,8 @@ function migrateNames(config){
  config.commandVersion=1;config.sliceVersion=1;return upgradeKeyboardDefaults(upgradeEIFDefaults(config));
 }
 export class KeyboardUI{
- constructor({context,move,command,status,suffix,input,confirm}){
-  this.confirm=confirm;this.input=input;this.suffix=suffix;this.size=context().size;this.profiles={};this.context=context;this.move=move;this.command=command;this.status=status;this.storageOK=true;this.meter=new TurnMeter();this.pressedLabels=new Map();this.pointerKeys=new Map();
+ constructor({context,move,command,status,suffix,input,confirm,prepareStart}){
+  this.confirm=confirm;this.prepareStart=prepareStart;this.input=input;this.suffix=suffix;this.size=context().size;this.profiles={};this.context=context;this.move=move;this.command=command;this.status=status;this.storageOK=true;this.meter=new TurnMeter();this.pressedLabels=new Map();this.pointerKeys=new Map();
   this.config=defaultConfig(this.size);
   try{const saved=JSON.parse(localStorage.getItem('master-fto-keyboard-v2')||'null');if(saved){this.profiles=saved.profiles??{};for(const config of Object.values(this.profiles)){validateConfig(config,{legacyNames:true});migrateNames(config);}this.config=this.profiles[this.size]??defaultConfig(this.size);this.config.display={...defaultConfig(this.size).display,...saved.display};}
   else{const stored=JSON.parse(localStorage.getItem('master-fto-keyboard-v1')||'null');if(stored){validateConfig(stored,{legacyNames:true});this.config={...(untouchedLegacy(stored)?defaultConfig(this.size):stored),display:{...this.config.display,...stored.display,cornerVersion:stored.display?.cornerVersion??0}};}}}
@@ -108,7 +108,12 @@ export class KeyboardUI{
   if(this.context().manualPaused){if(this.blocked(event)||event.repeat)return;event.preventDefault();event.stopPropagation?.();this.command('resume');return;}
   if(this.blocked(event))return;
   this.syncModifiers(event);
-  const result=this.engine.keyDown(event.code,{repeat:event.repeat,size:this.context().size});
+  let result=this.engine.keyDown(event.code,{repeat:event.repeat,size:this.context().size});
+  if(result.action?.type==='move'&&this.prepareStart){
+   const heldModifiers=[...this.engine.pressed].filter(code=>code!==event.code&&['Shift','Control','Alt','Meta'].includes(code.replace(/(Left|Right)$/,'')));
+   const selection=Object.fromEntries(['pending','pendingSource','slicePending','sliceSource'].map(key=>[key,this.engine[key]]));
+   if(this.prepareStart()){for(const code of heldModifiers)this.engine.keyDown(code,{size:this.context().size});Object.assign(this.engine,selection);this.syncModifiers(event);result=this.engine.keyDown(event.code,{repeat:event.repeat,size:this.context().size});}
+  }
   this.scheduleSuffixHold();
   if(result.handled)event.preventDefault();
   const action=result.action;

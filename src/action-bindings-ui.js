@@ -1,4 +1,6 @@
-import {bindingCatalog,bindingActionKey,BINDING_CATEGORIES,bindingSubgroups,inBindingSubgroup} from './binding-catalog.js';
+import {keyRole,keyRoleImpact,changeKeyRole} from './key-roles.js';
+import {normalizeActionSearch} from './rotation-actions.js';
+import {bindingCatalog,bindingActionKey,BINDING_CATEGORIES,bindingSubgroups,inBindingSubgroup,relevantBindingAction} from './binding-catalog.js';
 import {defaultConfig,validateConfig,displayTrigger,displayCode,modifierOf,triggerKey,equivalentTrigger,actionLabel,MODIFIERS,KeyboardEngine} from './keyboard-engine.js';
 import {keyboardLayout} from './keyboard-layout.js';
 import {renderKeyLabel} from './keyboard-label.js';
@@ -13,7 +15,6 @@ const el=(tag,className,text)=>{const item=document.createElement(tag);if(classN
 const NS='http://www.w3.org/2000/svg';
 const svg=(tag,attributes={})=>{const item=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attributes))item.setAttribute(k,v);return item;};
 const isModifierKey=code=>MODIFIERS.includes(modifierOf(code));
-const STICKY_ACTIONS=['depth','suffix-slice','hold-slice','hold-wide','hold-reverse'];
 const withoutTrigger=(bindings,trigger)=>bindings.filter(b=>{try{return !equivalentTrigger(b.trigger,trigger);}catch{return true;}});
 export class ActionBindingsUI{
  constructor(owner){
@@ -37,7 +38,7 @@ export class ActionBindingsUI{
   $('bind-key-trigger').oninput=()=>{$('bind-key-replace').hidden=true;$('bind-key-message').textContent='';};
   document.addEventListener('keydown',event=>this.captureDown(event),true);document.addEventListener('keyup',event=>this.captureUp(event),true);
   this.pressed=new Set();this.captured=new Set();
-  this.sticky=new Set();this.installBoard();
+  this.sticky=new Set();this.installBoard();this.installKeyRoles();
  }
  config(){return this.size===this.owner.size?this.owner.config:this.owner.profiles[this.size]??defaultConfig(this.size);}
  write(config){
@@ -61,12 +62,14 @@ export class ActionBindingsUI{
  }
  renderRows(){
   const raw=$('catalog-search').value,table=$('catalog-rows').closest('table');
-  if(raw.startsWith('{')){this.renderRotation(raw,table);return;}
-  $('rotation-panel').hidden=true;table.hidden=false;this.pendingRotation=null;
+  const rotation=raw.trim().startsWith('{')?parseRotation(raw.trim()):null;
+  if(rotation&&rotation.state!=='valid'){this.renderRotation(raw.trim(),table);return;}
+  $('rotation-panel').hidden=!rotation;table.hidden=false;this.pendingRotation=rotation?.mapping??null;
+  if(rotation){$('rotation-status').textContent='Matching rotations below. Apply remaps the face bindings in this mode.';$('rotation-apply').hidden=false;}
   $('catalog-col1').textContent='Action';$('catalog-col2').textContent='Assigned keys';
-  const config=this.config(),mode=config.modes.find(m=>m.id===this.mode)??config.modes[0],category=$('catalog-category').value,query=raw.toLowerCase().trim();
+  const config=this.config(),mode=config.modes.find(m=>m.id===this.mode)??config.modes[0],category=$('catalog-category').value,query=normalizeActionSearch(raw);
   this.renderSubgroups(config,category);const subgroup=$('catalog-subgroup').value;
-  const rows=bindingCatalog(this.size,config).map(row=>({...row,bindings:mode.bindings.filter(b=>bindingActionKey(b.action)===row.key)})).filter(row=>(category==='all'||row.category===category)&&inBindingSubgroup(row,subgroup)&&(!query||`${row.label} ${row.detail} ${row.bindings.map(b=>displayTrigger(b.trigger)+' '+prettyTrigger(b.trigger)).join(' ')}`.toLowerCase().replaceAll('′',"'").includes(query.replaceAll('′',"'"))));
+  const rows=bindingCatalog(this.size,config).map(row=>({...row,bindings:mode.bindings.filter(b=>bindingActionKey(b.action)===row.key)})).filter(row=>(category==='all'||row.category===category)&&inBindingSubgroup(row,subgroup)&&(!query||normalizeActionSearch(`${row.label} ${row.detail} ${row.bindings.map(b=>displayTrigger(b.trigger)+' '+prettyTrigger(b.trigger)).join(' ')}`).includes(query)));
   $('catalog-rows').replaceChildren();
   for(const row of rows){
    const tr=el('tr');tr.dataset.action=row.key;const name=el('th',null,row.label);name.scope='row';if(row.detail)name.append(el('small',null,row.detail));
@@ -84,11 +87,13 @@ export class ActionBindingsUI{
  }
  listen(){this.pressed.clear();this.captured.clear();this.listening=true;$('bind-key-listen').textContent='Press a key or chord…';$('bind-key-listen').focus();}
  captureDown(event){
+  if(this.captureRoleDown(event))return;
   if(!$('bind-key-dialog').open||!this.listening||event.target.closest('input'))return;
   if(event.code==='Enter'&&event.target.id==='bind-key-save')return;
   event.preventDefault();event.stopImmediatePropagation();if(event.code==='Escape'){$('bind-key-dialog').close();return;}if(event.repeat)return;this.pressed.add(event.code);this.captured.add(event.code);
  }
  captureUp(event){
+  if(this.captureRoleUp(event))return;
   if(!$('bind-key-dialog').open||!this.listening||!this.captured.has(event.code))return;
   event.preventDefault();event.stopImmediatePropagation();this.pressed.delete(event.code);
   if(!this.pressed.size){$('bind-key-trigger').value=[...new Set(this.captured.size===1?[...this.captured]:[...this.captured].map(modifierOf))].map(displayCode).join('+');this.listening=false;$('bind-key-listen').textContent='Record another key';$('bind-key-replace').hidden=true;$('bind-key-message').textContent='';$('bind-key-save').focus();}
@@ -105,7 +110,7 @@ export class ActionBindingsUI{
  showModeActions(){
   $('catalog-search').value='';$('catalog-category').value='modes';$('catalog-subgroup').value='all';this.render();document.querySelector('.keyboard-editor-body').scrollTop=0;
  }
- addMode(copy=false,sourceId=this.mode,name){return this.change(config=>{const source=config.modes.find(mode=>mode.id===sourceId);let n=config.modes.length+1;while(config.modes.some(mode=>mode.name===`Mode ${n}`))n++;const id=uid();config.modes.push({id,name:name??`Mode ${n}`,bindings:copy?source.bindings.map(binding=>({...structuredClone(binding),id:uid()})):[]});this.mode=id;});}
+ addMode(copy=false,sourceId=this.mode,name){return this.change(config=>{const source=config.modes.find(mode=>mode.id===sourceId);let n=config.modes.length+1;while(config.modes.some(mode=>mode.name===`Mode ${n}`))n++;const id=uid();config.modes.push({id,name:name??`Mode ${n}`,bindings:copy?source.bindings.map(binding=>({...structuredClone(binding),id:uid()})):[],...(copy&&source.keyRoles?{keyRoles:structuredClone(source.keyRoles)}:{})});this.mode=id;});}
  renderModes(){
   const config=this.config(),list=$('catalog-mode-options');list.replaceChildren();const selected=config.modes.find(mode=>mode.id===this.mode);
   const label=mode=>`${mode.name}${mode.id===config.defaultMode?' (Default)':''}`;$('catalog-mode-choice').textContent=label(selected);
@@ -143,6 +148,7 @@ export class ActionBindingsUI{
   if(!accepted||this.size!==size)return;
   this.change(next=>{
    const from=next.modes.find(m=>m.id===sourceId),to=next.modes.find(m=>m.id===targetId);
+   to.keyRoles=structuredClone(from.keyRoles??{});
    to.bindings=from.bindings.map(binding=>{const copy=structuredClone(binding);copy.id=uid();if(['mode','hold-mode'].includes(copy.action.type)&&copy.action.mode===sourceId)copy.action.mode=targetId;return copy;});
   });
  }
@@ -162,9 +168,9 @@ export class ActionBindingsUI{
   return [...new Set(others),code];
  }
  isSticky(code,mode){
-  if(isModifierKey(code))return true;
   if(!mode){const config=this.config();mode=config.modes.find(m=>m.id===this.mode)??config.modes[0];}
-  return mode.bindings.some(b=>{try{return STICKY_ACTIONS.includes(b.action.type)&&equivalentTrigger(b.trigger,code);}catch{return false;}});
+  const trigger=this.stickyKeys(code).map(displayCode).join('+');
+  return ['suffix','modifier'].includes(keyRole(mode,trigger,this.size))||['suffix','modifier'].includes(keyRole(mode,code,this.size));
  }
  boardLabel(config,mode){
   let engine=null;
@@ -187,10 +193,10 @@ export class ActionBindingsUI{
    const shape=key.shape==='iso-enter'?svg('path',{d:`M${key.x},${key.y}h${key.w}v${key.h}h-1.17v-.99h-.25Z`}):svg('rect',{x:key.x,y:key.y,width:key.w,height:key.h,rx:.09});
    const label=svg('text',{x:key.x+key.w/2,y:key.y+key.h/2,'dominant-baseline':'middle','text-anchor':'middle'});
    group.append(shape,label);board.append(group);this.board.set(key.code,{group,label,width:key.w});
-   group.addEventListener('click',()=>this.boardClick(key.code));
+   group.addEventListener('click',event=>{if(event.ctrlKey){event.preventDefault();this.openKeyRole(key.code);}else this.boardClick(key.code);});
    group.addEventListener('dblclick',()=>{if(this.isSticky(key.code))this.assignKey(key.code);});
    group.addEventListener('contextmenu',event=>{event.preventDefault();this.assignKey(key.code);});
-   group.addEventListener('keydown',event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();event.stopPropagation();this.boardClick(key.code);}});
+   group.addEventListener('keydown',event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();event.stopPropagation();if(event.ctrlKey)this.openKeyRole(key.code);else this.boardClick(key.code);}});
   }
  }
  renderBoard(){
@@ -213,7 +219,7 @@ export class ActionBindingsUI{
  }
  assignKey(code){
   const trigger=this.stickyKeys(code).map(displayCode).join('+'),config=this.config(),mode=config.modes.find(m=>m.id===this.mode)??config.modes[0];
-  const existing=mode.bindings.filter(b=>{try{return equivalentTrigger(b.trigger,trigger);}catch{return false;}});
+  const existing=mode.bindings.filter(b=>{try{return relevantBindingAction(b.action,this.size)&&equivalentTrigger(b.trigger,trigger);}catch{return false;}});
   const labels=new Map(bindingCatalog(this.size,config).map(row=>[row.key,row.label]));
   this.assigning={trigger};
   $('assign-action-title').textContent=`Assign ${prettyTrigger(trigger)} · ${mode.name}`;
@@ -222,7 +228,7 @@ export class ActionBindingsUI{
   this.renderAssignList();$('assign-action-dialog').showModal();$('assign-action-search').focus();
  }
  renderAssignList(){
-  const normalize=text=>text.toLowerCase().replaceAll('′',"'"),query=normalize($('assign-action-search').value.trim()),category=$('assign-action-category').value,list=$('assign-action-list');
+  const normalize=normalizeActionSearch,query=normalize($('assign-action-search').value.trim()),category=$('assign-action-category').value,list=$('assign-action-list');
   const rank=row=>{const label=normalize(row.label);return label===query?0:label===`${query}'`?1:label.startsWith(query)?2:label.includes(query)?3:4;};
   const rows=bindingCatalog(this.size,this.config()).filter(row=>(category==='all'||row.category===category)&&(!query||normalize(`${row.label} ${row.detail}`).includes(query)));
   if(query)rows.sort((a,b)=>rank(a)-rank(b));
@@ -236,6 +242,64 @@ export class ActionBindingsUI{
   const {trigger}=this.assigning;
   const saved=this.change(config=>{const mode=config.modes.find(m=>m.id===this.mode);mode.bindings=withoutTrigger(mode.bindings,trigger);mode.bindings.push({id:uid(),trigger,action:structuredClone(row.action)});});
   if(saved)$('assign-action-dialog').close();else $('assign-action-current').textContent=this.lastError;
+ }
+ installKeyRoles(){
+  $('close-key-role').onclick=()=>$('key-role-dialog').close();
+  $('key-role-dialog').addEventListener('close',()=>this.stopRoleRecording());
+  $('key-role-record').onclick=()=>{this.roleRecording=true;this.rolePressed=new Set();this.roleCaptured=new Set();$('key-role-record').textContent='Press the replacement key or chord…';$('key-role-record').focus();};
+  $('key-role-type').onchange=()=>this.renderKeyRole();
+  $('key-role-replacement').oninput=()=>{$('key-role-message').textContent='';};
+  $('key-role-form').onsubmit=event=>{event.preventDefault();this.saveKeyRole();};
+  document.addEventListener('keydown',event=>{
+   if(!$('bindings-dialog').open||$('key-role-dialog').open||$('assign-action-dialog').open||$('bind-key-dialog').open||!event.ctrlKey||isModifierKey(event.code)||event.target.closest('input,select,textarea'))return;
+   event.preventDefault();event.stopImmediatePropagation();this.openKeyRole(event.code);
+  },true);
+ }
+ stopRoleRecording(){
+  this.roleRecording=false;this.rolePressed=new Set();this.roleCaptured=new Set();$('key-role-record').textContent='Record replacement key or chord';
+ }
+ captureRoleDown(event){
+  if(!$('key-role-dialog').open||!this.roleRecording)return false;
+  event.preventDefault();event.stopImmediatePropagation();
+  if(event.code==='Escape'){this.stopRoleRecording();return true;}
+  if(!event.repeat){this.rolePressed.add(event.code);this.roleCaptured.add(event.code);}return true;
+ }
+ captureRoleUp(event){
+  if(!$('key-role-dialog').open||!this.roleRecording||!this.roleCaptured.has(event.code))return false;
+  event.preventDefault();event.stopImmediatePropagation();this.rolePressed.delete(event.code);
+  if(!this.rolePressed.size){const keys=[...new Set(this.roleCaptured.size===1?[...this.roleCaptured]:[...this.roleCaptured].map(modifierOf))];$('key-role-replacement').value=keys.map(displayCode).join('+');this.stopRoleRecording();$('key-role-message').textContent='Replacement recorded. Save to move the old function and its bindings.';}
+  return true;
+ }
+ openKeyRole(code){
+  const mode=this.config().modes.find(m=>m.id===this.mode);if(!mode)return;
+  this.roleEditing={code,mode:mode.id};this.stopRoleRecording();
+  $('key-role-title').textContent=`${prettyTrigger(code)} · Key type`;
+  $('key-role-scope').textContent=`Applies to ${mode.name} on the ${this.size} × ${this.size} FTO.`;
+  $('key-role-type').value=keyRole(mode,code,this.size);$('key-role-replacement').value='';$('key-role-message').textContent='';
+  this.renderKeyRole();$('key-role-dialog').showModal();
+ }
+ renderKeyRole(){
+  const {code,mode:modeId}=this.roleEditing,config=this.config(),mode=config.modes.find(m=>m.id===modeId);
+  const impact=keyRoleImpact(mode,code,this.size,config);
+  const panel=$('key-role-impact');panel.replaceChildren();
+  if(impact.direct.length)panel.append(el('p','phase-help',`Current binding: ${impact.direct.map(b=>this.keyText(b.action,config)).join(', ')}.`));
+  if(impact.dependent.length){
+   panel.append(el('p',null,'These bindings use this key. Without a replacement, they will become unassigned:'));
+   const list=el('ul');for(const binding of impact.dependent)list.append(el('li',null,`${prettyTrigger(binding.trigger)} → ${this.keyText(binding.action,config)}`));panel.append(list);
+  }
+  if(impact.implicit.length){
+   panel.append(el('p',null,'These modified turns will move with the replacement key, or become unavailable if no replacement is chosen. Their base move keys stay assigned:'));
+   const list=el('ul');for(const binding of impact.implicit)list.append(el('li',null,`${prettyTrigger(code)} + ${prettyTrigger(binding.trigger)} → ${binding.modifiedLabel}`));panel.append(list);
+  }
+  if(!impact.dependent.length&&!impact.implicit.length)panel.append(el('p','phase-help','No other bindings depend on this key.'));
+  $('key-role-replacement-label').hidden=!impact.direct.length&&!impact.dependent.length;
+ }
+ saveKeyRole(){
+  const {code,mode:modeId}=this.roleEditing,role=$('key-role-type').value;
+  const replacement=$('key-role-replacement-label').hidden?'':$('key-role-replacement').value.trim();
+  const saved=this.change(config=>changeKeyRole(config.modes.find(m=>m.id===modeId),code,role,null,replacement,this.size,config));
+  if(saved){this.sticky.clear();this.renderBoard();$('key-role-dialog').close();}
+  else $('key-role-message').textContent=this.lastError;
  }
  installRotation(){
   $('rotation-apply').onclick=()=>this.applyRotation();

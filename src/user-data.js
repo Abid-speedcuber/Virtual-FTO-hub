@@ -20,7 +20,7 @@ export function validateUserData(data){
   if(solve.undoFloor!==undefined&&(!Number.isInteger(solve.undoFloor)||solve.undoFloor<0||solve.undoFloor>solve.history.length))throw Error('Invalid scramble boundary');
   if(solve.timer?.status!==undefined&&!['idle','scrambling','ready','running','paused','finished'].includes(solve.timer.status))throw Error('Invalid timer status');
   if(solve.view&&(!Array.isArray(solve.view.rotation)||solve.view.rotation.length!==4||!solve.view.rotation.every(Number.isFinite)||Math.hypot(...solve.view.rotation)<1e-9||!Number.isFinite(solve.view.radius)))throw Error('Invalid saved view');
-  for(const entry of solve.timer?.times??[])if(!Number.isFinite(entry.ms)||entry.ms<0)throw Error('Invalid saved time');
+  for(const entry of solve.timer?.times??[])if(!Number.isFinite(entry.ms)||entry.ms<0||(entry.dnf!==undefined&&typeof entry.dnf!=='boolean')||(entry.comment!==undefined&&(typeof entry.comment!=='string'||entry.comment.length>2000))||(entry.scramble!==undefined&&typeof entry.scramble!=='string'))throw Error('Invalid saved time');
   for(const key of ['last','pb','attempt'])if(solve.recordings?.[key])validateRecording(solve.recordings[key],{incomplete:key==='attempt'});
   for(const action of solve.pending??[])if(!['undo','redo'].includes(action.type)&&!(action.type==='move'&&move(action.move)))throw Error('Invalid pending move');
  }

@@ -58,3 +58,9 @@ export function snappedViewRotation(frame){
 
 export const DEFAULT_CIF_FRAME=FRAMES.find(frame=>frame.up==='U'&&frame.front==='BR');
 export const defaultCifRotation=()=>snappedViewRotation(DEFAULT_CIF_FRAME);
+
+// Resolve against the current logical hold, including during an animation.
+export function frameForRotationPair(frame,pair){
+ const source=pair.map(name=>transformedNormal(FACES.find(f=>f.name===name).normal,frame));
+ return FRAMES.find(candidate=>candidate.normals[0].every((v,i)=>v===source[0][i])&&candidate.normals[2].every((v,i)=>v===source[1][i]));
+}

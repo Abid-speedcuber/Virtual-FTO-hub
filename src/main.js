@@ -1,3 +1,5 @@
+import {StatisticsUI} from './statistics-ui.js';
+import {scrambleText,resultText} from './solve-statistics.js';
 import * as THREE from 'three';
 import {icon,puzzleIcon} from './icons.js';
 import {PuzzleSounds} from './sounds.js';
@@ -21,12 +23,12 @@ import {bodyGeometry} from './body-geometry.js';
 import {swipeCandidates,chooseSwipeMove} from './swipe.js';
 import {pickSurface,pickFaceNormal} from './picking.js';
 import {FACES,solvedState,selected,applyMove,inverse,isSolved,scrambleMoves} from './puzzle.js';
-import {HOME_POSITION,DEFAULT_CIF_FRAME,frameForCamera,transformedNormal,DEFAULT_LABEL_SWITCH_ANGLE,snappedViewRotation,defaultCifRotation} from './orientation.js';
+import {HOME_POSITION,frameForRotationPair,DEFAULT_CIF_FRAME,frameForCamera,transformedNormal,DEFAULT_LABEL_SWITCH_ANGLE,snappedViewRotation,defaultCifRotation} from './orientation.js';
 const $=id=>document.getElementById(id);
 const storageKey='master-fto-v1';
 const album=new RecordingAlbum();
 let homeReplay=null,replayActive=false;
-let keyboard,phaseUI,initialized=false,renderedMoves=0,manualPaused=false,scrambleRequest=null;
+let keyboard,phaseUI,statisticsUI,initialized=false,renderedMoves=0,manualPaused=false,scrambleRequest=null;
 const isScrambling=()=>!!scrambleRequest||session.status==='scrambling';
 function cancelScrambleRequest(){const request=scrambleRequest;scrambleRequest=null;request?.abort();}
 const pacing=new TurnPacing();
@@ -100,7 +102,7 @@ let faceColors=Object.fromEntries(FACES.map(face=>{
  const saved=preferences.faceColors?.[face.name];
  return [face.name,typeof saved==='string'&&/^#[0-9a-f]{6}$/i.test(saved)?saved.toLowerCase():face.color];
 }));
-for(const [id,key,fallback] of [['disable-sounds','disableSounds',false],['follow','follow',true],['animate','animate',true],['animate-scrambling','animateScrambling',true],['show-labels','showLabels',true],['auto-default-mode','autoDefaultMode',true]]){
+for(const [id,key,fallback] of [['disable-sounds','disableSounds',false],['follow','follow',true],['animate','animate',true],['animate-scrambling','animateScrambling',true],['show-labels','showLabels',true],['auto-default-mode','autoDefaultMode',true],['auto-next-solve','autoNextSolve',false],['show-statistics','showStatistics',false],['print-stat-scrambles','printStatScrambles',true]]){
  $(id).checked=typeof preferences[key]==='boolean'?preferences[key]:fallback;
 }
 let labelSwitchAngle=Number.isFinite(preferences.labelSwitchAngle)?THREE.MathUtils.clamp(preferences.labelSwitchAngle,0,40):DEFAULT_LABEL_SWITCH_ANGLE;
@@ -110,13 +112,14 @@ function saveSettings(){
  if(detectClearedSolve())return;
  clearTimeout(settingsTimer);
  try{
-  localStorage.setItem(settingsKey,JSON.stringify({phaseProfiles,phaseMethods,outerTurnBias,uTurnBias,eifUTurnBias,animationSpeed,disableSounds:$('disable-sounds').checked,follow:$('follow').checked,labelSwitchAngle,animate:$('animate').checked,animateScrambling:$('animate-scrambling').checked,showLabels:$('show-labels').checked,autoDefaultMode:$('auto-default-mode').checked,faceColors,view:{rotation:controls.rotation.toArray(),radius:controls.radius}}));settingsOK=true;
+  localStorage.setItem(settingsKey,JSON.stringify({phaseProfiles,phaseMethods,outerTurnBias,uTurnBias,eifUTurnBias,animationSpeed,disableSounds:$('disable-sounds').checked,follow:$('follow').checked,labelSwitchAngle,animate:$('animate').checked,animateScrambling:$('animate-scrambling').checked,showLabels:$('show-labels').checked,autoDefaultMode:$('auto-default-mode').checked,autoNextSolve:$('auto-next-solve').checked,showStatistics:$('show-statistics').checked,printStatScrambles:$('print-stat-scrambles').checked,faceColors,view:{rotation:controls.rotation.toArray(),radius:controls.radius}}));settingsOK=true;
  }catch{settingsOK=false;}
  renderSaveStatus();
 }
 const sounds=new PuzzleSounds(()=>$('disable-sounds').checked);
 function playSound(kind='move'){recorder.event('sound',{kind});sounds.play(kind);}
-$('disable-sounds').onchange=saveSettings;$('auto-default-mode').onchange=saveSettings;
+$('disable-sounds').onchange=saveSettings;for(const id of ['auto-default-mode','auto-next-solve','show-statistics','print-stat-scrambles'])$(id).onchange=()=>{saveSettings();renderTimer();};
+statisticsUI=new StatisticsUI({getSession:()=>session,save:()=>{timesKey='';save();renderTimer();},settings:saveSettings,pause:pauseSession});
 function queueSettingsSave(){clearTimeout(settingsTimer);settingsTimer=setTimeout(saveSettings,150);}
 const viewport=$('viewport');
 const scene=new THREE.Scene();
@@ -226,7 +229,7 @@ function renderTimes(){
  $('times-count').textContent=String(session.times.length);$('times-empty').hidden=session.times.length>0;
  for(const id of ['solve-times','history-times']){
  const list=$(id);list.replaceChildren();list.start=session.completed;
- session.times.toReversed().forEach((entry,i)=>{const item=document.createElement('li'),number=document.createElement('span'),time=document.createElement('time');number.className='solve-number';number.textContent=String(session.completed-i);time.textContent=formatTime(entry.ms);if(entry.at){time.dateTime=entry.at;time.title=new Date(entry.at).toLocaleString();}item.append(number,time);list.append(item);});list.scrollTop=0;
+ session.times.toReversed().forEach((entry,i)=>{const item=document.createElement('li'),number=document.createElement('span'),time=document.createElement('time');number.className='solve-number';number.textContent=String(session.completed-i);const button=document.createElement('button');button.className='stat-link';button.textContent=resultText(entry);button.setAttribute('aria-label',`Solve ${session.times.length-i}: ${resultText(entry)}`);button.onclick=()=>statisticsUI.openSingle(session.times.length-1-i);time.append(button);if(entry.at){time.dateTime=entry.at;time.title=new Date(entry.at).toLocaleString();}item.append(number,time);list.append(item);});list.scrollTop=0;
  }
 }
 function renderMobileControls(status){
@@ -249,16 +252,16 @@ for(const [name,target] of [['undo','undo'],['redo','redo'],['reset','freeplay-r
 function renderTimer(){
  if(replayActive)return;
  const status=session.status;
- const text=status==='idle'?'00:00':formatTime(session.elapsed());if($('timer-value').textContent!==text)$('timer-value').textContent=text;
+ const text=status==='idle'?'00:00':status==='finished'&&session.lastDnf?'DNF':formatTime(session.elapsed());if($('timer-value').textContent!==text)$('timer-value').textContent=text;
  $('history-pb').textContent=formatTime(session.bestMs);
- $('share-current').hidden=session.status!=='finished'||!recorder.last;$('share-pb').hidden=!recorder.pb;
- $('mobile-share-current').hidden=session.status!=='finished'||!recorder.last;$('mobile-share-current').style.order='1';$('history-share-pb').hidden=!recorder.pb;
+ $('share-current').hidden=session.status!=='finished'||session.lastDnf||!recorder.last;$('share-pb').hidden=!recorder.pb;
+ $('mobile-share-current').hidden=session.status!=='finished'||session.lastDnf||!recorder.last;$('mobile-share-current').style.order='1';$('history-share-pb').hidden=!recorder.pb;
  $('mobile-timer').textContent=text;renderMobileControls(status);
  $('timer-ao5').textContent=formatTime(averageOf5(session.times));
- $('timer-pb').textContent=formatTime(session.bestMs);$('timer-result').textContent=status==='finished'?(session.newBest?'New PB':`${session.completed} solved`):'';
+ $('timer-pb').textContent=formatTime(session.bestMs);$('timer-result').textContent=status==='finished'?(session.newBest?'New PB':`${session.times.filter(t=>!t.dnf).length} solved`):'';
  if(status!=='paused')manualPaused=false;
  $('pause').hidden=!['running','paused'].includes(status);$('pause').textContent=manualPaused?'Resume':'Pause';$('pause-message').hidden=!manualPaused;
- document.querySelector('.timer-panel').dataset.status=status;renderTimes();keyboard?.render();phaseUI?.render(phaseTracker,session.elapsed(),status);
+ document.querySelector('.timer-panel').dataset.status=status;renderTimes();keyboard?.render();phaseUI?.render(phaseTracker,session.elapsed(),status);statisticsUI?.render(timesKey);
 }
 function pauseSession(){
  if(session.pause())recorder.event('pause');if(session.status==='paused'){manualPaused=true;keyboard?.clear({selection:true});controls.cancelAll();}
@@ -280,7 +283,7 @@ function resumeManualPause(){if(scrambleRequest||session.status!=='paused'||docu
 $('pause').onclick=toggleManualPause;
 // Consume the resume key so it cannot also turn a face or select a suffix.
 window.addEventListener('keydown',event=>{
- if(replayActive||!manualPaused||document.querySelector('dialog[open]')||event.repeat)return;
+ if(replayActive||!manualPaused||event.code==='Escape'||document.querySelector('dialog[open]')||event.repeat)return;
  recordKey('down',event);event.preventDefault();event.stopImmediatePropagation();resumeManualPause();
 },true);
 function layoutSolveSpace(){
@@ -301,11 +304,11 @@ function update(){
  $('mobile-undo').disabled=$('undo').disabled;$('mobile-redo').disabled=$('redo').disabled;$('mobile-scramble').disabled=scrambling;$('mobile-history').disabled=scrambling;
 
 }
-function armRecording(){recorder.arm({size,scramble:history.slice(0,undoFloor),view:{rotation:controls.rotation.toArray(),radius:controls.radius},keyboard:keyboard?.snapshot().config,colors:faceColors,previousBest:session.bestMs===null?null:{ms:session.bestMs,splitData:session.times.find(t=>t.ms===session.bestMs)?.splitData??null}});}
+function armRecording(){if($('auto-default-mode').checked)keyboard?.returnToDefault();recorder.arm({size,scramble:history.slice(0,undoFloor),view:{rotation:controls.rotation.toArray(),radius:controls.radius},keyboard:keyboard?.snapshot().config,colors:faceColors,previousBest:session.bestMs===null?null:{ms:session.bestMs,splitData:session.times.find(t=>t.ms===session.bestMs)?.splitData??null}});}
 function enqueue(action){
  if(replayActive||queue.length+(active?.turns.length??0)>=500||isScrambling()||session.status==='paused')return false;
  if(['undo','redo'].includes(action.type)&&!actionMove(action,true))return false;
- const now=performance.now();pacing.input(now);if(viewTween)viewTween.deadline=Math.min(viewTween.deadline,now+animationDuration(pacing.duration()));if(session.start()){const config=structuredClone(keyboard?.config);if(config)config.activeMode=keyboard.engine.mode.id;recorder.begin({rotation:displayedCamera.quaternion.clone().invert().toArray(),radius:controls.radius},config,{pending:keyboard?.engine.pending,slicePending:keyboard?.engine.slicePending,pendingSource:keyboard?.engine.pendingSource,sliceSource:keyboard?.engine.sliceSource});}action.elapsedMs=session.elapsed();action.recordId=recorder.accept(action);queue.push(action);if(action.type==='move')keyboard?.recordTurn();playSound();pump();return true;
+ const now=performance.now();pacing.input(now);if(viewTween)viewTween.deadline=Math.min(viewTween.deadline,now+animationDuration(pacing.duration()));if(session.status==='ready'&&!session.scrambleText)session.scrambleText=scrambleText(history.slice(0,undoFloor));if(session.start()){if($('auto-default-mode').checked&&keyboard&&keyboard.engine.mode.id!==(keyboard.config.defaultMode??keyboard.config.modes[0].id))keyboard.returnToDefault();const config=structuredClone(keyboard?.config);if(config)config.activeMode=keyboard.engine.mode.id;recorder.begin({rotation:displayedCamera.quaternion.clone().invert().toArray(),radius:controls.radius},config,{pending:keyboard?.engine.pending,slicePending:keyboard?.engine.slicePending,pendingSource:keyboard?.engine.pendingSource,sliceSource:keyboard?.engine.sliceSource});}action.elapsedMs=session.elapsed();action.recordId=recorder.accept(action);queue.push(action);if(action.type==='move')keyboard?.recordTurn();playSound();pump();return true;
 }
 function pendingTimeline(prune=false){
  const past=history.slice();let future=redo.slice();const valid=[];
@@ -342,6 +345,8 @@ function commitAction(action,move){
    if(session.newBest&&recording)archivePB(recording);
    solveEnd=history.length;undoFloor=solveEnd;redo=[];
    if($('auto-default-mode').checked)keyboard?.returnToDefault();
+   const finishedSession=session,finishedEntry=session.times.at(-1);
+   if($('auto-next-solve').checked)setTimeout(()=>{if(session===finishedSession&&session.status==='finished'&&session.times.at(-1)===finishedEntry&&!replayActive&&!isScrambling())startScramble({skipConfirmation:true});},0);
   }
  }
 }
@@ -400,12 +405,18 @@ async function confirmPaused(message,label,title='Replace this solve?'){
  dialog.showModal();return result;
 }
 $('undo').onclick=()=>enqueue({type:'undo'});$('redo').onclick=()=>enqueue({type:'redo'});
+function abandonAttempt(){
+ if(!session.scrambleText)session.scrambleText=scrambleText(history.slice(0,undoFloor));
+ if(!session.dnf())return false;
+ recorder.discard();if($('auto-default-mode').checked)keyboard?.returnToDefault();queue=[];active=null;viewTween=null;manualPaused=false;build();save();update();requestDraw();return true;
+}
 async function startScramble({skipConfirmation=false}={}){
  if(isScrambling())return;
  const timed=['ready','running','paused'].includes(session.status);
  const title=timed?'Replace this solve?':'Start a new timed solve?';
- const message=timed?`Discard this attempt and scramble the ${size} × ${size} FTO for a new timed solve?`:`Scramble the ${size} × ${size} FTO and start a new timed solve?${history.length>(solveEnd??0)||active?' This clears the current free-play moves.':''} Saved times are kept.`;
- if(!(skipConfirmation&&['idle','finished'].includes(session.status))&&!await confirmPaused(message,'Scramble',title))return;
+ const message=timed?`Abandon this attempt (DNF if started) and scramble the ${size} × ${size} FTO for a new timed solve?`:`Scramble the ${size} × ${size} FTO and start a new timed solve?${history.length>(solveEnd??0)||active?' This clears the current free-play moves.':''} Saved times are kept.`;
+ if(!skipConfirmation&&!await confirmPaused(message,'Scramble',title))return;
+ abandonAttempt();
  const scrambleSize=size,request=new AbortController();scrambleRequest=request;
  $('scramble-error').hidden=true;controls.cancelAll();keyboard?.clear({selection:true});update();
  let moves;
@@ -420,23 +431,23 @@ async function startScramble({skipConfirmation=false}={}){
  scrambleRequest=null;
  viewTween=null;controls.cancelAll();keyboard?.clear({selection:true});queue=[];
  active=null;
- state=solvedState(size);history=[];redo=[];undoFloor=0;solveEnd=null;manualPaused=false;pacing.reset();session.scramble();phaseTracker=new PhaseTracker(size,phaseProfile(size,phaseProfiles[size]));
+ state=solvedState(size);history=[];redo=[];undoFloor=0;solveEnd=null;manualPaused=false;pacing.reset();session.scramble();session.scrambleText=scrambleText(moves);phaseTracker=new PhaseTracker(size,phaseProfile(size,phaseProfiles[size]));
  if($('animate-scrambling').checked){build();queue=moves.map(move=>({type:'move',move,source:'scramble'}));save();update();requestDraw();pump();}
  else{state=moves.reduce(applyMove,state);history=moves;undoFloor=history.length;build();session.arm();armRecording();phaseTracker.arm(state,session.times,{historyFloor:undoFloor});save();update();requestDraw();}
 };
 $('scramble').onclick=()=>startScramble();
-let scrambleTabs=[];
+let scrambleEscapes=[];
 window.addEventListener('keydown',event=>{
- const eligible=['idle','finished'].includes(session.status)&&!replayActive&&!isScrambling()&&!document.querySelector('dialog[open]')&&!event.target?.closest?.('input,textarea,select,[contenteditable=true]');
- if(event.code!=='Tab'||!eligible||event.shiftKey||event.ctrlKey||event.metaKey||event.altKey){scrambleTabs=[];return;}if(event.repeat)return;
- const now=performance.now();if(scrambleTabs.length&&now-scrambleTabs.at(-1)>400)scrambleTabs=[];scrambleTabs=scrambleTabs.filter(at=>now-at<=800);scrambleTabs.push(now);
- if(scrambleTabs.length===3){scrambleTabs=[];event.preventDefault();event.stopImmediatePropagation();startScramble({skipConfirmation:true});}
+ const eligible=!replayActive&&!isScrambling()&&!document.querySelector('dialog[open]')&&!event.target?.closest?.('input,textarea,select,[contenteditable=true]');
+ if(event.code!=='Escape'||!eligible||event.shiftKey||event.ctrlKey||event.metaKey||event.altKey){scrambleEscapes=[];return;}if(event.repeat)return;
+ const now=performance.now();if(scrambleEscapes.length&&now-scrambleEscapes.at(-1)>400)scrambleEscapes=[];scrambleEscapes=scrambleEscapes.filter(at=>now-at<=800);scrambleEscapes.push(now);
+ if(scrambleEscapes.length===3){scrambleEscapes=[];event.preventDefault();event.stopImmediatePropagation();startScramble({skipConfirmation:true});}
 },true);
-window.addEventListener('blur',()=>{scrambleTabs=[];});
+window.addEventListener('blur',()=>{scrambleEscapes=[];});
 async function resetSolve(){
  const timed=['ready','running','paused'].includes(session.status);
- if((history.length||active||queue.length)&&!await confirmPaused(timed?'Reset the puzzle to solved and discard this attempt? Saved times are kept.':'Reset the puzzle to solved and clear free-play moves? Saved times are kept.','Reset','Reset puzzle?'))return;
- cancelScrambleRequest();$('scramble-error').hidden=true;
+ if((history.length||active||queue.length)&&!await confirmPaused(timed?'Reset the puzzle to solved? A started, unfinished attempt will be recorded as DNF. Saved times are kept.':'Reset the puzzle to solved and clear free-play moves? Saved times are kept.','Reset','Reset puzzle?'))return;
+ cancelScrambleRequest();$('scramble-error').hidden=true;abandonAttempt();
  viewTween=null;keyboard?.clear({selection:true});queue=[];active=null;manualPaused=false;
  state=solvedState(size);history=[];redo=[];undoFloor=0;solveEnd=null;pacing.reset();session.reset();recorder.discard();phaseTracker=new PhaseTracker(size,phaseProfile(size,phaseProfiles[size]));build();save();update();requestDraw();
 }
@@ -587,7 +598,8 @@ function executeMove(move){
    // Retargeting may shorten a transition, but can never postpone its finish.
    const deadline=Math.min(viewTween?.deadline??Infinity,now+animationDuration(pacing.duration()));
    const angle=(move.angle??(move.vertex?90:120))*Math.PI/180;
-   controls.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(axis,-move.dir*angle)).normalize();
+   if(move.pair)controls.rotation.copy(snappedViewRotation(frameForRotationPair(frame,move.pair)));
+   else controls.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(axis,-move.dir*angle)).normalize();
    if(move.angle===60&&move.face==='F'){
     controls.update();
     const target=snappedViewRotation(frameForCamera(camera,labelSwitchAngle));
@@ -602,6 +614,7 @@ function executeMove(move){
  }
 function recordKey(edge,event){if(replayActive)return;if(event.target?.closest?.('input,textarea,select,[contenteditable=true]'))return;recorder.event('key',{edge,code:event.code,repeat:!!event.repeat,modifiers:[!!event.shiftKey,!!event.ctrlKey,!!event.altKey,!!event.metaKey]});}
 keyboard=new KeyboardUI({
+ prepareStart:()=>{if(session.status!=='ready'||!$('auto-default-mode').checked)return false;const target=keyboard.config.defaultMode??keyboard.config.modes[0].id;if(keyboard.engine.mode.id===target)return false;keyboard.returnToDefault();return true;},
  confirm:confirmPaused,
  input:recordKey,
  context:()=>({size,scrambling:isScrambling(),canPause:['running','paused'].includes(session.status),manualPaused,defaultMove:{depth:1,count:1,dir:1}}),
@@ -620,7 +633,8 @@ keyboard=new KeyboardUI({
  status:renderSaveStatus,
 });
 
-homeReplay=new HomeReplay({pause:pauseSession,onStart:()=>{replayActive=true;keyboard.clear({selection:true});},onExit:()=>{clearRecordingLink();replayActive=false;timesKey='';build();update();draw();},sound:kind=>sounds.play(kind),onFrame:(data,replayFrame)=>{
+if(session.status==='ready'&&$('auto-default-mode').checked)keyboard.returnToDefault();
+homeReplay=new HomeReplay({pause:pauseSession,onStart:()=>{$('statistics-panel').hidden=true;replayActive=true;keyboard.clear({selection:true});},onExit:()=>{clearRecordingLink();replayActive=false;timesKey='';build();update();draw();},sound:kind=>sounds.play(kind),onFrame:(data,replayFrame)=>{
  $('history-title').textContent='Recorded solve splits';$('timer-value').textContent=formatTime(replayFrame.elapsed);$('timer-result').textContent=`Recording · ${replayFrame.stage}`;$('timer-pb').textContent=formatTime(data.previousBest?.ms??null);$('timer-ao5').textContent='—';$('share-current').hidden=false;$('share-pb').hidden=true;
  const trace=data.splitData;
  if(trace?.profile?.phases?.length){

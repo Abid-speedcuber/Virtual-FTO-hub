@@ -1,3 +1,4 @@
+import {validRotationPair,pairLabel} from './rotation-actions.js';
 // Physical-code bindings are independent of the character produced by the OS.
 export const FACE_NAMES=['U','R','F','BR','L','B','BL','D'];
 export const MODIFIERS=['Shift','Control','Alt','Meta'];
@@ -44,6 +45,7 @@ export function validateConfig(config,{legacyNames=false}={}){
  const ids=new Set(config.modes.map(m=>m.id));if(ids.size!==config.modes.length)throw Error('Mode IDs must be unique.');
  for(const mode of config.modes){
   if(typeof mode.id!=='string'||!mode.id||typeof mode.name!=='string'||!mode.name.trim()||mode.name.length>60||(!legacyNames&&!validModeName(mode.name))||!Array.isArray(mode.bindings)||mode.bindings.length>400)throw Error('Mode names need one or two words, up to 6 characters each, separated by one space.');
+  if(mode.keyRoles!==undefined){if(!mode.keyRoles||typeof mode.keyRoles!=='object'||Array.isArray(mode.keyRoles))throw Error('Invalid key types.');for(const [code,role] of Object.entries(mode.keyRoles)){codeName(code);if(!['move','suffix','modifier','action'].includes(role))throw Error('Invalid key type.');}}
   const triggers=new Set(),bindingIds=new Set();
   for(const binding of mode.bindings){
    const key=triggerKey(binding.trigger);
@@ -53,6 +55,7 @@ export function validateConfig(config,{legacyNames=false}={}){
    const a=binding.action;
    if(!a||!['move','rotate','depth','suffix-slice','hold-slice','hold-wide','hold-reverse','hold-mode','mode','next-mode','command'].includes(a.type))throw Error('Unknown binding action.');
    if(['move','rotate'].includes(a.type)&&(!FACE_NAMES.includes(a.face)||![1,-1].includes(a.dir)||!['default','outer','slice','wide'].includes(a.kind)||!Number.isInteger(a.depth)||a.depth<1||a.depth>20))throw Error('Move bindings need a face, direction, and depth from 1–20.');
+   if(a.type==='rotate'&&a.pair!==undefined&&!validRotationPair(a.pair))throw Error('Rotations need two different, non-opposite faces.');
    if(a.type==='rotate'&&(a.angle!==undefined&&![60,90,120].includes(a.angle)))throw Error('Rotations must be 60°, 90°, or 120°.');
    if(a.type==='rotate'&&a.vertex!==undefined&&typeof a.vertex!=='boolean')throw Error('Invalid rotation axis.');
    if(a.type==='depth'&&(!Number.isInteger(a.depth)||a.depth<1||a.depth>20))throw Error('Next-move depth must be 1–20.');
@@ -75,7 +78,7 @@ export function validateConfig(config,{legacyNames=false}={}){
 }
 export const UNDO_REDO_SHORTCUTS=[['Ctrl+Z','undo'],['Meta+Z','undo'],['Backspace','undo'],['Shift+Backspace','redo'],['Ctrl+Shift+Z','redo'],['Meta+Shift+Z','redo'],['Ctrl+Y','redo']];
 export function defaultConfig(size=4){
- let id=0;const bindings=[],add=(trigger,action)=>bindings.push({id:`default-${++id}`,trigger,action});
+ let id=0;const bindings=[],add=(trigger,action)=>{const binding={id:`default-${++id}`,trigger,action};if(action.type!=='depth'||action.depth<=size)bindings.push(binding);};
  const move=(face,dir=1,kind='outer',depth=1)=>({type:'move',face,dir,kind,depth});
  const keys=[['F','U',-1],['J','U',1],['G','F',-1],['H','F',1],['E','L',-1],['D','L',1],['I','R',1],['K','R',-1],['R','B',-1],['U','B',1],['S','BL',1],['W','BL',-1],['L','BR',-1],['O','BR',1],['A','D',1],['Semicolon','D',-1]];
  for(const [key,face,dir] of keys)add(key,move(face,dir));
@@ -177,6 +180,7 @@ export function upgradeEIFDefaults(config){
  config.eifVersion=1;return config;
 }
 export function actionLabel(action){
+ if(action.type==='rotate'&&action.pair)return `Rot ${pairLabel(action.pair)}`;
  if(action.type==='rotate')return action.angle===60?`Rot half-${action.face}${action.dir<0?'′':''}`:`Rot ${action.vertex?'T':action.face}${action.dir<0?'′':''}`;
  if(action.type==='move')return `${action.kind==='slice'?action.depth:action.kind==='wide'&&action.depth>2?action.depth:''}${action.face}${action.kind==='wide'?'w':''}${action.dir<0?'′':''}`;
  return ({depth:action.depth===2?'Wide':`${action.depth}w`,'suffix-slice':'Slice next','hold-slice':'Slice','hold-wide':'Wide','hold-reverse':'Reverse','hold-mode':'Hold mode',mode:'Mode','next-mode':'Next mode',command:{undo:'Undo',redo:'Redo',scramble:'Scramble','snap-view':'Snap view',home:'Snap view',fit:'Fit',reset:'Reset',pause:'Pause',cancel:'Clear','reset-tps':'Reset TPS'}[action.command]})[action.type]??'';
@@ -226,7 +230,9 @@ export class KeyboardEngine{
   return released;
  }
  modifierContext(){
-  const allowed=new Set(this.effectiveHolds.flatMap(hold=>hold.keys.map(modifierOf)).filter(modifier=>MODIFIERS.includes(modifier)));
+  const ordinaryModifiers=Object.entries(this.mode.keyRoles??{}).filter(([code,role])=>['move','action'].includes(role)&&this.pressed.has(code)).map(([code])=>modifierOf(code)).filter(code=>MODIFIERS.includes(code));
+  const suffixModifiers=this.suffixPresses.filter(press=>!press.superseded&&this.pressed.has(press.code)).flatMap(press=>press.keys.map(modifierOf)).filter(code=>MODIFIERS.includes(code));
+  const allowed=new Set([...ordinaryModifiers,...suffixModifiers,...this.effectiveHolds.flatMap(hold=>hold.keys.map(modifierOf)).filter(modifier=>MODIFIERS.includes(modifier))]);
   for(const binding of this.compiled.get(this.mode.id))if(binding.action.type.startsWith('hold-')&&binding.steps.length===1&&binding.steps[0].every(key=>MODIFIERS.includes(key))&&binding.steps[0].every(key=>held(this.pressed,key)))for(const key of binding.steps[0])allowed.add(modifierOf(key));
   return allowed;
  }
@@ -287,7 +293,7 @@ export class KeyboardEngine{
   return {handled:true,action,binding};
  }
  resolve(action,context){
-  if(action.type==='rotate')return {face:action.face,layer:'slice',depth:1,count:context.size,dir:action.dir,label:actionLabel(action),valid:true,rotation:true,...(action.angle!==undefined?{angle:action.angle}:{}),...(action.vertex?{vertex:true}:{})};
+  if(action.type==='rotate')return {face:action.face,layer:'slice',depth:1,count:context.size,dir:action.dir,label:actionLabel(action),valid:true,rotation:true,...(action.pair?{pair:[...action.pair]}:{}),...(action.angle!==undefined?{angle:action.angle}:{}),...(action.vertex?{vertex:true}:{})};
   const holds=this.effectiveHolds.map(h=>h.action.type),suffixes=this.activeSuffixes;
   const depth=suffixes.filter(p=>p.action.type==='depth').at(-1)?.action.depth??this.pending;
   let start=1,count=1,dir=action.dir;
