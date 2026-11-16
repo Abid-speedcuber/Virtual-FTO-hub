@@ -21,3 +21,10 @@ test('reports mark trimmed solves, include comments, and omit scrambles when req
  assert.doesNotMatch(statisticsReport(times,window,{scrambles:false}),/U R/);const csv=statisticsCSV(times,window,{scrambles:false});assert.doesNotMatch(csv,/Scramble|U R/);assert.match(csv,/hello, ""world""/);
  assert.equal(scrambleText([{name:'U',dir:-1,layer:'outer'},{name:'BR',dir:1,layer:'slice',depth:2,count:1},{name:'F',dir:1,depth:1,count:3}]),"U' 2BR 3Fw");
 });
+
+test('reports without scrambles use a compact time list and exported windows number from one',()=>{
+ const times=Array.from({length:8},(_,i)=>({ms:(i+1)*1000,scramble:'U F'})),window=averageWindow(times,5);
+ const compact=statisticsReport(times,window,{scrambles:false});assert.match(compact,/Time List:\n\(4.00\), 5.00, 6.00, 7.00, \(8.00\)$/);assert.equal(compact.split('\n').length,5);
+ const detailed=statisticsReport(times,window);assert.match(detailed,/\n1\. \(4.00\)/);assert.match(detailed,/\n5\. \(8.00\)/);assert.doesNotMatch(detailed,/\n8\./);
+ assert.match(statisticsCSV(times,window),/\r\n"1","4.00"/);
+});
