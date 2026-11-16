@@ -9,6 +9,7 @@ export function downloadJSON(data,name){
 export class RecordingUI{
  constructor({getSize,getRecordings,pause,play,current,album,pauseForShare,confirm,isReplaying=()=>false}){
   Object.assign(this,{getSize,getRecordings,pause,play,current,album,pauseForShare,confirm,isReplaying});this.shareVersion=0;this.linkVersion=0;this.albumStateVersion=0;this.albumVersion=0;this.importVersion=0;this.importBusy=false;
+  $('close-recording-link-toast').onclick=()=>this.hideLinkToast();
   $('history-recordings').onclick=()=>this.openAlbum();
   $('mobile-share-current').onclick=()=>this.share(this.getRecordings().last,{home:true});$('history-share-pb').onclick=()=>this.share(this.getRecordings().pb);$('home-replay-share').onclick=()=>this.share(this.current?.());
   $('share-current').onclick=()=>this.share(this.current?.()??this.getRecordings().last,{home:true});$('share-pb').onclick=()=>this.share(this.getRecordings().pb,{home:true});
@@ -71,9 +72,9 @@ export class RecordingUI{
   }catch(error){$('album-message').textContent=error.message;}
  }
  openImport(){
-  this.pause();this.linkVersion++;this.importVersion++;this.importBusy=false;$('recording-paste').value='';$('recording-import').value='';$('paste-message').textContent='';this.setImportBusy(false);if(!$('paste-dialog').open)$('paste-dialog').showModal();
+  this.pause();this.cancelSharedLink();this.importVersion++;this.importBusy=false;$('recording-paste').value='';$('recording-import').value='';$('paste-message').textContent='';this.setImportBusy(false);if(!$('paste-dialog').open)$('paste-dialog').showModal();
  }
- cancelImport(){this.linkVersion++;this.importVersion++;this.importBusy=false;clearRecordingLink();}
+ cancelImport(){this.cancelSharedLink();this.importVersion++;this.importBusy=false;clearRecordingLink();}
  setImportBusy(busy){$('recording-paste-load').disabled=busy;$('choose-recording-file').disabled=busy;}
  async watchImported(input){
   if(input===undefined||this.importBusy)return;this.importBusy=true;this.linkVersion++;clearRecordingLink();const version=++this.importVersion;this.setImportBusy(true);$('paste-message').textContent='Opening recording…';
@@ -81,9 +82,17 @@ export class RecordingUI{
   catch(error){if(version===this.importVersion)$('paste-message').textContent=error.message;}
   finally{if(version===this.importVersion){this.importBusy=false;this.setImportBusy(false);$('recording-import').value='';}}
  }
+ showLinkToast(message,state='loading'){
+  clearTimeout(this.linkToastTimer);$('recording-link-status').textContent=message;$('recording-link-toast').dataset.state=state;$('recording-link-toast').hidden=false;
+  if(state!=='loading')this.linkToastTimer=setTimeout(()=>this.hideLinkToast(),state==='error'?8000:2000);
+ }
+ hideLinkToast(){clearTimeout(this.linkToastTimer);$('recording-link-toast').hidden=true;}
+ cancelSharedLink(){this.linkVersion++;this.hideLinkToast();}
  async openSharedLink(){
-  let payload;try{payload=recordingPayload();}catch{return;}if(!payload)return;
-  this.openImport();const version=++this.linkVersion;history.replaceState(history.state,'',location.pathname+location.search+'#replay='+payload);$('paste-message').textContent='Opening shared recording…';
-  try{const data=await decodeRecording(payload);if(version!==this.linkVersion)return;this.play(data);}catch(error){if(version!==this.linkVersion)return;clearRecordingLink();$('paste-message').textContent=error.message;}
+  let payload;try{payload=recordingPayload();}catch(error){this.showLinkToast(`Couldn’t import link: ${error.message}`,'error');return;}if(!payload){this.cancelSharedLink();return;}
+  this.pause();this.importVersion++;this.importBusy=false;this.setImportBusy(false);const version=++this.linkVersion;
+  history.replaceState(history.state,'',location.pathname+location.search+'#replay='+payload);this.showLinkToast('Importing link…');
+  try{const data=await decodeRecording(payload);if(version!==this.linkVersion)return;this.play(data);this.showLinkToast('Recording loaded','success');}
+  catch(error){if(version!==this.linkVersion)return;clearRecordingLink();this.showLinkToast(`Couldn’t import link: ${error.message}`,'error');}
  }
 }

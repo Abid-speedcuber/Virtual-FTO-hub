@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {FACES} from '../src/puzzle.js';
 import {FRAMES,frameForRotationPair,snappedViewRotation,frameForCamera,transformedNormal} from '../src/orientation.js';
-import {ROTATION_PAIRS,validRotationPair,normalizeActionSearch} from '../src/rotation-actions.js';
+import {ROTATION_PAIRS,validRotationPair,normalizeActionSearch,rotationPairForMove} from '../src/rotation-actions.js';
 import {defaultConfig,validateConfig,KeyboardEngine} from '../src/keyboard-engine.js';
 import {bindingCatalog} from '../src/binding-catalog.js';
 
@@ -34,4 +34,15 @@ test('the default catalog exposes T, all explicit pairs, and searchable legacy a
  const half=rows.find(r=>r.action.angle===60&&r.action.face==='U'&&r.action.dir===1);
  assert.ok(normalizeActionSearch(half.detail).includes(normalizeActionSearch('{U, R}')));
  const t=rows.find(r=>r.action.vertex&&r.action.dir===1);assert.ok(t.detail.includes('{L,R}'));
+});
+
+test('T and T prime use the requested face pairs in all EIF holds and retain CIF axes',()=>{
+ for(const frame of FRAMES)for(const dir of [1,-1]){
+  const pair=rotationPairForMove({vertex:true,dir},frame.notation);
+  if(frame.notation==='CIF'){assert.equal(pair,null);continue;}
+  assert.deepEqual(pair,dir===1?['BL','L']:['BR','R']);const target=frameForRotationPair(frame,pair);
+  pair.forEach((face,i)=>assert.deepEqual(target.normals[i?2:0],transformedNormal(FACES.find(f=>f.name===face).normal,frame)));
+ }
+ const rows=bindingCatalog(3,defaultConfig(3)).filter(row=>row.action.vertex);assert.match(rows.find(row=>row.action.dir===1).detail,/\{BL,L\} in EIF/);assert.match(rows.find(row=>row.action.dir===-1).detail,/\{BR,R\} in EIF/);
+ assert.deepEqual(rotationPairForMove({vertex:true,dir:1,pair:['F','D']},'EIF'),['F','D']);
 });

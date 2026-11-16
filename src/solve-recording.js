@@ -22,7 +22,7 @@ export function validateRecording(data,{incomplete=false}={}){
   if(e.type==='view'&&!validView(e.view))throw Error('Invalid recorded view');
   if(['turn','animate'].includes(e.type)&&(!validMove(e.move,data.size)||!Number.isInteger(e.id)))throw Error('Invalid recorded turn');
   if(e.type==='animate'&&(!finite(e.duration)||e.duration<=0||e.duration>60000))throw Error('Invalid recorded animation');
-  if(e.type==='sound'&&!['move','suffix'].includes(e.kind))throw Error('Invalid recorded sound');
+  if(e.type==='sound'&&!['move','suffix','undo'].includes(e.kind))throw Error('Invalid recorded sound');
   if(e.type==='key'&&(typeof e.code!=='string'||e.code.length>50||!['down','up'].includes(e.edge)))throw Error('Invalid recorded key');
   if(e.type==='pointer'&&(!['pointerdown','pointermove','pointerup','pointercancel','wheel'].includes(e.edge)||![e.x,e.y].every(Number.isFinite)))throw Error('Invalid recorded pointer');
  }

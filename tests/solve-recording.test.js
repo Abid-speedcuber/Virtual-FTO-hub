@@ -57,3 +57,8 @@ test('a final accepted move that finishes during a pause replays the finished pu
  let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder);now=10;recorder.event('start');now=50;recorder.event('pause');now=100;recorder.finish(40,true);
  assert.equal(recorder.last.duration,40);assert.equal(recordingFrame(recorder.last,40).paused,false);
 });
+
+test('undo friction sounds survive validation, serialization, and legacy sound reconstruction',async()=>{
+ let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder);recorder.event('start');recorder.accept({type:'undo'});recorder.event('sound',{kind:'undo'});now=100;const data=recorder.finish(100,false);
+ assert.doesNotThrow(()=>validateRecording(JSON.parse(JSON.stringify(data))));const {recordedSounds}=await import('../src/replay-presentation.js');assert.deepEqual(recordedSounds(data).map(e=>e.kind),['undo']);const legacy={...data,events:data.events.filter(e=>e.type!=='sound')};assert.deepEqual(recordedSounds(legacy).map(e=>e.kind),['undo']);
+});

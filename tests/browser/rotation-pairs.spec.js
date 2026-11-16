@@ -33,3 +33,13 @@ test('face-pair searches expose legacy aliases and bindable pairs while retainin
  await page.clock.install();await page.clock.pauseAt(new Date(await page.evaluate(()=>Date.now())+100));
  const before=await snapshot(page);await page.keyboard.press('F8');const started=await snapshot(page);expect(started.rotating).toBe(true);expect(started.state).toEqual(before.state);await page.clock.runFor(300);const after=await snapshot(page);expect(after.frame.slice(0,3)).toEqual(before.frame.slice(6,9));expect(after.frame.slice(6,9)).toEqual(before.frame.slice(21,24));
 });
+
+test('EIF T and T prime put the requested current faces at U and F',async({page})=>{
+ const config=defaultConfig(3);config.modes[0].bindings.push(...[["F8",1],["F9",-1]].map(([trigger,dir])=>({id:`t-${dir}`,trigger,action:{type:'rotate',face:'U',dir,kind:'outer',depth:1,vertex:true}})),{id:'eif',trigger:'F10',action:{type:'rotate',face:'U',dir:1,kind:'outer',depth:1,pair:['U','R']}});
+ await page.addInitScript(config=>{localStorage.setItem('master-fto-keyboard-v2',JSON.stringify({version:2,profiles:{3:config},display:config.display}));localStorage.setItem('master-fto-settings-v1',JSON.stringify({animate:false}));},config);
+ await page.goto('/');await page.waitForFunction(()=>window.fto?.snapshot().ready);
+ for(const [key,up,front] of [['F8',6,4],['F9',3,1]]){
+  if((await snapshot(page)).hold.notation!=='EIF')await page.keyboard.press('F10');const before=await snapshot(page);expect(before.hold.notation).toBe('EIF');await page.keyboard.press(key);const after=await snapshot(page);
+  expect(after.frame.slice(0,3)).toEqual(before.frame.slice(up*3,up*3+3));expect(after.frame.slice(6,9)).toEqual(before.frame.slice(front*3,front*3+3));expect(after.state).toEqual(before.state);expect(after.keyboard.stats.total).toBe(0);
+ }
+});

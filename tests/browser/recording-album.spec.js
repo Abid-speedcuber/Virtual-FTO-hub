@@ -48,7 +48,7 @@ test('manual saves keep non-PB recordings and can be watched from the album afte
 });
 
 test('invalid replay links report an error without replacing user data',async({page})=>{
- await seed(page);await page.goto('/#replay=1.not-a-recording');await ready(page);await expect(page.locator('#paste-message')).toContainText('Invalid');expect((await snap(page)).timer.times).toHaveLength(1);expect((await snap(page)).replay).toBe(null);
+ await seed(page);await page.goto('/#replay=1.not-a-recording');await ready(page);await expect(page.locator('#recording-link-status')).toContainText('Invalid');await expect(page.locator('#paste-dialog')).toBeHidden();expect((await snap(page)).timer.times).toHaveLength(1);expect((await snap(page)).replay).toBe(null);
 });
 
 test('the production build opens compressed links when mounted at /virtual/',async({page})=>{
@@ -62,5 +62,5 @@ test('a recording link also opens when navigating only the fragment of an alread
 });
 
 test('opening Share pauses active playback until the user resumes it',async({page})=>{
- test.setTimeout(60000);await seed(page);await page.goto('/');await ready(page);await playback(page);await page.locator('#home-replay-play').click();await expect.poll(async()=>(await snap(page)).replay.at).toBeGreaterThan(0);await page.locator('#home-replay-share').click();await expect(page.locator('#share-dialog')).toBeVisible();expect((await snap(page)).replay.playing).toBe(false);const at=(await snap(page)).replay.at;await page.waitForTimeout(200);expect((await snap(page)).replay.at).toBe(at);await expect(page.locator('#share-watch')).toBeHidden();await expect(page.locator('#share-album')).toBeHidden();await page.locator('#close-share').click();await expect(page.locator('#share-dialog')).toBeHidden();await expect(page.locator('#home-replay-play')).toHaveText('Play');
+ test.setTimeout(60000);await seed(page);await page.goto('/');await ready(page);await playback(page);await page.locator('#home-replay-play').click();await expect.poll(async()=>(await snap(page)).replay.at).toBeGreaterThan(0);await page.locator('#home-replay-share').click();await expect(page.locator('#share-dialog')).toBeVisible();expect((await snap(page)).replay.playing).toBe(false);const at=(await snap(page)).replay.at;await page.waitForTimeout(200);expect((await snap(page)).replay.at).toBe(at);await expect(page.locator('#share-watch')).toBeHidden();await expect(page.locator('#share-album')).toBeHidden();await page.locator('#close-share').click();await expect(page.locator('#share-dialog')).toBeHidden();await expect(page.locator('#home-replay-play')).toHaveAttribute('aria-label','Play recording');
 });

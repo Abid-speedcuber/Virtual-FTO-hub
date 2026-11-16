@@ -61,11 +61,11 @@ test('inspection motion and inputs are not recorded; the first turn captures the
  const data=await page.evaluate(()=>JSON.parse(localStorage.getItem('master-fto-v1')).solves[3].recordings.last);expect(data.duration).toBeLessThan(1000);expect(data.events.find(e=>e.type==='start').at).toBe(0);expect(data.events.filter(e=>e.type==='key').map(e=>e.code)).not.toContain('BracketLeft');expect(data.initial.view.rotation).toEqual(initial);
 });
 
-test('compact recording controls provide sharing and the solver’s PB splits without the live action bar',async({page})=>{
+test('compact recording controls provide sharing without session history or a splits button',async({page})=>{
  test.setTimeout(60000);await seedFinished(page);await page.setViewportSize({width:390,height:844});await page.goto('/');await ready(page);await expect(page.locator('#mobile-share-current')).toBeVisible();
  await page.locator('#mobile-share-current').click();await page.locator('#share-watch').click();await expect(page.locator('#mobile-controls')).toBeHidden();await expect(page.locator('#home-replay-progress')).toBeVisible();await expect(page.locator('#home-replay-share')).toBeVisible();
- const duration=(await snap(page)).replay.duration;await range(page,'#home-replay-progress',duration);await page.locator('#home-replay-splits').click();await expect(page.locator('#history-title')).toHaveText('Recorded solve splits');await expect(page.locator('#history-split-reference')).toContainText('Solver’s previous PB');await expect(page.locator('#history-times')).toBeHidden();await expect(page.locator('#history-split-rows')).toContainText('LL');
- await page.locator('#close-history').click();await page.locator('#home-replay-exit').click();await expect(page.locator('#mobile-controls')).toBeVisible();expect((await snap(page)).replay).toBe(null);
+ await expect(page.locator('#home-replay-splits')).toHaveCount(0);await expect(page.locator('#solve-summary .time-columns')).toBeHidden();
+ await page.locator('#home-replay-exit').click();await expect(page.locator('#mobile-controls')).toBeVisible();expect((await snap(page)).replay).toBe(null);
 });
 
 test('replay keyboard fits every layout with compact insets and wrapped legends',async({page})=>{

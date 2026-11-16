@@ -39,7 +39,7 @@ export function recordedSounds(data){
    if(e.edge==='up'&&result?.action)sounds.push({at:e.at,kind:'suffix'});
    if(e.edge==='down'&&['depth','suffix-slice','rotate'].includes(result.action?.type))sounds.push({at:e.at,kind:result.action.type==='rotate'?'move':'suffix'});
   }
-  if(e.type==='accept'){sounds.push({at:e.at,kind:'move'});if(e.action==='move')engine.consume();}
+  if(e.type==='accept'){sounds.push({at:e.at,kind:e.action==='undo'?'undo':'move'});if(e.action==='move')engine.consume();}
   if(e.type==='pause'||e.type==='reset-input')engine.clear({selection:true});
  }
  return sounds;

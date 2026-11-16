@@ -73,7 +73,7 @@ Size-specific profiles live in `master-fto-keyboard-v2` local storage. Overlay p
 
 **Abid:** Backquote rotates nUw; Minus (-) rotates nUw′. Q/P rotate around R; Z/Period rotate around R′, including in EIF and center modes. These independent rotations ignore width/slice suffixes and leave them selected for the next turn. Tab/C select EIF-R/EIF-L; M selects centers on 3×3.
 
-**csTimer:** I/K = R/R′, D/E = L/L′, J/F = U/U′, H/G = F/F′, S/L = D/D′, W/O = B/B′, 8/Comma = BR/BR′, C/3 = BL/BL′. U/M = Rw/Rw′; R/V = Lw′/Lw. Y/N rotate [R]/[R′]; T/B rotate [L′]/[L]; Semicolon/A rotate [U]/[U′]; P/Q rotate T/T′ by 90° about the top/front vertex. These are independent view rotations and remain unchanged in EIF modes. Turn faces cycle as usual.
+**csTimer:** I/K = R/R′, D/E = L/L′, J/F = U/U′, H/G = F/F′, S/L = D/D′, W/O = B/B′, 8/Comma = BR/BR′, C/3 = BL/BL′. U/M = Rw/Rw′; R/V = Lw′/Lw. Y/N rotate [R]/[R′]; T/B rotate [L′]/[L]; Semicolon/A rotate [U]/[U′]; P/Q rotate T/T′ by 90°. In CIF they rotate about the top/front vertex; in EIF, T is `{BL,L}` and T′ is `{BR,R}`. These are independent view rotations. Turn faces cycle as usual.
 
 For csTimer, Tab selects EIF-R (or returns to CIF), Shift+Tab selects EIF-L (or returns), and Space selects centers on 3×3. Centers retain Abid's moves and return via Space or M. The native C/M/3/8 actions take priority over Abid's shortcuts, so 3/8 and their shifted variants are not width suffixes. Other number suffixes, Shift for Slice, pause, and undo/redo remain available.
 
@@ -85,7 +85,7 @@ Whole-puzzle rotations follow **Animate turns**, including csTimer’s 90° T ro
 
 The Rotations category includes all 47 changes of hold using `{x,y}` notation: the current x face becomes U and the current y face becomes F. For example, `{F,D}` puts the current F face on top and D in front. These actions work from CIF and EIF, including during rotation animations. `{U,F}` is the unchanged hold and is omitted; equal or opposite face pairs are invalid.
 
-Existing 120° rotations, half-U/half-F rotations, and T/T′ retain their original behavior and bindings. T/T′ are available in every preset. Their details show face-pair search aliases, including `{U,R}` for half-U and `{L,R}` for T in CIF. Some legacy axes reach different face pairs in EIF, so explicit face-pair actions are listed separately for consistent control in either hold.
+Existing 120° and half-U/half-F rotations retain their behavior and bindings. T/T′ keep their CIF behavior; in EIF they use `{BL,L}` and `{BR,R}` respectively. T/T′ are available in every preset. Their details show face-pair search aliases, including `{U,R}` for half-U and `{L,R}` for T in CIF. Some legacy axes reach different face pairs in EIF, so explicit face-pair actions are listed separately for consistent control in either hold.
 
 Search accepts `{U,R}` or `{U, R}` in both action pickers. In the main action search, a valid pair also offers **Apply** to remap the current mode's face bindings; assigning a key to a rotation uses the action row below it.
 
@@ -94,3 +94,5 @@ Search accepts `{U,R}` or `{U, R}` in both action pickers. In the main action se
 In Keyboard view, **Ctrl-click a key** (or press **Ctrl + that key** while the binding editor is open) to choose Move / rotation, Suffix, Held modifier, or Action / mode. This dialog changes the key type and optionally records a replacement key or chord for the old suffix or modifier. The converted key stays unassigned; assign its new action separately from Keyboard view. This also lets Meta, Context Menu, and other physical modifier keys act as ordinary move keys. Types are saved for the selected puzzle size and mode.
 
 The dialog lists dependent chords and sequences, plus the turns produced by the existing suffix or hold action. Record an unassigned replacement key or chord to move the old function and its dependent bindings together. Occupied replacements are rejected without changing any bindings. Only suffixes supported by the current puzzle size and combinations that actually change a turn appear in the preview. Unsupported number suffixes are plain unassigned move keys. Leave the replacement empty to unassign those dependent bindings and remove the old modified turns; the base move keys remain assigned. Cancel closes the dialog without changing anything.
+
+During recording playback, accepted move notation briefly flashes above the solver keyboard beside the timer. Seeking updates the flashes to match the recording. Session history and statistics return on exit. The compact playback bar uses play/pause icons and has no splits button; compact screens show the move flash within the playback bar.

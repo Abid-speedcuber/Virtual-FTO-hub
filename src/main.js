@@ -1,5 +1,6 @@
+import {rotationPairForMove} from './rotation-actions.js';
 import {StatisticsUI} from './statistics-ui.js';
-import {scrambleText,resultText} from './solve-statistics.js';
+import {scrambleText,resultText,averageWindow} from './solve-statistics.js';
 import * as THREE from 'three';
 import {icon,puzzleIcon} from './icons.js';
 import {PuzzleSounds} from './sounds.js';
@@ -227,9 +228,10 @@ function renderTimes(){
  $('history-title').textContent=`${size} × ${size} FTO history`;
  $('history-count').textContent=String(session.times.length);$('history-empty').hidden=session.times.length>0;
  $('times-count').textContent=String(session.times.length);$('times-empty').hidden=session.times.length>0;
+ const averages=session.times.map((_,i)=>[5,12].map(count=>averageWindow(session.times,count,i+1)));
  for(const id of ['solve-times','history-times']){
  const list=$(id);list.replaceChildren();list.start=session.completed;
- session.times.toReversed().forEach((entry,i)=>{const item=document.createElement('li'),number=document.createElement('span'),time=document.createElement('time');number.className='solve-number';number.textContent=String(session.completed-i);const button=document.createElement('button');button.className='stat-link';button.textContent=resultText(entry);button.setAttribute('aria-label',`Solve ${session.times.length-i}: ${resultText(entry)}`);button.onclick=()=>statisticsUI.openSingle(session.times.length-1-i);time.append(button);if(entry.at){time.dateTime=entry.at;time.title=new Date(entry.at).toLocaleString();}item.append(number,time);list.append(item);});list.scrollTop=0;
+ session.times.toReversed().forEach((entry,i)=>{const item=document.createElement('li'),number=document.createElement('span'),time=document.createElement('time');number.className='solve-number';number.textContent=String(session.completed-i);const button=document.createElement('button');button.className='stat-link';button.textContent=resultText(entry);button.setAttribute('aria-label',`Solve ${session.times.length-i}: ${resultText(entry)}`);button.onclick=()=>statisticsUI.openSingle(session.times.length-1-i);time.append(button);if(entry.at){time.dateTime=entry.at;time.title=new Date(entry.at).toLocaleString();}item.append(number,time);for(const [j,count] of [5,12].entries()){const cell=document.createElement('span'),average=averages[session.times.length-1-i][j],link=document.createElement('button');cell.className='time-average';link.className='stat-link';link.textContent=formatTime(average?.value??null);link.disabled=!average;link.setAttribute('aria-label',`ao${count} ending at solve ${session.completed-i}`);link.onclick=()=>statisticsUI.open(average,`ao${count} · Solve ${session.completed-i}`);cell.append(link);item.append(cell);}list.append(item);});list.scrollTop=0;
  }
 }
 function renderMobileControls(status){
@@ -238,7 +240,7 @@ function renderMobileControls(status){
  $('mobile-controls').dataset.layout=layout;
  const running=status==='running',paused=status==='paused';
  $('mobile-controls').dataset.status=status;
- let visible=running?['pause','timer','undo','redo']:paused?['pause','timer','scramble','reset','history']:status==='finished'?['timer','reset','scramble','history']:['reset','scramble','history'];
+ let visible=running?['pause','timer','undo','redo']:paused?['pause','timer','scramble','reset','history']:status==='finished'||(['ready','scrambling'].includes(status)&&session.times.length)?['timer','reset','scramble','history']:['reset','scramble','history'];
  if(!compact)visible=[...visible.filter(name=>!['history','timer','undo','redo'].includes(name)),'undo','redo'];
  for(const name of ['pause','timer','undo','redo','reset','scramble','history']){
   const element=$(`mobile-${name}`);element.hidden=!visible.includes(name);element.style.order=String(visible.indexOf(name));
@@ -252,13 +254,15 @@ for(const [name,target] of [['undo','undo'],['redo','redo'],['reset','freeplay-r
 function renderTimer(){
  if(replayActive)return;
  const status=session.status;
- const text=status==='idle'?'00:00':status==='finished'&&session.lastDnf?'DNF':formatTime(session.elapsed());if($('timer-value').textContent!==text)$('timer-value').textContent=text;
+ const lastResult=session.times.at(-1),waiting=['ready','scrambling'].includes(status);
+ const text=waiting&&lastResult?resultText(lastResult):status==='idle'?'00:00':status==='finished'&&session.lastDnf?'DNF':formatTime(session.elapsed());if($('timer-value').textContent!==text)$('timer-value').textContent=text;
  $('history-pb').textContent=formatTime(session.bestMs);
- $('share-current').hidden=session.status!=='finished'||session.lastDnf||!recorder.last;$('share-pb').hidden=!recorder.pb;
- $('mobile-share-current').hidden=session.status!=='finished'||session.lastDnf||!recorder.last;$('mobile-share-current').style.order='1';$('history-share-pb').hidden=!recorder.pb;
+ const canShareLast=['finished','ready','scrambling'].includes(status)&&!!recorder.last&&!lastResult?.dnf&&recorder.last.solveMs===lastResult?.ms;
+ $('share-current').hidden=!canShareLast;$('share-pb').hidden=!recorder.pb;
+ $('mobile-share-current').hidden=!canShareLast;$('mobile-share-current').style.order='1';$('history-share-pb').hidden=!recorder.pb;
  $('mobile-timer').textContent=text;renderMobileControls(status);
  $('timer-ao5').textContent=formatTime(averageOf5(session.times));
- $('timer-pb').textContent=formatTime(session.bestMs);$('timer-result').textContent=status==='finished'?(session.newBest?'New PB':`${session.times.filter(t=>!t.dnf).length} solved`):'';
+ $('timer-pb').textContent=formatTime(session.bestMs);$('timer-result').textContent=waiting&&lastResult?'Previous solve':status==='finished'?(session.newBest?'New PB':`${session.times.filter(t=>!t.dnf).length} solved`):'';
  if(status!=='paused')manualPaused=false;
  $('pause').hidden=!['running','paused'].includes(status);$('pause').textContent=manualPaused?'Resume':'Pause';$('pause-message').hidden=!manualPaused;
  document.querySelector('.timer-panel').dataset.status=status;renderTimes();keyboard?.render();phaseUI?.render(phaseTracker,session.elapsed(),status);statisticsUI?.render(timesKey);
@@ -308,7 +312,7 @@ function armRecording(){if($('auto-default-mode').checked)keyboard?.returnToDefa
 function enqueue(action){
  if(replayActive||queue.length+(active?.turns.length??0)>=500||isScrambling()||session.status==='paused')return false;
  if(['undo','redo'].includes(action.type)&&!actionMove(action,true))return false;
- const now=performance.now();pacing.input(now);if(viewTween)viewTween.deadline=Math.min(viewTween.deadline,now+animationDuration(pacing.duration()));if(session.status==='ready'&&!session.scrambleText)session.scrambleText=scrambleText(history.slice(0,undoFloor));if(session.start()){if($('auto-default-mode').checked&&keyboard&&keyboard.engine.mode.id!==(keyboard.config.defaultMode??keyboard.config.modes[0].id))keyboard.returnToDefault();const config=structuredClone(keyboard?.config);if(config)config.activeMode=keyboard.engine.mode.id;recorder.begin({rotation:displayedCamera.quaternion.clone().invert().toArray(),radius:controls.radius},config,{pending:keyboard?.engine.pending,slicePending:keyboard?.engine.slicePending,pendingSource:keyboard?.engine.pendingSource,sliceSource:keyboard?.engine.sliceSource});}action.elapsedMs=session.elapsed();action.recordId=recorder.accept(action);queue.push(action);if(action.type==='move')keyboard?.recordTurn();playSound();pump();return true;
+ const now=performance.now();pacing.input(now);if(viewTween)viewTween.deadline=Math.min(viewTween.deadline,now+animationDuration(pacing.duration()));if(session.status==='ready'&&!session.scrambleText)session.scrambleText=scrambleText(history.slice(0,undoFloor));if(session.start()){if($('auto-default-mode').checked&&keyboard&&keyboard.engine.mode.id!==(keyboard.config.defaultMode??keyboard.config.modes[0].id))keyboard.returnToDefault();const config=structuredClone(keyboard?.config);if(config)config.activeMode=keyboard.engine.mode.id;recorder.begin({rotation:displayedCamera.quaternion.clone().invert().toArray(),radius:controls.radius},config,{pending:keyboard?.engine.pending,slicePending:keyboard?.engine.slicePending,pendingSource:keyboard?.engine.pendingSource,sliceSource:keyboard?.engine.sliceSource});}action.elapsedMs=session.elapsed();action.recordId=recorder.accept(action);queue.push(action);if(action.type==='move')keyboard?.recordTurn();playSound(action.type==='undo'?'undo':'move');pump();return true;
 }
 function pendingTimeline(prune=false){
  const past=history.slice();let future=redo.slice();const valid=[];
@@ -598,7 +602,8 @@ function executeMove(move){
    // Retargeting may shorten a transition, but can never postpone its finish.
    const deadline=Math.min(viewTween?.deadline??Infinity,now+animationDuration(pacing.duration()));
    const angle=(move.angle??(move.vertex?90:120))*Math.PI/180;
-   if(move.pair)controls.rotation.copy(snappedViewRotation(frameForRotationPair(frame,move.pair)));
+   const pair=rotationPairForMove(move,frame.notation);
+   if(pair)controls.rotation.copy(snappedViewRotation(frameForRotationPair(frame,pair)));
    else controls.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(axis,-move.dir*angle)).normalize();
    if(move.angle===60&&move.face==='F'){
     controls.update();
@@ -634,7 +639,7 @@ keyboard=new KeyboardUI({
 });
 
 if(session.status==='ready'&&$('auto-default-mode').checked)keyboard.returnToDefault();
-homeReplay=new HomeReplay({pause:pauseSession,onStart:()=>{$('statistics-panel').hidden=true;replayActive=true;keyboard.clear({selection:true});},onExit:()=>{clearRecordingLink();replayActive=false;timesKey='';build();update();draw();},sound:kind=>sounds.play(kind),onFrame:(data,replayFrame)=>{
+homeReplay=new HomeReplay({pause:pauseSession,onStart:()=>{$('solve-summary').setAttribute('aria-label','Recorded timer and key presses');$('statistics-panel').hidden=true;replayActive=true;keyboard.clear({selection:true});},onExit:()=>{clearRecordingLink();replayActive=false;timesKey='';build();update();draw();},sound:kind=>sounds.play(kind),onFrame:(data,replayFrame)=>{
  $('history-title').textContent='Recorded solve splits';$('timer-value').textContent=formatTime(replayFrame.elapsed);$('timer-result').textContent=`Recording · ${replayFrame.stage}`;$('timer-pb').textContent=formatTime(data.previousBest?.ms??null);$('timer-ao5').textContent='—';$('share-current').hidden=false;$('share-pb').hidden=true;
  const trace=data.splitData;
  if(trace?.profile?.phases?.length){
@@ -644,6 +649,7 @@ homeReplay=new HomeReplay({pause:pauseSession,onStart:()=>{$('statistics-panel')
   phaseUI.render({enabled:true,profile:trace.profile,detectorVersion:trace.detectorVersion,complete:shown.complete,groups:shown.groups,reference,serialize:()=>shown},replayFrame.elapsed,shown.complete?'finished':'running',true);
   $('split-reference').textContent=reference?`Solver’s previous PB · ${formatTime(reference.ms)}`:data.previousBest?`Previous PB · ${formatTime(data.previousBest.ms)} · no matching split data`:'No previous PB recorded';$('history-split-reference').textContent=$('split-reference').textContent;
  }else{document.querySelector('.splits-panel').hidden=true;document.querySelector('.time-columns').classList.add('without-splits');}
+ $('solve-summary').setAttribute('aria-label','Recorded timer and key presses');
 }});
 const recordingUI=new RecordingUI({album,confirm:confirmPaused,isReplaying:()=>homeReplay.active,pauseForShare:()=>{if(homeReplay.active)homeReplay.pause();else pauseSession();},current:()=>homeReplay.active?homeReplay.sharedData:recorder.last,getSize:()=>size,getRecordings:()=>({last:recorder.last,pb:recorder.pb}),pause:()=>{homeReplay.stop();pauseSession();},play:data=>homeReplay.start(data)});
 for(const id of ['share-current','share-pb','mobile-share-current','history-share-pb','home-replay-share'])$(id).innerHTML=icon('share');
@@ -684,7 +690,7 @@ for(const type of ['pointerdown','pointermove','pointerup','pointercancel','whee
 initialized=true;resizeViewport();resumeSession();pump();draw();prepareFtoScramble();
 for(const saved of Object.values(solves)){const pb=saved.recordings?.pbIsLast?saved.recordings.last:saved.recordings?.pb;if(pb)archivePB(pb,pb.completedAt??saved.timer?.bestAt);}
 recordingUI.openSharedLink();
-window.addEventListener('hashchange',()=>{if(recordingPayload())recordingUI.openSharedLink();else homeReplay.stop();});
+window.addEventListener('hashchange',()=>{if(recordingPayload())recordingUI.openSharedLink();else{recordingUI.cancelSharedLink();homeReplay.stop();}});
 let lastTimerSave=performance.now();
 setInterval(()=>{
  if(session.status==='running'){
