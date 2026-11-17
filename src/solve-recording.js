@@ -3,6 +3,7 @@ export const RECORDING_FORMAT='fto-replay-v1';
 const clone=value=>structuredClone(value),round=n=>Math.round(n*1e6)/1e6;
 const finite=n=>Number.isFinite(n)&&n>=0;
 const validView=v=>v&&Array.isArray(v.rotation)&&v.rotation.length===4&&v.rotation.every(Number.isFinite)&&Math.abs(Math.hypot(...v.rotation)-1)<.01&&Number.isFinite(v.radius)&&v.radius>=6&&v.radius<=20;
+const validPointer=e=>e&&['pointerdown','pointermove','pointerup','pointercancel','wheel'].includes(e.edge)&&[e.x,e.y].every(Number.isFinite)&&(e.pointerType===undefined||['mouse','touch','pen','unknown'].includes(e.pointerType))&&(e.pointerId===undefined||Number.isInteger(e.pointerId));
 const validMove=(m,size)=>m&&FACES.some(f=>f.normal.every((v,i)=>v===m.normal?.[i]))&&[1,-1].includes(m.dir)&&['outer','inner','wide','ultra','slice'].includes(m.layer)&&(m.layer!=='slice'||(Number.isInteger(m.depth)&&m.depth>=1&&m.depth<=size&&Number.isInteger(m.count)&&m.count>=1&&m.depth+m.count<=size+1));
 function validSplitTrace(trace){
  if(!trace)return true;
@@ -14,6 +15,7 @@ export function validateRecording(data,{incomplete=false}={}){
  if(!incomplete&&(!data.complete||!finite(data.solveMs)||!finite(data.duration)))throw Error('This recording is incomplete');
  if(incomplete&&(!finite(data.epoch)||(data.startOnFirstMove&&!data.started&&(!Array.isArray(data.waitingKeys)||data.waitingKeys.some(k=>typeof k.code!=='string'||k.code.length>50)))))throw Error('Invalid unfinished recording');
  if(!validSplitTrace(data.splitData)||(data.previousBest&&(!finite(data.previousBest.ms)||!validSplitTrace(data.previousBest.splitData))))throw Error('Invalid recorded splits');
+ if(data.waitingPointers!==undefined&&(!Array.isArray(data.waitingPointers)||data.waitingPointers.length>10000||!data.waitingPointers.every(validPointer)))throw Error('Invalid waiting pointers');
  const pending=data.initial.keyboardState?.pending;if(pending!==undefined&&pending!==null&&(!Number.isInteger(pending)||pending<1||pending>20))throw Error('Invalid initial keyboard state');
  let previous=0;
  for(const e of data.events){
@@ -24,7 +26,7 @@ export function validateRecording(data,{incomplete=false}={}){
   if(e.type==='animate'&&(!finite(e.duration)||e.duration<=0||e.duration>60000))throw Error('Invalid recorded animation');
   if(e.type==='sound'&&!['move','suffix','undo'].includes(e.kind))throw Error('Invalid recorded sound');
   if(e.type==='key'&&(typeof e.code!=='string'||e.code.length>50||!['down','up'].includes(e.edge)))throw Error('Invalid recorded key');
-  if(e.type==='pointer'&&(!['pointerdown','pointermove','pointerup','pointercancel','wheel'].includes(e.edge)||![e.x,e.y].every(Number.isFinite)))throw Error('Invalid recorded pointer');
+  if(e.type==='pointer'&&!validPointer(e))throw Error('Invalid recorded pointer');
  }
  if(data.complete&&data.duration<previous)throw Error('Invalid recording duration');
  return data;
@@ -49,24 +51,41 @@ export class SolveRecorder{
   }}catch{}
  }
  arm({size,scramble,view,keyboard,colors,previousBest=null}){
-  this.attempt=[2,3,4].includes(size)?{format:RECORDING_FORMAT,size,createdAt:new Date(this.clock()).toISOString(),epoch:this.clock(),complete:false,startOnFirstMove:true,started:false,pauseFree:true,pauseOffsetMs:0,pausedAt:null,waitingKeys:[],previousBest:clone(previousBest),initial:{scramble:clone(scramble),view:clone(view),keyboard:clone(keyboard),colors:clone(colors)},events:[]}:null;
+  this.attempt=[2,3,4].includes(size)?{format:RECORDING_FORMAT,size,createdAt:new Date(this.clock()).toISOString(),epoch:this.clock(),complete:false,startOnFirstMove:true,started:false,pauseFree:true,pauseOffsetMs:0,pausedAt:null,waitingKeys:[],waitingPointers:[],previousBest:clone(previousBest),initial:{scramble:clone(scramble),view:clone(view),keyboard:clone(keyboard),colors:clone(colors)},events:[]}:null;
   this.nextId=0;this.lastView='';
  }
  time(now=this.clock()){
   const data=this.attempt;if(!data)return 0;
   return Math.max(data.events.at(-1)?.at??0,(data.pausedAt??now)-data.epoch-(data.pauseOffsetMs??0),0);
  }
- event(type,data={}){
+ event(type,data={},sampleOffsetMs=0){
   if(!this.attempt||this.attempt.complete)return;
   if(this.attempt.startOnFirstMove&&!this.attempt.started){
    if(type==='key'){
     this.attempt.waitingKeys=this.attempt.waitingKeys.filter(k=>k.code!==data.code);
     if(data.edge==='down')this.attempt.waitingKeys.push(clone(data));
    }
+   if(type==='pointer'&&data.edge!=='wheel'){
+    const pending=this.attempt.waitingPointers??=[];
+    if(data.edge==='pointerdown'){
+     this.attempt.waitingPointers=pending.filter(p=>p.pointerId!==data.pointerId);
+    }
+    if(data.edge==='pointerdown'||['pointermove','pointerup','pointercancel'].includes(data.edge)&&this.attempt.waitingPointers.some(p=>p.pointerId===data.pointerId))this.attempt.waitingPointers.push(clone(data));
+    if(data.edge==='pointerup'||data.edge==='pointercancel'){
+     const attempt=this.attempt;
+     // A legacy tap can start the solve later in this same DOM event. Otherwise
+     // discard the finished inspection gesture before the next input event.
+     queueMicrotask(()=>{if(this.attempt===attempt&&!attempt.started)attempt.waitingPointers=attempt.waitingPointers.filter(p=>p.pointerId!==data.pointerId);});
+    }
+    if(this.attempt.waitingPointers.length>10000)this.attempt.waitingPointers.splice(1,this.attempt.waitingPointers.length-10000);
+   }
    if(type!=='start')return;
    this.attempt.started=true;this.attempt.epoch=this.clock();
    for(const key of this.attempt.waitingKeys)this.attempt.events.push({at:0,type:'key',...key});
-   delete this.attempt.waitingKeys;
+   // The timer starts at the first accepted turn. Preserve its already captured
+   // contact and stroke at zero, without inventing pre-solve timing.
+   for(const pointer of this.attempt.waitingPointers??[])this.attempt.events.push({at:0,type:'pointer',...pointer});
+   delete this.attempt.waitingKeys;delete this.attempt.waitingPointers;
   }
   if(type==='pause'){
    if(this.attempt.pausedAt===null||this.attempt.pausedAt===undefined){const at=this.time();this.attempt.pausedAt=this.clock();this.attempt.events.push({at,type:'reset-input'});this.lastView='';}
@@ -77,7 +96,7 @@ export class SolveRecorder{
    return;
   }
   if(this.attempt.pausedAt!==null&&this.attempt.pausedAt!==undefined&&type!=='turn')return;
-  const at=type==='start'?0:this.time();
+  const at=type==='start'?0:Math.max(this.attempt.events.at(-1)?.at??0,this.time()+Math.min(0,Number.isFinite(sampleOffsetMs)?sampleOffsetMs:0));
   this.attempt.events.push({at,type,...clone(data)});
  }
  view(view,hold){
@@ -95,7 +114,7 @@ export class SolveRecorder{
   if(!this.attempt)return;
   const data=this.attempt;data.solveMs=ms;data.duration=this.time();data.complete=true;data.completedAt=new Date(this.clock()).toISOString();
   data.splitData=clone(splitData);data.previousBest=data.previousBest??(this.pb?{ms:this.pb.solveMs,splitData:clone(this.pb.splitData)}:null);
-  delete data.epoch;delete data.waitingKeys;delete data.pausedAt;delete data.pauseOffsetMs;delete data.checkpointAt;this.last=data;if(newBest)this.pb=data;this.attempt=null;return data;
+  delete data.epoch;delete data.waitingKeys;delete data.waitingPointers;delete data.pausedAt;delete data.pauseOffsetMs;delete data.checkpointAt;this.last=data;if(newBest)this.pb=data;this.attempt=null;return data;
  }
  discard(){this.attempt=null;}
  serialize(){if(this.attempt)this.attempt.checkpointAt=this.clock();return {last:this.last,...(this.pb===this.last&&this.pb?{pbIsLast:true}:{pb:this.pb}),attempt:this.attempt};}

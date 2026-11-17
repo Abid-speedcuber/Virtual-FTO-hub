@@ -3,6 +3,7 @@ import {withoutInspection} from './solve-recording.js';
 import {PuzzleViewer} from './puzzle-viewer.js';
 import {ReplayPresentation} from './replay-presentation.js';
 import {ReplayKeyboard} from './replay-keyboard.js';
+import {ReplayPointer} from './replay-pointer.js';
 import {FACES} from './puzzle.js';
 import {formatTime} from './solve-timer.js';
 const $=id=>document.getElementById(id);
@@ -20,12 +21,12 @@ export class HomeReplay{
   this.onStart(this.data);for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();document.documentElement.classList.add('replaying');
   $('home-replay-stage').textContent='Scrambling';$('replay-scramble').replaceChildren(...this.presentation.scrambleTokens.map((token,i)=>{const span=document.createElement('span');span.textContent=token;span.dataset.index=String(i);return span;}));$('home-replay-progress').max=String(this.presentation.duration);$('home-replay-start-marker').style.left=`calc(8px + (100% - 16px) * ${this.presentation.introMs/this.presentation.duration})`;$('home-replay-start-marker').title=`Solve starts at ${formatTime(this.presentation.introMs)}`;
   this.viewer=new PuzzleViewer($('home-replay-view'));this.palette=FACES.map(f=>/^#[0-9a-f]{6}$/i.test(this.data.initial.colors?.[f.name])?this.data.initial.colors[f.name]:f.color);
-  this.keyboard=new ReplayKeyboard($('replay-keyboard'),this.data);this.previousAspect=$('solve-panel').style.getPropertyValue('--keyboard-aspect');$('solve-panel').style.setProperty('--keyboard-aspect',String(this.keyboard.layout.width/this.keyboard.layout.height));this.render();this.viewer.resize();
+  this.pointer=new ReplayPointer($('home-replay-view'),this.data);this.keyboard=new ReplayKeyboard($('replay-keyboard'),this.data);this.previousAspect=$('solve-panel').style.getPropertyValue('--keyboard-aspect');$('solve-panel').style.setProperty('--keyboard-aspect',String(this.keyboard.layout.width/this.keyboard.layout.height));this.render();this.viewer.resize();
  }
  render(){
   if(!this.active)return;const frame=this.presentation.frame(this.at);this.viewer.colors=frame.paused?Array(8).fill('#888888'):this.palette;this.viewer.setPuzzle(this.data.size,frame.state,null,frame.motions);this.viewer.setView(frame.view);
   $('replay-scramble').hidden=frame.stage==='Solve';for(const span of $('replay-scramble').children){const active=Number(span.dataset.index)===frame.scrambleIndex;span.classList.toggle('current',active);if(active)span.setAttribute('aria-current','step');else span.removeAttribute('aria-current');}
-  this.keyboard.render(this.at-this.presentation.introMs);$('replay-display-time').textContent=formatTime(frame.elapsed);this.renderMoveFlash();$('home-replay-tps').textContent=`${this.keyboard.turnStats.tps.toFixed(1)} TPS`;$('home-replay-progress').value=String(this.at);$('home-replay-progress').style.setProperty('--replay-progress',`${100*this.at/this.presentation.duration}%`);const play=$('home-replay-play'),action=this.playing?'Pause':'Play';if(play.dataset.action!==action){play.dataset.action=action;play.innerHTML=icon(this.playing?'pause':'resume');play.title=action;play.setAttribute('aria-label',`${action} recording`);}$('home-replay-stage').textContent=frame.stage;$('home-replay-time').textContent=formatTime(frame.elapsed);this.onFrame(this.data,frame);
+  this.pointer.render(this.at-this.presentation.introMs);this.keyboard.render(this.at-this.presentation.introMs);$('replay-display-time').textContent=formatTime(frame.elapsed);this.renderMoveFlash();$('home-replay-tps').textContent=`${this.keyboard.turnStats.tps.toFixed(1)} TPS`;$('home-replay-progress').value=String(this.at);$('home-replay-progress').style.setProperty('--replay-progress',`${100*this.at/this.presentation.duration}%`);const play=$('home-replay-play'),action=this.playing?'Pause':'Play';if(play.dataset.action!==action){play.dataset.action=action;play.innerHTML=icon(this.playing?'pause':'resume');play.title=action;play.setAttribute('aria-label',`${action} recording`);}$('home-replay-stage').textContent=frame.stage;$('home-replay-time').textContent=formatTime(frame.elapsed);this.onFrame(this.data,frame);
  }
  renderMoveFlash(){
   const move=this.keyboard.moveFlash,event=move?`${move.id}:${move.at}`:null;
@@ -43,5 +44,5 @@ export class HomeReplay{
   for(const kind of this.presentation.sounds(from,this.at)){this.playedSounds++;this.sound(kind);}if(this.at>=this.presentation.duration)this.playing=false;this.render();if(this.playing)this.tick(token);
  });}
  pause(){if(!this.active)return;this.playing=false;this.token++;this.render();}
- stop(){if(!this.active)return;clearTimeout(this.flashTimer);this.hideMoveFlash();this.active=false;this.playing=false;this.token++;this.viewer.dispose();this.viewer=null;$('replay-keyboard').replaceChildren();$('solve-panel').style.setProperty('--keyboard-aspect',this.previousAspect);document.documentElement.classList.remove('replaying');this.onExit();}
+ stop(){if(!this.active)return;clearTimeout(this.flashTimer);this.hideMoveFlash();this.active=false;this.playing=false;this.token++;this.pointer.dispose();this.viewer.dispose();this.viewer=null;$('replay-keyboard').replaceChildren();$('solve-panel').style.setProperty('--keyboard-aspect',this.previousAspect);document.documentElement.classList.remove('replaying');this.onExit();}
 }

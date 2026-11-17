@@ -685,7 +685,10 @@ async function importUserDataFile(file){
 }
 for(const type of ['pointerdown','pointermove','pointerup','pointercancel','wheel'])renderer.domElement.addEventListener(type,event=>{
  if(type==='pointermove'&&!event.buttons)return;
- const box=renderer.domElement.getBoundingClientRect();recorder.event('pointer',{edge:type,x:(event.clientX-box.left)/box.width,y:(event.clientY-box.top)/box.height,button:event.button??0,pointerId:event.pointerId??0,deltaY:event.deltaY??0});
+ if(replayActive)return;
+ const box=renderer.domElement.getBoundingClientRect();if(!box.width||!box.height)return;
+ const samples=type==='pointermove'?event.getCoalescedEvents?.():null;
+ for(const sample of samples?.length?samples:[event])recorder.event('pointer',{edge:type,x:(sample.clientX-box.left)/box.width,y:(sample.clientY-box.top)/box.height,button:event.button??0,pointerId:event.pointerId??0,pointerType:event.pointerType||'mouse',deltaY:event.deltaY??0},sample.timeStamp-event.timeStamp);
 },{capture:true,passive:true});
 initialized=true;resizeViewport();resumeSession();pump();draw();prepareFtoScramble();
 for(const saved of Object.values(solves)){const pb=saved.recordings?.pbIsLast?saved.recordings.last:saved.recordings?.pb;if(pb)archivePB(pb,pb.completedAt??saved.timer?.bestAt);}
