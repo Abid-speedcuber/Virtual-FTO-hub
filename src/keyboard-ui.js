@@ -1,6 +1,6 @@
 import {ActionBindingsUI} from './action-bindings-ui.js';
 import {KeyboardEngine,TurnMeter,defaultConfig,validateConfig,parseTrigger,displayCode,upgradeEIFDefaults,upgradeKeyboardDefaults} from './keyboard-engine.js';
-import {renderKeyLabel} from './keyboard-label.js';
+import {renderKeyLabel,keyboardVisualSignature} from './keyboard-label.js';
 import {keyboardLayout} from './keyboard-layout.js';
 const $=id=>document.getElementById(id),NS='http://www.w3.org/2000/svg';
 const uid=()=>globalThis.crypto?.randomUUID?.()??`key-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -154,6 +154,7 @@ export class KeyboardUI{
  recordTurn(){this.meter.add(performance.now());this.meter.sample(performance.now(),this.config.display.window);if(this.config.display.show)this.renderMeter();}
  notice(text){$('keyboard-notice').textContent=text;$('keyboard-notice').hidden=false;clearTimeout(this.noticeTimer);this.noticeTimer=setTimeout(()=>$('keyboard-notice').hidden=true,3500);}
  renderLayout(){
+  this.keySignature=null;
   const layout=keyboardLayout(this.config.display);this.keycaps=new Map();const board=$('keyboard-svg');board.replaceChildren();board.setAttribute('viewBox',`-.04 -.04 ${layout.width} ${layout.height}`);$('solve-panel').style.setProperty('--keyboard-aspect',String(layout.width/layout.height));
   for(const key of layout.keys){
    const group=svg('g',{'data-code':key.code,class:'keycap',role:'button',tabindex:'0','aria-label':displayCode(key.code)});
@@ -168,7 +169,7 @@ export class KeyboardUI{
    group.addEventListener('keyup',e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();e.stopPropagation();this.up({code:key.code,preventDefault(){}});}});
   }
  }
- renderSettings(){
+ renderSettings(){this.keySignature=null;
   const d=this.config.display;$('show-keyboard').checked=d.show;$('keyboard-overlay').hidden=!d.show;
   for(const [id,key] of [['keyboard-layout','layout'],['keyboard-numpad','numpad'],['keyboard-width','width'],['keyboard-opacity','opacity'],['keyboard-tps','showTPS'],['keyboard-window','window']]){
    if($(id).type==='checkbox')$(id).checked=d[key];else $(id).value=String(d[key]);
@@ -181,13 +182,14 @@ export class KeyboardUI{
  render(){
   if(!this.keycaps)return;
   const context=this.context();
-  for(const code of this.keycaps.keys())this.paintKey(code,context);
+  const signature=keyboardVisualSignature(this.engine,{...context,show:this.config.display.show,compact:document.documentElement.classList.contains('keyboard-unavailable')});
+  if(this.keySignature!==signature){this.keySignature=signature;for(const code of this.keycaps.keys())this.paintKey(code,context);this.renderLights();}
   $('keyboard-mode-name').textContent=this.engine.mode.name;
   $('keyboard-title').textContent='Keyboard & bindings';
   $('keyboard-pending').textContent=this.engine.pending!==null?`${this.config.suffixMode==='one-shot'?'Next':'Depth'}: ${this.engine.pending}${this.engine.slicePending?' · slice':' layers'}`:this.engine.slicePending?'Next: slice':this.engine.sequence.length?'Sequence…':'';
   $('keyboard-last').textContent=this.lastMove??'';
 
-  this.renderLights();this.renderMeter();
+  this.renderMeter();
  }
  paintKey(code,context=this.context()){
   const {group,label,width}=this.keycaps.get(code),active=this.engine.pressed.has(code);

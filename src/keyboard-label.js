@@ -19,3 +19,9 @@ export function renderKeyLabel(label,text,width=1){
  }
  if(visible)label.dataset.fitted='yes';
 }
+
+// Everything that can change key legends or selected/affected highlighting.
+// Timer elapsed time and TPS are deliberately absent: they have separate readouts.
+export function keyboardVisualSignature(engine,context){
+ return JSON.stringify([context,engine.baseMode,engine.pending,engine.pendingSource,engine.slicePending,engine.sliceSource,[...engine.pressed],engine.holds,engine.suffixPresses.map(p=>[p.code,p.active,p.superseded,p.action]),engine.sequence]);
+}

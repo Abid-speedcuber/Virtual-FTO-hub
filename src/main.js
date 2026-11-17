@@ -6,7 +6,7 @@ import {icon,puzzleIcon} from './icons.js';
 import {PuzzleSounds} from './sounds.js';
 import {randomStateFtoScramble,prepareFtoScramble,ftoScrambleStatus} from './fto-scramble.js';
 import {TurnPacing} from './turn-pacing.js';
-import {TURN_ANIMATION_MS,parallelMoves,parallelBands,bandAngle} from './parallel-turns.js';
+import {TURN_ANIMATION_MS,parallelMoves,bandAngle} from './parallel-turns.js';
 import {SolveTimer,formatTime,averageOf5} from './solve-timer.js';
 import {PhaseTracker,phaseProfile,profileKey} from './solve-phases.js';
 import {SolveRecorder} from './solve-recording.js';
@@ -20,10 +20,10 @@ import {downloadJSON,RecordingUI} from './recording-ui.js';
 import {PhaseUI} from './phase-ui.js';
 import {KeyboardUI} from './keyboard-ui.js';
 import {ViewControls} from './view-controls.js';
-import {bodyGeometry} from './body-geometry.js';
+import {PuzzleMeshes} from './puzzle-meshes.js';
 import {swipeCandidates,chooseSwipeMove} from './swipe.js';
 import {pickSurface,pickFaceNormal} from './picking.js';
-import {FACES,solvedState,selected,applyMove,inverse,isSolved,scrambleMoves} from './puzzle.js';
+import {FACES,solvedState,applyMove,inverse,isSolved,scrambleMoves} from './puzzle.js';
 import {HOME_POSITION,frameForRotationPair,DEFAULT_CIF_FRAME,frameForCamera,transformedNormal,DEFAULT_LABEL_SWITCH_ANGLE,snappedViewRotation,defaultCifRotation} from './orientation.js';
 const $=id=>document.getElementById(id);
 const storageKey='master-fto-v1';
@@ -137,36 +137,13 @@ let viewTween=null,viewFramePending=false;
 const puzzle=new THREE.Group();scene.add(puzzle);
 const materials=FACES.map(f=>new THREE.MeshBasicMaterial({color:faceColors[f.name],side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));
 const bodyMaterial=new THREE.MeshBasicMaterial({color:'#080e11'});
-const batches=[],animationGroups=[];
+const puzzleMeshes=new PuzzleMeshes(puzzle,materials,bodyMaterial);
+let animationGroups=[];
 function build(){
- for(const mesh of batches){mesh.removeFromParent();mesh.geometry.dispose();}batches.length=0;
- for(const {group} of animationGroups)group.removeFromParent();animationGroups.length=0;
- const turns=active?.turns??[],bands=parallelBands(size,turns.map(turn=>turn.move));
- const sections=bands.length?bands:[{move:null,turns:[]}];
- const groups=sections.map(band=>{
-  if(!band.turns.length)return puzzle;
-  const group=new THREE.Group();puzzle.add(group);animationGroups.push({group,band});return group;
- });
- sections.forEach((band,i)=>{
-  const body=bodyGeometry(size,band.move),positions=band.move?body.turning:body.stationary;
-  if(positions.length){
-   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
-   const mesh=new THREE.Mesh(geometry,bodyMaterial);groups[i].add(mesh);batches.push(mesh);
-  }
- });
- const positions=sections.map(()=>Array.from({length:8},()=>[]));
- for(const sticker of state){
-  const points=sticker.vertices.map(v=>new THREE.Vector3(...v).multiplyScalar(2/size));
-  const center=points.reduce((a,v)=>a.add(v),new THREE.Vector3()).multiplyScalar(1/3);
-  const section=bands.length?bands.findIndex(band=>selected(sticker,band.move)):0;
-  positions[section][sticker.color].push(...points.flatMap(p=>p.clone().sub(center).multiplyScalar(.935).add(center).toArray()));
- }
- positions.forEach((colors,section)=>colors.forEach((pos,color)=>{
-  if(!pos.length)return;
-  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-  const mesh=new THREE.Mesh(geometry,materials[color]);groups[section].add(mesh);batches.push(mesh);
- }));
+ const turns=active?.turns??[];puzzleMeshes.update(size,state,turns.map(turn=>turn.move));
+ animationGroups=puzzleMeshes.bands.map((band,i)=>({group:puzzleMeshes.groups[i],band}));
 }
+
 function renderTurns(now=performance.now()){
  if(!active)return;
  const axis=new THREE.Vector3(...active.turns[0].move.normal).normalize();
@@ -221,7 +198,11 @@ function detectClearedSolve(){
 }
 window.addEventListener('storage',event=>{if(event.storageArea===localStorage&&(event.key===storageKey||event.key===null))detectClearedSolve();});
 setInterval(detectClearedSolve,1000);
-function save(){if(detectClearedSolve())return;try{localStorage.setItem(storageKey,JSON.stringify({size,solves:{...solves,[size]:currentSolve()},pointerMode}));storageOK=true;solveWasStored=true;}catch{storageOK=false;}renderSaveStatus();}
+// Coalesce rapid turns; explicit saves and pagehide/visibility handlers flush
+// immediately, including completed solves and pending animation actions.
+let solveSaveTimer=null;
+function queueSolveSave(){if(!solveWasStored){save();return;}if(solveSaveTimer===null)solveSaveTimer=setTimeout(()=>{solveSaveTimer=null;save();},250);}
+function save(){clearTimeout(solveSaveTimer);solveSaveTimer=null;if(detectClearedSolve())return;try{localStorage.setItem(storageKey,JSON.stringify({size,solves:{...solves,[size]:currentSolve()},pointerMode}));storageOK=true;solveWasStored=true;}catch{storageOK=false;}renderSaveStatus();}
 let timesKey='';
 function renderTimes(){
  const key=`${size}:${session.times.length}:${session.completed}`;if(key===timesKey)return;timesKey=key;
@@ -398,7 +379,7 @@ function pump(changed=false){
   active.turns.push({action,move,started:now,duration});changed=true;
   if(action.source==='scramble')break;
  }
- if(changed){build();renderTurns(now);save();update();requestDraw();}
+ if(changed){build();renderTurns(now);if(['ready','finished'].includes(session.status))save();else queueSolveSave();update();requestDraw();}
  scheduleTurns();
 }
 async function confirmPaused(message,label,title='Replace this solve?'){
@@ -589,7 +570,7 @@ controls.addEventListener('tap',e=>{
 if(!storageOK){$('save-status').textContent='Saved solve could not be loaded';$('save-status').hidden=false;}
 update();requestDraw();
 // Read-only diagnostics for verifying geometry and input behavior in a browser.
-window.fto={snapshot:()=>({size,replay:homeReplay?.active?{at:homeReplay.at,duration:homeReplay.presentation.duration,playing:homeReplay.playing,size:homeReplay.data.size,sounds:homeReplay.playedSounds,solved:isSolved(homeReplay.viewer.state),bodies:homeReplay.viewer.bodies.map(b=>b.mesh.quaternion.toArray())}:null,recordings:{last:recorder.last?{ms:recorder.last.solveMs,events:recorder.last.events.length}:null,pb:recorder.pb?{ms:recorder.pb.solveMs,events:recorder.pb.events.length}:null,recording:!!recorder.attempt},scramblePool:ftoScrambleStatus(),generatingScramble:!!scrambleRequest,pointerMode,undoFloor,manualPaused,ready:document.documentElement.hasAttribute('data-app-ready'),animationMs:animationDuration(TURN_ANIMATION_MS),outerTurnBias,uTurnBias,eifUTurnBias,animationSpeed,animating:active?.turns.map(turn=>({move:structuredClone(turn.move),progress:Math.min(1,Math.max(0,(performance.now()-turn.started)/turn.duration))}))??[],renderedMoves,rotating:!!viewTween,viewOrbit:displayedCamera.quaternion.clone().invert().toArray(),stickerColors:materials.map(m=>m.color.getHexString()),keyboard:keyboard?.snapshot(),timer:session.snapshot(),splits:phaseTracker.serialize(),state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};
+window.fto={snapshot:()=>({size,replay:homeReplay?.active?{at:homeReplay.at,duration:homeReplay.presentation.duration,playing:homeReplay.playing,size:homeReplay.data.size,sounds:homeReplay.playedSounds,solved:isSolved(homeReplay.viewer.state),bodies:homeReplay.viewer.bodies.map(b=>(b.group??b.mesh).quaternion.toArray())}:null,recordings:{last:recorder.last?{ms:recorder.last.solveMs,events:recorder.last.events.length}:null,pb:recorder.pb?{ms:recorder.pb.solveMs,events:recorder.pb.events.length}:null,recording:!!recorder.attempt},scramblePool:ftoScrambleStatus(),generatingScramble:!!scrambleRequest,pointerMode,undoFloor,manualPaused,ready:document.documentElement.hasAttribute('data-app-ready'),animationMs:animationDuration(TURN_ANIMATION_MS),outerTurnBias,uTurnBias,eifUTurnBias,animationSpeed,animating:active?.turns.map(turn=>({move:structuredClone(turn.move),progress:Math.min(1,Math.max(0,(performance.now()-turn.started)/turn.duration))}))??[],renderedMoves,rotating:!!viewTween,viewOrbit:displayedCamera.quaternion.clone().invert().toArray(),stickerColors:materials.map(m=>m.color.getHexString()),keyboard:keyboard?.snapshot(),timer:session.snapshot(),splits:phaseTracker.serialize(),state:structuredClone(state),history:structuredClone(history),redo:structuredClone(redo),queued:queue.length,busy:!!active,solved:isSolved(state),frame:frame.normals.flat(),hold:{up:frame.up,front:frame.front,notation:frame.notation},camera:displayedCamera.position.toArray(),cameraUp:displayedCamera.up.toArray(),orbit:controls.rotation.toArray(),labels:labels.filter(e=>!e.hidden).map(e=>e.textContent)})};
 
 function executeMove(move){
   const face=FACES.find(f=>f.name===move.face);

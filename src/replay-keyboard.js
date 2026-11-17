@@ -1,5 +1,5 @@
 import {KeyboardEngine,defaultConfig,validateConfig} from './keyboard-engine.js';
-import {renderKeyLabel} from './keyboard-label.js';
+import {renderKeyLabel,keyboardVisualSignature} from './keyboard-label.js';
 import {ReplayTurnStats} from './replay-stats.js';
 import {keyboardLayout} from './keyboard-layout.js';
 const NS='http://www.w3.org/2000/svg';
@@ -17,12 +17,13 @@ export class ReplayKeyboard{
   }
   this.colorSeed=Math.floor(Math.random()*65536);this.turnsById=new Map(data.events.filter(e=>e.type==='turn').map(e=>[e.id,e.move]));this.reset();
  }
- reset(){this.engine=new KeyboardEngine(structuredClone(this.config));this.engine.pending=this.data.initial.keyboardState?.pending??null;this.engine.slicePending=this.data.initial.keyboardState?.slicePending??false;this.engine.pendingSource=this.data.initial.keyboardState?.pendingSource??null;this.engine.sliceSource=this.data.initial.keyboardState?.sliceSource??null;this.pressedLabels=new Map();this.moveFlash=null;this.pendingMoveLabel=null;this.pendingMoveCode=null;this.moveHighlights=new Map();this.paused=false;this.index=0;this.at=-1;}
+ reset(){this.engine=new KeyboardEngine(structuredClone(this.config));this.engine.pending=this.data.initial.keyboardState?.pending??null;this.engine.slicePending=this.data.initial.keyboardState?.slicePending??false;this.engine.pendingSource=this.data.initial.keyboardState?.pendingSource??null;this.engine.sliceSource=this.data.initial.keyboardState?.sliceSource??null;this.pressedLabels=new Map();this.moveFlash=null;this.pendingMoveLabel=null;this.pendingMoveCode=null;this.moveHighlights=new Map();this.paused=false;this.index=0;this.at=-1;this.keySignature=null;this.inputRevision=0;}
  flashMove(at,label,code){const color=MOVE_COLORS[((Math.imul(this.index+1,0x45d9f3b)^this.colorSeed)>>>0)%MOVE_COLORS.length];this.moveFlash={at,label,code,color,id:this.index};if(code)this.moveHighlights.set(code,{at,color});}
- clearMoveHighlights(){for(const {group} of this.keys.values())group.classList.remove('replay-move-highlight');}
+ clearMoveHighlights(){let changed=false;for(const {group} of this.keys.values())if(group.classList.contains('replay-move-highlight')){group.classList.remove('replay-move-highlight');changed=true;}if(changed)this.keySignature=null;}
  render(at){
   if(at<this.at)this.reset();this.at=at;
   while(this.index<this.data.events.length){const e=this.data.events[this.index];if(e.at>at)break;this.index++;
+   if(['key','accept','reset-input','pause','resume','start'].includes(e.type))this.inputRevision++;
    if(e.type==='key'){
     if(e.edge==='down'){
      const result=this.engine.keyDown(e.code,{now:e.at,repeat:e.repeat,size:this.data.size});
@@ -35,6 +36,11 @@ export class ReplayKeyboard{
   this.visibleMove=this.moveFlash&&at-this.moveFlash.at<220?this.moveFlash.label:'';
   this.engine.activateSuffixes(Math.max(0,at));this.engine.expire(Math.max(0,at));
   this.modeLabel.textContent=`Solver’s keyboard · ${this.engine.mode.name}`;this.turnStats=this.stats.at(at);this.statsLabel.textContent=`${this.turnStats.tps.toFixed(1)} TPS`;this.statsLabel.title=`${this.stats.seconds}s window · Peak ${this.turnStats.peak.toFixed(1)} TPS · ${this.turnStats.total} turns`;
-  for(const [code,{group,text,width}] of this.keys){const highlight=this.moveHighlights.get(code);group.classList.toggle('replay-move-highlight',!!highlight&&at-highlight.at<220);if(highlight)group.style.setProperty('--replay-move-color',highlight.color);group.classList.toggle('pressed',this.engine.pressed.has(code));const context={size:this.data.size,canPause:at>=0&&at<this.data.duration,manualPaused:this.paused,defaultMove:{depth:1,count:1,dir:1}},state=this.engine.keyState(code,context);group.classList.toggle('selected',state.selected);group.classList.toggle('affected',state.affected);renderKeyLabel(text,this.engine.pressed.has(code)&&this.pressedLabels.has(code)?this.pressedLabels.get(code):state.label,width);}
+  // Most replay frames have no keyboard change. Keep timer/TPS updates above,
+  // but only resolve all key labels after an input, hold deadline or expiry.
+  const context={size:this.data.size,canPause:at>=0&&at<this.data.duration,manualPaused:this.paused,defaultMove:{depth:1,count:1,dir:1}};
+  const signature=JSON.stringify([this.inputRevision,keyboardVisualSignature(this.engine,context),this.visibleMove,this.moveHighlights.size,document.documentElement.classList.contains('keyboard-unavailable')]);
+  if(signature===this.keySignature)return;this.keySignature=signature;
+  for(const [code,{group,text,width}] of this.keys){const highlight=this.moveHighlights.get(code);group.classList.toggle('replay-move-highlight',!!highlight&&at-highlight.at<220);if(highlight)group.style.setProperty('--replay-move-color',highlight.color);group.classList.toggle('pressed',this.engine.pressed.has(code));const state=this.engine.keyState(code,context);group.classList.toggle('selected',state.selected);group.classList.toggle('affected',state.affected);renderKeyLabel(text,this.engine.pressed.has(code)&&this.pressedLabels.has(code)?this.pressedLabels.get(code):state.label,width);}
  }
 }

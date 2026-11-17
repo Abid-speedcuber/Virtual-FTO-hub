@@ -102,13 +102,20 @@ export class PhaseUI{
   $('history-split-reference').textContent=$('split-reference').textContent;
   const rows=splitRows(tracker,elapsed);
   for(const id of ['split-rows','history-split-rows']){
-   const body=$(id);body.replaceChildren();
-   for(const row of rows){
-    const tr=document.createElement('tr');tr.dataset.kind=row.kind;
+   const body=$(id);
+   rows.forEach((row,index)=>{
+    let tr=body.children[index];
+    if(!tr){tr=document.createElement('tr');for(let i=0;i<4;i++)tr.append(document.createElement('td'));body.append(tr);}
+    if(tr.dataset.kind!==row.kind)tr.dataset.kind=row.kind;
     const displayMs=row.kind==='active'&&!['running','paused'].includes(status)?null:row.ms;
-    const values=[row.name,displayMs===null?'—':row.kind==='inspection'?'Skipped':formatTime(displayMs),delta(row.delta),delta(row.totalDelta)];
-    values.forEach((value,i)=>{const td=document.createElement('td');td.textContent=value;if(i===0&&row.kind==='combined'){td.title='Combined segment: no separate boundary was observed between these phases.';td.textContent+=' ↔';}if(i>1){const difference=i===2?row.delta:row.totalDelta;if(difference!==null)td.className=difference<0?'ahead':difference>0?'behind':'';}tr.append(td);});body.append(tr);
-   }
+    const values=[row.name+(row.kind==='combined'?' ↔':''),displayMs===null?'—':row.kind==='inspection'?'Skipped':formatTime(displayMs),delta(row.delta),delta(row.totalDelta)];
+    values.forEach((value,i)=>{
+     const td=tr.children[i];if(td.textContent!==value)td.textContent=value;
+     if(i===0){const title=row.kind==='combined'?'Combined segment: no separate boundary was observed between these phases.':'';if(td.title!==title)td.title=title;}
+     if(i>1){const difference=i===2?row.delta:row.totalDelta,className=difference===null?'':difference<0?'ahead':difference>0?'behind':'';if(td.className!==className)td.className=className;}
+    });
+   });
+   while(body.children.length>rows.length)body.lastElementChild.remove();
   }
   $('history-splits').hidden=!enabled;
  }
