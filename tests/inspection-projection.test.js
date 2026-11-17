@@ -88,3 +88,13 @@ test('adjustable distances clamp invalid values, reuse buffers and keep front-fa
  projection.setDistances(NaN,Infinity);assert.equal(projection.outward,PROJECTION_OFFSET);assert.equal(projection.backward,PROJECTION_BACK_OFFSET);
  projection.dispose();
 });
+test('opacity updates and clamps without rebuilding geometry, and zero opacity skips rendering',()=>{
+ const scene=new THREE.Scene(),projection=new InspectionProjection(scene,{opacity:0}),camera=new THREE.PerspectiveCamera(),state=solvedState(3),colors=Object.fromEntries(FACES.map(face=>[face.name,face.color]));
+ projection.setVisible(true);camera.position.set(5,6,7);projection.render({size:3,state,colors,camera});assert.equal(projection.meshes.length,0);
+ projection.setOpacity(.45);projection.render({size:3,state,colors,camera});const positions=projection.meshes.map(mesh=>mesh.geometry.attributes.position),versions=positions.map(attribute=>attribute.version);
+ for(const mesh of projection.meshes){assert.equal(mesh.material.opacity,.45);assert.equal(mesh.material.transparent,true);assert.equal(mesh.material.forceSinglePass,true);}
+ projection.setOpacity(1);projection.render({size:3,state,colors,camera});for(const mesh of projection.meshes){assert.equal(mesh.material.opacity,1);assert.equal(mesh.material.transparent,false);}
+ assert.deepEqual(projection.meshes.map(mesh=>mesh.geometry.attributes.position),positions);assert.deepEqual(positions.map(attribute=>attribute.version),versions);
+ projection.setOpacity(-1);projection.render({size:3,state,colors,camera});assert.equal(projection.opacity,0);assert.ok(projection.meshes.every(mesh=>!mesh.visible));
+ projection.setOpacity(5);assert.equal(projection.opacity,1);projection.setOpacity(NaN);assert.equal(projection.opacity,1);projection.dispose();
+});

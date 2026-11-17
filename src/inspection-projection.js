@@ -5,6 +5,8 @@ const faceIndices=new Map(FACES.map((face,index)=>[face.normal.join(','),index])
 export const PROJECTION_OFFSET=1.0;
 export const PROJECTION_BACK_OFFSET=.65;
 export const MAX_PROJECTION_DISTANCE=2;
+export const PROJECTION_OPACITY=1;
+export const clampProjectionOpacity=value=>Math.round(Math.max(0,Math.min(1,Number.isFinite(value)?value:PROJECTION_OPACITY))*100)/100;
 export const projectionDistance=(value,fallback)=>Math.round(Math.max(0,Math.min(MAX_PROJECTION_DISTANCE,Number.isFinite(value)?value:fallback))*100)/100;
 const STICKER_INSET=.003;
 const normals=FACES.map(face=>new THREE.Vector3(...face.normal).normalize());
@@ -37,14 +39,22 @@ export function projectionVisible(normal,cameraPosition,outward=PROJECTION_OFFSE
  return eyePlane<surfacePlane+outward-STICKER_INSET-backward*eyePlane/radius-1e-8;
 }
 export class InspectionProjection{
- constructor(scene,{outward=PROJECTION_OFFSET,backward=PROJECTION_BACK_OFFSET}={}){this.root=new THREE.Group();this.root.visible=false;scene.add(this.root);this.meshes=[];this.setDistances(outward,backward);}
+ constructor(scene,{outward=PROJECTION_OFFSET,backward=PROJECTION_BACK_OFFSET,opacity=PROJECTION_OPACITY}={}){this.root=new THREE.Group();this.root.visible=false;scene.add(this.root);this.meshes=[];this.setDistances(outward,backward);this.setOpacity(opacity);}
  setDistances(outward,backward){
   this.outward=projectionDistance(outward,PROJECTION_OFFSET);this.backward=projectionDistance(backward,PROJECTION_BACK_OFFSET);
   this.meshes.forEach((mesh,index)=>mesh.position.copy(normals[index]).multiplyScalar(this.outward));
  }
+ setOpacity(value){
+  this.opacity=clampProjectionOpacity(value);
+  for(const mesh of this.meshes){
+   const transparent=this.opacity<1;
+   if(mesh.material.transparent!==transparent){mesh.material.transparent=transparent;mesh.material.needsUpdate=true;}
+   mesh.material.opacity=this.opacity;if(!this.opacity)mesh.visible=false;
+  }
+ }
  setVisible(visible){this.root.visible=visible;}
  render({size,state,colors,camera}){
-  if(!this.root.visible)return;
+  if(!this.root.visible||!this.opacity)return;
   const palette=FACES.map(face=>colors[face.name]),key=palette.join(',');
   if(this.state!==state||this.size!==size||this.paletteKey!==key){
    this.state=state;this.size=size;this.paletteKey=key;
@@ -52,13 +62,16 @@ export class InspectionProjection{
    projectionGeometry(size,state).forEach((face,index)=>{
     let mesh=this.meshes[index];
     if(!mesh){
-     mesh=new THREE.Mesh(new THREE.BufferGeometry(),new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,depthWrite:true}));
+     mesh=new THREE.Mesh(new THREE.BufferGeometry(),new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,depthWrite:true,opacity:this.opacity,transparent:this.opacity<1,forceSinglePass:true}));
      mesh.position.copy(normals[index]).multiplyScalar(this.outward);mesh.frustumCulled=false;mesh.userData.face=index;this.meshes[index]=mesh;this.root.add(mesh);
     }
     const rgb=face.colors.flatMap(color=>Array.from({length:3},()=>paletteRGB[color+1].toArray()).flat());
     // An inspection state is static between turns; orbiting only updates placement and visibility.
     if(mesh.geometry.getAttribute('position')?.count!==face.positions.length/3){
      mesh.geometry.dispose();mesh.geometry.setAttribute('position',new THREE.Float32BufferAttribute(face.positions,3));mesh.geometry.setAttribute('color',new THREE.Float32BufferAttribute(rgb,3));
+     // Draw the ink first so its depth masks the black backing behind it. Each
+     // pixel then receives opacity once, rather than darkening from two layers.
+     mesh.geometry.setIndex([...Array.from({length:face.positions.length/3-3},(_,i)=>i+3),0,1,2]);
     }else{
      mesh.geometry.attributes.position.array.set(face.positions);mesh.geometry.attributes.position.needsUpdate=true;
      mesh.geometry.attributes.color.array.set(rgb);mesh.geometry.attributes.color.needsUpdate=true;

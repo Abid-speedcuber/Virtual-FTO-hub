@@ -72,23 +72,45 @@ test('projection shows only hidden faces and preserves front pixels through edge
  expect(result.checked).toBeGreaterThan(10000);expect(result.maxError).toBeLessThanOrEqual(1);
  await writeFile('test-results/inspection-projection-angles.png',Buffer.from(result.png.split(',')[1],'base64'));
 });
-test('projection defaults off and distance sliders enable, update placement, and persist independently',async({page})=>{
+test('projection defaults off and all sliders enable, update appearance, and persist independently',async({page})=>{
  await seed(page,{enabled:null});await page.goto('/');await ready(page);expect((await page.evaluate(()=>window.fto.snapshot())).inspectionProjection.visible).toBe(false);
- await page.locator('#settings').click();const toggle=page.getByRole('switch',{name:'Show back sticker projection during inspection',exact:true}),outward=page.locator('#inspection-projection-outward'),backward=page.locator('#inspection-projection-backward');
- await expect(toggle).not.toBeChecked();await expect(outward).toBeDisabled();await expect(backward).toBeDisabled();await expect(outward).toHaveValue('100');await expect(backward).toHaveValue('65');
- await toggle.check();await expect(outward).toBeEnabled();await expect(backward).toBeEnabled();
+ await page.locator('#settings').click();const toggle=page.getByRole('switch',{name:'Show back sticker projection during inspection',exact:true}),outward=page.locator('#inspection-projection-outward'),backward=page.locator('#inspection-projection-backward'),opacity=page.locator('#inspection-projection-opacity');
+ await expect(toggle).not.toBeChecked();await expect(outward).toBeDisabled();await expect(backward).toBeDisabled();await expect(opacity).toBeDisabled();await expect(outward).toHaveValue('100');await expect(backward).toHaveValue('65');await expect(opacity).toHaveValue('100');
+ await toggle.check();await expect(outward).toBeEnabled();await expect(backward).toBeEnabled();await expect(opacity).toBeEnabled();
  const change=(input,value)=>input.evaluate((el,value)=>{el.value=String(value);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));},value);
- await change(outward,150);await change(backward,120);await expect(page.locator('#inspection-projection-outward-value')).toHaveText('150%');await expect(page.locator('#inspection-projection-backward-value')).toHaveText('120%');
+ await change(outward,150);await change(backward,120);await change(opacity,45);await expect(page.locator('#inspection-projection-opacity-value')).toHaveText('45%');await expect(page.locator('#inspection-projection-outward-value')).toHaveText('150%');await expect(page.locator('#inspection-projection-backward-value')).toHaveText('120%');
  await expect.poll(async()=>{const p=(await page.evaluate(()=>window.fto.snapshot())).inspectionProjection;return [p.outward,p.backward,Math.round(Math.hypot(...p.setback)*100)];}).toEqual([1.5,1.2,120]);
- const projection=(await page.evaluate(()=>window.fto.snapshot())).inspectionProjection;expect(projection.faces.length).toBeGreaterThan(0);for(const face of projection.faces)expect(Math.hypot(...face.offset)).toBeCloseTo(1.5,10);
- await toggle.uncheck();await expect(outward).toBeDisabled();await expect(backward).toBeDisabled();await page.locator('#close-settings').click();await page.reload();await ready(page);
- await page.locator('#settings').click();await expect(toggle).not.toBeChecked();await expect(outward).toBeDisabled();await expect(backward).toBeDisabled();await expect(outward).toHaveValue('150');await expect(backward).toHaveValue('120');
+ const projection=(await page.evaluate(()=>window.fto.snapshot())).inspectionProjection;expect(projection.opacity).toBe(.45);expect(projection.faces.every(face=>face.opacity===.45)).toBe(true);expect(projection.faces.length).toBeGreaterThan(0);for(const face of projection.faces)expect(Math.hypot(...face.offset)).toBeCloseTo(1.5,10);
+ await toggle.uncheck();await expect(outward).toBeDisabled();await expect(backward).toBeDisabled();await expect(opacity).toBeDisabled();await page.locator('#close-settings').click();await page.reload();await ready(page);
+ await page.locator('#settings').click();await expect(toggle).not.toBeChecked();await expect(outward).toBeDisabled();await expect(backward).toBeDisabled();await expect(opacity).toBeDisabled();await expect(outward).toHaveValue('150');await expect(backward).toHaveValue('120');await expect(opacity).toHaveValue('45');
  await toggle.check();await page.locator('#close-settings').click();await expect.poll(async()=>(await page.evaluate(()=>window.fto.snapshot())).inspectionProjection.visible).toBe(true);
- await page.reload();await ready(page);const restored=(await page.evaluate(()=>window.fto.snapshot())).inspectionProjection;expect(restored.visible).toBe(true);expect(restored.outward).toBe(1.5);expect(restored.backward).toBe(1.2);
+ await page.reload();await ready(page);const restored=(await page.evaluate(()=>window.fto.snapshot())).inspectionProjection;expect(restored.visible).toBe(true);expect(restored.outward).toBe(1.5);expect(restored.backward).toBe(1.2);expect(restored.opacity).toBe(.45);
 });
 test('projection settings fit narrow screens and saved out-of-range distances are clamped',async({page})=>{
- await page.setViewportSize({width:320,height:740});await page.addInitScript(()=>{localStorage.setItem('master-fto-settings-v1',JSON.stringify({showInspectionFaces:true,inspectionProjectionOutward:50,inspectionProjectionBackward:-5}));});
- await page.goto('/');await ready(page);await page.locator('#settings').click();await expect(page.locator('#inspection-projection-outward')).toHaveValue('200');await expect(page.locator('#inspection-projection-backward')).toHaveValue('0');
+ await page.setViewportSize({width:320,height:740});await page.addInitScript(()=>{localStorage.setItem('master-fto-settings-v1',JSON.stringify({showInspectionFaces:true,inspectionProjectionOutward:50,inspectionProjectionBackward:-5,inspectionProjectionOpacity:5}));});
+ await page.goto('/');await ready(page);await page.locator('#settings').click();await expect(page.locator('#inspection-projection-outward')).toHaveValue('200');await expect(page.locator('#inspection-projection-backward')).toHaveValue('0');await expect(page.locator('#inspection-projection-opacity')).toHaveValue('100');
  await page.locator('#inspection-projection-settings').scrollIntoViewIfNeeded();expect(await page.locator('.settings-body').evaluate(el=>el.scrollWidth-el.clientWidth)).toBeLessThanOrEqual(1);
  await page.locator('#settings-dialog').screenshot({path:'test-results/inspection-projection-settings-mobile.png'});
+});
+
+test('partial opacity blends each projected pixel once and zero opacity hides it',async({page})=>{
+ await page.goto('/');await ready(page);
+ const result=await page.evaluate(async()=>{
+  const {InspectionProjection}=await import('/src/inspection-projection.js'),{FACES,solvedState}=await import('/src/puzzle.js');
+  const source=await(await fetch('/src/main.js')).text(),url=source.match(/import \* as THREE from ["']([^"']+)["']/)[1],THREE=await import(url);
+  const renderer=new THREE.WebGLRenderer({alpha:true,antialias:false});renderer.setSize(160,160);renderer.setClearColor(0,0);
+  const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(36,1,.1,100),projection=new InspectionProjection(scene),state=solvedState(3),colors=Object.fromEntries(FACES.map(face=>[face.name,face.color]));
+  camera.position.set(-1,-1,-1).normalize().multiplyScalar(10);camera.lookAt(0,0,0);camera.updateMatrixWorld(true);projection.setVisible(true);
+  const results=[];
+  for(const opacity of [1,.5,0]){
+   projection.setOpacity(opacity);projection.render({size:3,state,colors,camera});projection.meshes.forEach((mesh,index)=>{if(index!==0)mesh.visible=false;});renderer.render(scene,camera);
+   const gl=renderer.getContext(),pixels=new Uint8Array(160*160*4);gl.readPixels(0,0,160,160,gl.RGBA,gl.UNSIGNED_BYTE,pixels);let count=0,min=255,max=0;
+   for(let i=3;i<pixels.length;i+=4)if(pixels[i]){count++;min=Math.min(min,pixels[i]);max=Math.max(max,pixels[i]);}
+   results.push({count,min,max});
+  }
+  projection.dispose();renderer.dispose();renderer.forceContextLoss();return results;
+ });
+ expect(result[0].count).toBeGreaterThan(100);expect(result[0].min).toBe(255);
+ expect(result[1].count).toBe(result[0].count);expect(result[1].min).toBeGreaterThanOrEqual(127);expect(result[1].max).toBeLessThanOrEqual(129);
+ expect(result[2].count).toBe(0);
 });
