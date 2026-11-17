@@ -211,3 +211,6 @@ html,body,body *{-webkit-user-select:none;user-select:none}input,textarea,[conte
 .replaying #replay-keyboard .keycap.replay-move-highlight rect,.replaying #replay-keyboard .keycap.replay-move-highlight path{fill:var(--replay-move-color);stroke:var(--replay-move-color);filter:none}.replaying #replay-keyboard .keycap.replay-move-highlight text{fill:#14251d}.compact-ui.replaying #home-replay-keys:not(:empty){padding:2px 0;background:transparent;color:var(--replay-move-color);font-family:ui-monospace,Consolas,monospace}
 
 .replay-pointer-overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:hidden}.replay-pointer-trail{fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;opacity:.75}.replay-pointer-contact{fill:currentColor;fill-opacity:.18;stroke:currentColor;stroke-width:2}.replay-pointer-center{fill:currentColor}
+
+#inspection-projection-settings{min-width:0;margin:0;padding:0;border:0;border-bottom:1px solid #2b3b33}
+#inspection-projection-settings:disabled{opacity:.45}

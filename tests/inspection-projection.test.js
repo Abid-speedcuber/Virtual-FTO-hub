@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {FACES,solvedState,applyMove,scrambleMoves,normalOf} from '../src/puzzle.js';
-import {PROJECTION_OFFSET,projectionGeometry,projectionOpacity,InspectionProjection} from '../src/inspection-projection.js';
+import {PROJECTION_OFFSET,PROJECTION_BACK_OFFSET,projectionGeometry,projectionVisible,InspectionProjection} from '../src/inspection-projection.js';
 const normals=FACES.map(face=>new THREE.Vector3(...face.normal).normalize());
 test('rear projection preserves actual sticker geometry and colors on sizes 2 through 20',()=>{
  let seed=327;const random=()=>((seed=Math.imul(seed,1664525)+1013904223>>>0)/2**32);
@@ -26,17 +26,34 @@ test('rear projection preserves actual sticker geometry and colors on sizes 2 th
   });
  }
 });
-test('rear-face visibility is finite, bounded and continuous through poles, tangents and arbitrary rolls',()=>{
- const positions=[[6,0,0],[0,0,20],[0,-6,0],[2,4,-4],[0,0,0]];
+test('hard cutoff hands over at the real face plane without duplicate visible faces',()=>{
+ const positions=[[6,0,0],[0,0,20],[0,-6,0],[2,4,-4]],state=solvedState(3);
  for(let i=0;i<4096;i++){const y=1-2*(i+.5)/4096,a=i*Math.PI*(3-Math.sqrt(5)),r=6+14*(i%17)/16;positions.push([Math.sqrt(1-y*y)*Math.cos(a)*r,y*r,Math.sqrt(1-y*y)*Math.sin(a)*r]);}
- for(const position of positions)for(const normal of normals){const opacity=projectionOpacity(normal.toArray(),position);assert.ok(Number.isFinite(opacity)&&opacity>=0&&opacity<=1);if(normal.dot(new THREE.Vector3(...position))>=0)assert.equal(opacity,0);}
- for(const normal of normals){
+ const surfacePoints=normals.map((_,index)=>new THREE.Vector3(...state.find(sticker=>normalOf(sticker).every((v,i)=>v===FACES[index].normal[i])).vertices[0]).multiplyScalar(2/3));
+ for(const position of positions)normals.forEach((normal,index)=>{
+  const eye=new THREE.Vector3(...position),realFaceFacing=normal.dot(eye.clone().sub(surfacePoints[index]));
+  assert.equal(projectionVisible(normal.toArray(),position),realFaceFacing<-1e-8);
+  if(realFaceFacing>=0)assert.equal(projectionVisible(normal.toArray(),position),false);
+ });
+ assert.equal(projectionVisible(normals[0].toArray(),[0,0,0]),false);
+ const hints=projectionGeometry(3,state);
+ normals.forEach((normal,index)=>{
   const tangent=new THREE.Vector3(0,1,0).cross(normal).normalize();
-  for(let i=-200;i<=200;i++){
-   const a=tangent.clone().addScaledVector(normal,i*.001).normalize().multiplyScalar(10),b=a.clone().addScaledVector(normal,1e-7);
-   assert.ok(Math.abs(projectionOpacity(normal.toArray(),a.toArray())-projectionOpacity(normal.toArray(),b.toArray()))<1e-5);
+  for(const radius of [6,10,20]){
+   const cutoffCos=normal.dot(surfacePoints[index])/radius;
+   const eye=cos=>normal.clone().multiplyScalar(cos).addScaledVector(tangent,Math.sqrt(1-cos*cos)).multiplyScalar(radius);
+   assert.equal(projectionVisible(normal.toArray(),eye(0).toArray()),true);
+   assert.equal(projectionVisible(normal.toArray(),eye(cutoffCos-.0001).toArray()),true);
+   assert.equal(projectionVisible(normal.toArray(),eye(cutoffCos).toArray()),false);
+   assert.equal(projectionVisible(normal.toArray(),eye(cutoffCos+.0001).toArray()),false);
+   // Regression: the offset sheet is still back-facing, but the real face is
+   // already visible. Showing both produced the duplicate face in the screenshot.
+   const duplicateEye=eye(cutoffCos+.02),onHint=new THREE.Vector3().fromArray(hints[index].positions,9).addScaledVector(normal,PROJECTION_OFFSET).addScaledVector(duplicateEye.clone().normalize(),-PROJECTION_BACK_OFFSET);
+   assert.ok(normal.dot(duplicateEye.clone().sub(onHint))<0);
+   assert.ok(normal.dot(duplicateEye.clone().sub(surfacePoints[index]))>0);
+   assert.equal(projectionVisible(normal.toArray(),duplicateEye.toArray()),false);
   }
- }
+ });
 });
 test('orbiting reuses buffers, changing colors updates them, and disabled projection does no work',()=>{
  const scene=new THREE.Scene(),projection=new InspectionProjection(scene),camera=new THREE.PerspectiveCamera(),state=solvedState(4),colors=Object.fromEntries(FACES.map(f=>[f.name,f.color]));
@@ -44,6 +61,30 @@ test('orbiting reuses buffers, changing colors updates them, and disabled projec
  const versions=projection.meshes.map(mesh=>mesh.geometry.attributes.position.version);
  for(let i=0;i<100;i++){camera.position.set(Math.cos(i*.1)*10,3,Math.sin(i*.1)*10);projection.render({size:4,state,colors,camera});}
  assert.deepEqual(projection.meshes.map(mesh=>mesh.geometry.attributes.position.version),versions);assert.equal(projection.meshes.length,8);
+ assert.ok(projection.root.position.clone().addScaledVector(camera.position.clone().normalize(),PROJECTION_BACK_OFFSET).length()<1e-12);
+ for(const mesh of projection.meshes){assert.ok(Math.abs(mesh.position.length()-PROJECTION_OFFSET)<1e-12);assert.equal(mesh.material.opacity,1);assert.equal(mesh.material.transparent,false);}
  projection.render({size:4,state,colors:{...colors,U:'#123456'},camera});const expected=new THREE.Color('#123456'),actual=projection.meshes[0].geometry.attributes.color;assert.ok(Math.abs(actual.getX(3)-expected.r)<1e-6);
  projection.setVisible(false);assert.equal(projection.root.visible,false);projection.dispose();assert.equal(scene.children.length,0);
+});
+test('adjustable distances clamp invalid values, reuse buffers and keep front-facing sheets hidden',()=>{
+ const scene=new THREE.Scene(),projection=new InspectionProjection(scene),camera=new THREE.PerspectiveCamera(),state=solvedState(3),colors=Object.fromEntries(FACES.map(face=>[face.name,face.color]));
+ projection.setVisible(true);camera.position.set(5,6,7);projection.render({size:3,state,colors,camera});const versions=projection.meshes.map(mesh=>mesh.geometry.attributes.position.version);
+ for(const [outward,backward] of [[0,0],[0,2],[.01,2],[2,0],[2,2],[1,.65]]){
+  projection.setDistances(outward,backward);
+  for(let i=0;i<64;i++){
+   camera.position.set(Math.cos(i*.37),Math.sin(i*.59),Math.sin(i*.37)).normalize().multiplyScalar(6+i%15);projection.render({size:3,state,colors,camera});
+   assert.ok(Math.abs(projection.root.position.length()-backward)<1e-12);
+   projection.meshes.forEach((mesh,index)=>{
+    assert.ok(Math.abs(mesh.position.length()-outward)<1e-12);
+    if(!mesh.visible)return;
+    const normal=normals[index],realPlane=2/Math.sqrt(3);assert.ok(normal.dot(camera.position)<realPlane);
+    const coloredPoint=new THREE.Vector3().fromBufferAttribute(mesh.geometry.attributes.position,3).add(mesh.position).add(projection.root.position);
+    assert.ok(normal.dot(camera.position.clone().sub(coloredPoint))<0);
+   });
+  }
+ }
+ assert.deepEqual(projection.meshes.map(mesh=>mesh.geometry.attributes.position.version),versions);
+ projection.setDistances(-100,100);assert.equal(projection.outward,0);assert.equal(projection.backward,2);
+ projection.setDistances(NaN,Infinity);assert.equal(projection.outward,PROJECTION_OFFSET);assert.equal(projection.backward,PROJECTION_BACK_OFFSET);
+ projection.dispose();
 });
