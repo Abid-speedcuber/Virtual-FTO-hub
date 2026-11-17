@@ -22,7 +22,7 @@ The Scramble button requires confirmation. Three quick unmodified Escape presses
 
 Settings, confirmation dialogs, and leaving the site pause active timing and gray the puzzle. Every pause waits for a resume key, even after returning focus, closing dialogs, reloading, or switching sizes. The resume key is consumed. Free play and ready inspection remain colored. Each size preserves its state, view, undo/redo, pending turns, timer, PB, and times across switches/reloads. These are stored in browser Local Storage under `master-fto-v1`, with preferences under `master-fto-settings-v1` and keyboard profiles under `master-fto-keyboard-v2`. Clearing the solve storage or site data reloads open simulator tabs so they cannot write old times back from memory.
 
-Move sounds use locally bundled **Gateron Black Ink recordings by Thomas Lai**, from [tplai/kbsim](https://github.com/tplai/kbsim), under its MIT license. [Attribution and original license](public/audio/black-ink/ATTRIBUTION.md) are included with the files. Suffixes use a gentle synthesized tone. **Disable sounds** mutes both and saves locally; playback makes no third-party requests.
+Move sounds use locally bundled **Gateron Black Ink recordings by Thomas Lai**, from [tplai/kbsim](https://github.com/tplai/kbsim), under its MIT license. [Attribution and original license](public/audio/black-ink/ATTRIBUTION.md) are included with the files. Undo uses a real single-keystroke typewriter recording by [yottasounds](https://freesound.org/people/yottasounds/sounds/380137/) (CC0; [attribution](public/audio/typewriter/ATTRIBUTION.md)). Suffixes use a gentle synthesized tone. **Disable sounds** mutes both and saves locally; playback makes no third-party requests.
 
 ## Split tracking
 

@@ -63,7 +63,7 @@ Press highlights track key-down and key-up directly, with no minimum duration, a
 
 TPS measures accepted manual turn input in a trailing 1-, 3-, or 5-second window. Pointer turns and keyboard turns count; suffixes, mode changes, rotations, undo/redo, automatic scrambles, and repeat/unmapped input do not. **Reset TPS and turn count** clears the current TPS window, peak TPS and accepted manual-turn count. It leaves the puzzle and solve history intact.
 
-Move audio uses locally bundled Gateron Black Ink recordings from tplai/kbsim (MIT; license and attribution accompany the samples). Suffixes use a soft tone. Disable sounds is saved separately from keymaps.
+Move audio uses locally bundled Gateron Black Ink recordings from tplai/kbsim (MIT; license and attribution accompany the samples). Undo uses a real single-keystroke typewriter recording by yottasounds (CC0; attribution accompanies the sample). Suffixes use a soft tone. Disable sounds is saved separately from keymaps.
 
 Size-specific profiles live in `master-fto-keyboard-v2` local storage. Overlay preferences are shared. Untouched legacy defaults upgrade; customized keyboards retain their moves. Shipped Escape-cancel bindings migrate to Pause, and modes gain missing Backspace undo and Shift+Backspace redo bindings without replacing custom key actions. Shipped older center moves upgrade to the new six-move layout once. Temporary keys, suffix selections, and TPS do not survive reloads. Export/import applies to the current size. Import opens a drag-and-drop/file-picker modal, validates the entire configuration, then asks for confirmation before replacing the keyboard.
 

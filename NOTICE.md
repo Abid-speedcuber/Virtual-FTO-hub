@@ -46,6 +46,13 @@ Gateron Black Ink recordings by Thomas Lai (tplai), from tplai/kbsim, remain
 under their original MIT license. See public/audio/black-ink/ATTRIBUTION.md
 and public/audio/black-ink/LICENSE.md.
 
+## Typewriter recording
+
+Undo uses "Typewriter - single key - type 2.wav" by yottasounds, dedicated to
+CC0 1.0. Source and license: https://freesound.org/people/yottasounds/sounds/380137/
+The unmodified MP3 preview is bundled locally. See
+public/audio/typewriter/ATTRIBUTION.md.
+
 ## Three.js
 
 Three.js is MIT-licensed, copyright Three.js authors. Its complete copyright and license

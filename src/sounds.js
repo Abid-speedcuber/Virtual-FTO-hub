@@ -1,9 +1,11 @@
 // Locally bundled Gateron Black Ink recordings from tplai/kbsim (MIT).
 // See public/audio/black-ink/ATTRIBUTION.md and LICENSE.md.
+// Undo uses yottasounds’ real typewriter recording (CC0); see audio/typewriter/ATTRIBUTION.md.
 const sampleURLs=[1,2,3].map(n=>`${import.meta.env.BASE_URL}audio/black-ink/press-${n}.mp3`);
+const undoSampleURL=`${import.meta.env.BASE_URL}audio/typewriter/keypress.mp3`;
 export class PuzzleSounds{
  constructor(disabled=()=>false){
-  this.disabled=disabled;this.context=null;this.samples=[];
+  this.disabled=disabled;this.context=null;this.samples=[];this.undoSample=null;
   // Decode away from the real-time audio context, before the first keypress.
   this.ready=this.load();
  }
@@ -12,8 +14,13 @@ export class PuzzleSounds{
    const Decoder=globalThis.OfflineAudioContext??globalThis.webkitOfflineAudioContext;
    if(!Decoder)return;
    const decoder=new Decoder(1,1,44100);
-   this.samples=await Promise.all(sampleURLs.map(async url=>{const response=await fetch(url);if(!response.ok)throw Error('Audio unavailable');return decoder.decodeAudioData(await response.arrayBuffer());}));
-  }catch{this.samples=[];}
+   const decode=async url=>{const response=await fetch(url);if(!response.ok)throw Error('Audio unavailable');return decoder.decodeAudioData(await response.arrayBuffer());};
+   // A missing asset must not prevent the other sound family from loading.
+   await Promise.all([
+    Promise.all(sampleURLs.map(decode)).then(samples=>{this.samples=samples;}).catch(()=>{this.samples=[];}),
+    decode(undoSampleURL).then(sample=>{this.undoSample=sample;}).catch(()=>{this.undoSample=null;}),
+   ]);
+  }catch{this.samples=[];this.undoSample=null;}
  }
  play(kind='move'){
   if(this.disabled())return;
@@ -31,17 +38,16 @@ export class PuzzleSounds{
   }catch{/* Audio never blocks puzzle input. */}
  }
  playUndo(context){
-  // A smooth, airy "shh shh": broad filtered noise with slow, soft edges.
-  const now=context.currentTime,duration=.42,source=context.createBufferSource(),high=context.createBiquadFilter(),low=context.createBiquadFilter(),gain=context.createGain();
-  if(!this.undoHiss){this.undoHiss=context.createBuffer(1,Math.ceil(context.sampleRate*duration),context.sampleRate);const samples=this.undoHiss.getChannelData(0);for(let i=0;i<samples.length;i++)samples[i]=(Math.random()*2-1)*.75;}
-  source.buffer=this.undoHiss;source.playbackRate.value=.98+Math.random()*.04;
-  high.type='highpass';high.frequency.value=1500;high.Q.value=.5;low.type='lowpass';low.frequency.value=7000;low.Q.value=.5;
-  gain.gain.setValueAtTime(0,now);gain.gain.linearRampToValueAtTime(.18,now+.045);gain.gain.linearRampToValueAtTime(.13,now+.08);gain.gain.linearRampToValueAtTime(0,now+.15);gain.gain.setValueAtTime(0,now+.21);gain.gain.linearRampToValueAtTime(.16,now+.255);gain.gain.linearRampToValueAtTime(.12,now+.29);gain.gain.linearRampToValueAtTime(0,now+.39);
-  source.connect(high);high.connect(low);low.connect(gain);gain.connect(context.destination);source.start(now);source.stop(now+duration);source.onended=()=>{high.disconnect();low.disconnect();gain.disconnect();};
+  if(this.undoSample)this.playBuffer(context,this.undoSample,.32,2400);
+  else this.ready.then(()=>{if(!this.disabled()&&this.undoSample)this.playBuffer(context,this.undoSample,.32,2400);}).catch(()=>{});
  }
 
- playSample(context){
-  const source=context.createBufferSource(),gain=context.createGain();source.buffer=this.samples[Math.floor(Math.random()*this.samples.length)];gain.gain.value=.55;
-  source.connect(gain);gain.connect(context.destination);source.start();source.onended=()=>gain.disconnect();
+ playSample(context){this.playBuffer(context,this.samples[Math.floor(Math.random()*this.samples.length)],.55);}
+ playBuffer(context,buffer,volume,lowpassHz=null){
+  const source=context.createBufferSource(),gain=context.createGain();source.buffer=buffer;gain.gain.value=volume;
+  // Gently roll off the typebar's sharp high end without changing its pitch.
+  const filter=lowpassHz?context.createBiquadFilter():null;
+  if(filter){filter.type='lowpass';filter.frequency.value=lowpassHz;filter.Q.value=.5;source.connect(filter);filter.connect(gain);}else source.connect(gain);
+  gain.connect(context.destination);source.start();source.onended=()=>{source.disconnect();filter?.disconnect();gain.disconnect();};
  }
 }

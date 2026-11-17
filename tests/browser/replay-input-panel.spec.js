@@ -19,10 +19,24 @@ test('replay flashes move notation above the keyboard and uses compact icon cont
  await page.locator('#home-replay-play').click();await expect(page.locator('#home-replay-play')).toHaveAttribute('aria-label','Pause recording');await page.locator('#home-replay-play').click();await expect(page.locator('#home-replay-play')).toHaveAttribute('aria-label','Play recording');await page.setViewportSize({width:1440,height:900});await page.locator('#home-replay-exit').click();await expect(page.locator('#replay-input-panel')).toBeHidden();await expect(page.locator('#solve-summary .time-columns')).toBeVisible();await expect(page.locator('#solve-times li')).toHaveCount(1);
 });
 
-test('undo audio has two friction strokes with a silent gap, and undo remains functional',async({page})=>{
+test('undo plays a quieter, muffled typewriter keypress, and undo remains functional',async({page})=>{
  await page.addInitScript(()=>{localStorage.setItem('master-fto-settings-v1',JSON.stringify({animate:false,follow:false}));localStorage.setItem('master-fto-v1',JSON.stringify({size:3,solves:{3:{history:[{normal:[1,1,1],layer:'outer',dir:1,name:'U'}],redo:[],undoFloor:1,timer:{status:'ready'}}}}));});
  await page.goto('/');await page.waitForFunction(()=>window.fto?.snapshot().ready);
- const energy=await page.evaluate(async()=>{const {PuzzleSounds}=await import('/src/sounds.js');const sound=new PuzzleSounds(),context=new OfflineAudioContext(1,22050,44100);sound.playUndo(context);const samples=(await context.startRendering()).getChannelData(0);return [[.035,.11],[.165,.195],[.245,.32],[.45,.49]].map(([start,end])=>{let energy=0;for(let i=Math.floor(start*44100);i<end*44100;i++)energy+=samples[i]*samples[i];return energy/((end-start)*44100);});});
- expect(energy[0]).toBeGreaterThan(.00001);expect(energy[2]).toBeGreaterThan(.00001);expect(energy[1]).toBeLessThan(energy[0]/100);expect(energy[3]).toBe(0);
+ const recording=await page.evaluate(async()=>{
+  const {PuzzleSounds}=await import('/src/sounds.js');const sound=new PuzzleSounds();await sound.ready;
+  if(!sound.undoSample)throw Error('Typewriter recording did not load');
+  const buffer=sound.undoSample,context=new OfflineAudioContext(buffer.numberOfChannels,buffer.length+4410,buffer.sampleRate);
+  sound.playUndo(context);const played=await context.startRendering();let energy=0,originalEnergy=0,roughness=0,unfilteredRoughness=0,tail=0;
+  for(let channel=0;channel<buffer.numberOfChannels;channel++){
+   const source=buffer.getChannelData(channel),actual=played.getChannelData(channel);
+   for(let i=0;i<source.length;i++){
+    energy+=actual[i]*actual[i];originalEnergy+=(source[i]*.65)**2;
+    if(i){roughness+=(actual[i]-actual[i-1])**2;unfilteredRoughness+=((source[i]-source[i-1])*.32)**2;}
+   }
+   for(let i=actual.length-882;i<actual.length;i++)tail=Math.max(tail,Math.abs(actual[i]));
+  }
+  return {duration:buffer.duration,energy,energyRatio:energy/originalEnergy,roughnessRatio:roughness/unfilteredRoughness,tail};
+ });
+ expect(recording.duration).toBeGreaterThan(.1);expect(recording.duration).toBeLessThan(.6);expect(recording.energy).toBeGreaterThan(.01);expect(recording.energyRatio).toBeLessThan(.25);expect(recording.roughnessRatio).toBeLessThan(.4);expect(recording.tail).toBeLessThan(.000001);
  await page.keyboard.press('KeyJ');await page.keyboard.press('Backspace');await expect.poll(async()=>(await page.evaluate(()=>window.fto.snapshot())).redo.length).toBe(1);
 });
