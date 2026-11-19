@@ -1,3 +1,4 @@
+import {openSettings} from './helpers.js';
 import {test,expect} from '@playwright/test';
 const ready=page=>page.waitForFunction(()=>window.fto?.snapshot().ready);
 const snap=page=>page.evaluate(()=>window.fto.snapshot());
@@ -17,7 +18,7 @@ test('topbar puzzle icon opens a modal and preserves per-size progress',async({p
 test('mobile bar follows freeplay, running, and paused states; buttons control the solve',async({page})=>{
  await page.setViewportSize({width:390,height:844});await page.clock.install();await page.goto('/');await ready(page);
  for(const selector of ['#solve-panel','.history-tools','.puzzle-actions'])await expect(page.locator(selector)).toBeHidden();expect(await buttons(page)).toEqual(['Reset','Scramble','History']);await expect(page.locator('#mobile-timer')).toBeHidden();
- await page.locator('#settings').click();await page.locator('#animate').uncheck();await page.locator('#animate-scrambling').uncheck();await page.locator('#close-settings').click();
+ await openSettings(page);await page.locator('#animate').uncheck();await page.locator('#animate-scrambling').uncheck();await page.locator('#close-settings').click();
  await page.clock.pauseAt(new Date(await page.evaluate(()=>Date.now())+100));
  await page.locator('#mobile-scramble').click();await page.locator('#confirm-accept').click();await expect.poll(async()=>(await snap(page)).timer.status).toBe('ready');
  await page.keyboard.press('KeyF');expect(await buttons(page)).toEqual(['Pause','Undo','Redo']);await expect(page.locator('#mobile-timer')).toBeVisible();
@@ -41,7 +42,7 @@ test('history shows the selected puzzle times and PB; compact layout fits 320px 
 });
 
 test('touch bias modal contains all three sliders and saves independently',async({page})=>{
- await page.goto('/');await ready(page);await page.locator('#settings').click();await expect(page.locator('#outer-turn-bias')).toBeHidden();await page.locator('#touch-turn-bias').click();
+ await page.goto('/');await ready(page);await openSettings(page);await expect(page.locator('#outer-turn-bias')).toBeHidden();await page.locator('#touch-turn-bias').click();
  await expect(page.locator('#touch-bias-dialog')).toBeVisible();
  for(const [id,value] of [['outer-turn-bias',80],['u-turn-bias',90],['eif-u-turn-bias',75]])await page.locator(`#${id}`).evaluate((el,value)=>{el.value=value;el.dispatchEvent(new Event('input',{bubbles:true}));},value);
  await page.locator('#touch-bias-dialog').screenshot({path:'test-results/touch-bias-settings.png'});await page.locator('#close-touch-bias').click();await expect(page.locator('#settings-dialog')).toBeVisible();await page.locator('#close-settings').click();

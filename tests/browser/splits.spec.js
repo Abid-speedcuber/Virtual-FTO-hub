@@ -1,8 +1,9 @@
+import {openSettings} from './helpers.js';
 import {test,expect} from '@playwright/test';
 import {phaseProfile} from '../../src/solve-phases.js';
 const ready=page=>page.waitForFunction(()=>window.fto?.snapshot().ready);
 const snap=page=>page.evaluate(()=>window.fto.snapshot());
-async function configure(page){await page.locator('#settings').click();await page.locator('#configure-splits').click();}
+async function configure(page){await openSettings(page);await page.locator('#configure-splits').click();}
 async function choose(page,size){await page.locator('#puzzles').click();await page.locator(`[data-size="${size}"]`).click();}
 
 test('desktop island unifies controls, always includes undo/redo, and the timer heading is gone',async({page})=>{
@@ -11,7 +12,7 @@ test('desktop island unifies controls, always includes undo/redo, and the timer 
  await expect(page.locator('.history-tools,.puzzle-actions')).toHaveCount(2);for(const id of ['.history-tools','.puzzle-actions'])await expect(page.locator(id)).toBeHidden();
  await expect(page.locator('.timer-heading,#timer-size,#timer-status')).toHaveCount(0);
  expect(await page.locator('.time-columns').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(1);
- await page.locator('#settings').click();await page.locator('#show-keyboard').check();await page.locator('#close-settings').click();
+ await openSettings(page);await page.locator('#show-keyboard').check();await page.locator('#close-settings').click();
  await page.screenshot({path:'test-results/desktop-split-island.png'});
  await page.setViewportSize({width:390,height:844});await expect(page.locator('#mobile-history')).toBeVisible();await expect(page.locator('#mobile-undo')).toBeHidden();await expect(page.locator('#mobile-redo')).toBeHidden();
 });
@@ -64,7 +65,7 @@ test('Nautilus recognizes the last-layer state separately from its last triple',
 });
 
 test('the old split diagnostic export is replaced by a complete user-data backup',async({page},testInfo)=>{
- await page.goto('/');await ready(page);await page.locator('#settings').click();await expect(page.locator('#export-solve')).toHaveCount(0);
+ await page.goto('/');await ready(page);await openSettings(page);await expect(page.locator('#export-solve')).toHaveCount(0);
  const downloaded=page.waitForEvent('download');await page.locator('#export-user-data').click();const download=await downloaded;const path=testInfo.outputPath('user-data.json');await download.saveAs(path);
  const {readFile}=await import('node:fs/promises');const exported=JSON.parse(await readFile(path,'utf8'));expect(exported.format).toBe('fto-user-data-v1');expect(exported.entries['master-fto-v1']).toBeTruthy();expect(exported.entries['master-fto-settings-v1']).toBeTruthy();
 });
@@ -78,7 +79,7 @@ test('compact summary uses right-side PB and ao5, with invisible but working scr
   localStorage.setItem('master-fto-v1',JSON.stringify({size:3,solves:{3:{history:[],redo:[],undoFloor:0,solveEnd:0,splits,timer:{status:'finished',elapsedMs:96370,lastMs:96370,bestMs:96370,completed:60,newBest:true,times}}}}));
  },profile);
  await page.setViewportSize({width:1600,height:720});await page.goto('/');await ready(page);
- await page.locator('#settings').click();await page.locator('#show-keyboard').check();await page.locator('#close-settings').click();
+ await openSettings(page);await page.locator('#show-keyboard').check();await page.locator('#close-settings').click();
  await expect(page.locator('#timer-hint')).toHaveCount(0);await expect(page.locator('#timer-pb')).toHaveText('1:36.37');await expect(page.locator('#timer-ao5')).toHaveText('2:00.00');
  const timer=await page.locator('#timer-value').boundingBox(),metrics=await page.locator('.timer-metrics').boundingBox();expect(timer.x+timer.width).toBeLessThan(metrics.x);
  for(const selector of ['.splits-panel','#solve-times'])expect(await page.locator(selector).evaluate(el=>getComputedStyle(el).scrollbarWidth)).toBe('none');

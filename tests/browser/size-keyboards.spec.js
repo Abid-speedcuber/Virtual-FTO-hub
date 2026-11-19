@@ -1,3 +1,4 @@
+import {openSettings} from './helpers.js';
 import {regressionKeyboard} from './keyboard-fixture.js';
 import {test,expect} from '@playwright/test';
 import {withSettings,scramble,assignBinding} from './helpers.js';
@@ -9,7 +10,7 @@ const binding=async(page,trigger,type,face='U',kind='outer',depth=1)=>{
  const action=type==='move'?`move:${face}:1:${kind}:${Number(depth)}:false`:type==='suffix-slice'?'suffix-slice:::':`rotate:${face}:1`;
  await assignBinding(page,action,trigger);await expect(page.locator('#bindings-message')).toHaveText('Saved');
 };
-async function edit(page,action){await page.locator('#settings').click();await page.locator('#edit-keyboard').click();await action();await page.locator('#close-keyboard').click();await page.locator('#close-settings').click();}
+async function edit(page,action){await openSettings(page);await page.locator('#edit-keyboard').click();await action();await page.locator('#close-keyboard').click();await page.locator('#close-settings').click();}
 test.beforeEach(async({page})=>{await page.goto('/');await ready(page);await withSettings(page,async()=>{await page.locator('#animate').uncheck();await page.locator('#show-keyboard').check();});});
 test('3x3 CIF, EIF-R, EIF-L, and E-Center expose the requested moves and switch back',async({page})=>{
  await size(page,3);await expect(page.locator('[data-code="KeyF"] text')).toHaveText('U′');await expect(page.locator('[data-code="KeyJ"] text')).toHaveText('U');await expect(page.locator('[data-code="AltLeft"] text')).toBeEmpty();await expect(page.locator('[data-code="ControlLeft"] text')).not.toHaveText('Wide');
@@ -28,7 +29,7 @@ test('size-specific custom slice suffix and exact moves persist independently ac
  await size(page,3);expect((await snap(page)).keyboard.config.modes).toHaveLength(4);await expect(page.locator('[data-code="KeyQ"] text')).toBeEmpty();await page.reload();await ready(page);await size(page,10);expect((await snap(page)).keyboard.config.modes).toHaveLength(3);await expect(page.locator('[data-code="KeyQ"] text')).toHaveText('8R');await expect(page.locator('[data-code="Quote"] text')).toHaveText('Slice next');
 });
 test('sounds setting persists; clicking the settings backdrop closes it',async({page})=>{
- await page.locator('#settings').click();await page.locator('#disable-sounds').check();await page.mouse.click(2,2);await expect(page.locator('#settings-dialog')).not.toBeVisible();await page.reload();await ready(page);await page.locator('#settings').click();await expect(page.locator('#disable-sounds')).toBeChecked();
+ await openSettings(page);await page.locator('#disable-sounds').check();await page.mouse.click(2,2);await expect(page.locator('#settings-dialog')).not.toBeVisible();await page.reload();await ready(page);await openSettings(page);await expect(page.locator('#disable-sounds')).toBeChecked();
 });
 test('reset confirmation pauses and grays the puzzle even if its dialog is cancelled',async({page})=>{
  await scramble(page);await key(page,'KeyF');await page.locator('#freeplay-reset').click();await expect(page.locator('#confirm-dialog')).toBeVisible();const paused=await snap(page);expect(paused.timer.status).toBe('paused');expect(paused.stickerColors).toEqual(Array(8).fill('888888'));await page.screenshot({path:'test-results/confirm-gray.png'});await page.locator('#confirm-cancel').click();await expect.poll(async()=>(await snap(page)).timer.status).toBe('running');expect(new Set((await snap(page)).stickerColors).size).toBe(8);

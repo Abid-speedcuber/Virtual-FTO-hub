@@ -1,3 +1,4 @@
+import {openSettings} from './helpers.js';
 import {test,expect} from '@playwright/test';
 import * as THREE from 'three';
 import {SolveRecorder,validateRecording,recordingFrame} from '../../src/solve-recording.js';
@@ -22,8 +23,8 @@ test('fresh wide screens show the keyboard and have no split section, prompt or 
  await page.setViewportSize({width:1600,height:900});await page.goto('/');await ready(page);
  await expect(page.locator('#keyboard-overlay')).toBeVisible();await expect(page.locator('.splits-panel')).toBeHidden();await expect(page.locator('#splits-empty')).toBeHidden();expect((await snapshot(page)).splits.profile.method).toBe('off');
  expect(await page.locator('.time-columns').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(1);
- await page.locator('#settings').click();await expect(page.locator('#show-keyboard')).toBeChecked();await page.locator('#show-keyboard').uncheck();await page.locator('#close-settings').click();await page.reload();await ready(page);await expect(page.locator('#keyboard-overlay')).toBeHidden();
- await page.setViewportSize({width:390,height:844});await page.locator('#settings').click();await expect(page.locator('#show-keyboard')).toBeHidden();
+ await openSettings(page);await expect(page.locator('#show-keyboard')).toBeChecked();await page.locator('#show-keyboard').uncheck();await page.locator('#close-settings').click();await page.reload();await ready(page);await expect(page.locator('#keyboard-overlay')).toBeHidden();
+ await page.setViewportSize({width:390,height:844});await openSettings(page);await expect(page.locator('#show-keyboard')).toBeHidden();
 });
 
 for(const size of [2,3,4])test(`${size}x${size} captures turns, keys, held view and a persistent PB; replay import never changes the current puzzle`,async({page})=>{
@@ -42,7 +43,7 @@ for(const size of [2,3,4])test(`${size}x${size} captures turns, keys, held view 
 
 test('checkpoint editor uses an orbitable 3D puzzle, selects full pieces and keeps earlier goals cumulative',async({page})=>{
  test.setTimeout(60000);
- await page.goto('/');await ready(page);await page.locator('#settings').click();await page.locator('#configure-splits').click();await page.locator('#split-method').selectOption('custom');await page.locator('#method-name').fill('Test method');
+ await page.goto('/');await ready(page);await openSettings(page);await page.locator('#configure-splits').click();await page.locator('#split-method').selectOption('custom');await page.locator('#method-name').fill('Test method');
  await expect(page.getByLabel('Phase 1 detection',{exact:true})).toHaveCount(0);await page.getByRole('button',{name:'Select pieces (0)'}).click();
  const canvas=page.locator('#phase-pattern-view canvas');await expect(canvas).toBeVisible();const box=await canvas.boundingBox();
  // Clicking the center hits the surface; dragging must orbit without selecting.
@@ -52,14 +53,14 @@ test('checkpoint editor uses an orbitable 3D puzzle, selects full pieces and kee
  await page.locator('#close-phase-pattern').click();await page.locator('#phase-add').click();await page.locator('#phase-rows > div').nth(1).getByRole('button',{name:'Select pieces (0)'}).click();await expect(page.locator('#pattern-count')).toHaveText(selected);
  await page.locator('#pattern-clear').click();await expect(page.locator('#pattern-count')).toHaveText(selected);await page.locator('#close-phase-pattern').click();await page.locator('#save-splits').click();await page.locator('#close-splits').click();await page.locator('#close-settings').click();
  const profile=(await snapshot(page)).splits.profile;expect(profile.method).toBe('custom');expect(profile.phases[1].stickers).toEqual(profile.phases[0].stickers);await expect(page.locator('.splits-panel')).toBeVisible();
- await page.locator('#settings').click();await page.locator('#configure-splits').click();await page.locator('#split-method').selectOption('off');await page.locator('#close-splits').click();await page.locator('#close-settings').click();await expect(page.locator('.splits-panel')).toBeHidden();
+ await openSettings(page);await page.locator('#configure-splits').click();await page.locator('#split-method').selectOption('off');await page.locator('#close-splits').click();await page.locator('#close-settings').click();await expect(page.locator('.splits-panel')).toBeHidden();
 });
 
 test('a newly scrambled solve is recorded automatically through the real scramble and input flow',async({page})=>{
  test.setTimeout(60000);
  await page.goto('/');await ready(page);
  await page.locator('#puzzles').click();await page.locator('[data-size="2"]').click();
- await page.locator('#settings').click();await page.locator('#animate').uncheck();await page.locator('#animate-scrambling').uncheck();await page.locator('#follow').uncheck();await page.locator('#close-settings').click();
+ await openSettings(page);await page.locator('#animate').uncheck();await page.locator('#animate-scrambling').uncheck();await page.locator('#follow').uncheck();await page.locator('#close-settings').click();
  await page.locator('#mobile-scramble').click();await page.locator('#confirm-accept').click();await expect.poll(async()=>(await snapshot(page)).timer.status).toBe('ready');
  const scrambled=await snapshot(page);expect(scrambled.recordings.recording).toBe(true);
  const keys={U:['KeyJ','KeyF'],R:['KeyI','KeyK'],F:['KeyH','KeyG'],BR:['KeyO','KeyL'],L:['KeyD','KeyE'],B:['KeyU','KeyR'],BL:['KeyS','KeyW'],D:['KeyA','Semicolon']};

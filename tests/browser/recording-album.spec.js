@@ -1,3 +1,4 @@
+import {openSettings} from './helpers.js';
 import {test,expect} from '@playwright/test';
 import {readFile,stat} from 'node:fs/promises';
 import {createServer} from 'node:http';
@@ -24,7 +25,7 @@ test('intro displays the full scramble through the pauses and slow reorientation
 });
 
 test('sharing offers link, text, JSON and album; copied links open on a fresh browser without changing its PBs',async({page,browser,context})=>{
- test.setTimeout(90000);const data=recording();await context.grantPermissions(['clipboard-read','clipboard-write']);await seed(page,data);await page.goto('/');await ready(page);await page.locator('#share-current').click();await expect(page.locator('#share-dialog')).toBeVisible();await expect(page.locator('.share-options button')).toHaveText(['Copy as link','Copy as text','Download as JSON','Saved to album']);
+ test.setTimeout(90000);const data=recording();await context.grantPermissions(['clipboard-read','clipboard-write']);await seed(page,data);await page.goto('/');await ready(page);await page.locator('#share-current').click();await expect(page.locator('#share-dialog')).toBeVisible();await expect(page.locator('.share-options button')).toHaveText(['Copy as link','Copy as temporary short linkLink will expire in 30 days','Copy as text','Download as JSON','Saved to album']);
  await expect(page.locator('#share-link')).toBeEnabled();await page.locator('#share-link').click();await expect(page.locator('#share-message')).toHaveText('Link copied');const link=await page.evaluate(()=>navigator.clipboard.readText());expect(link).toMatch(/^https:\/\/ftoers\.web\.app\/virtual\/#replay=1\./);
  await page.locator('#share-text').click();const text=await page.evaluate(()=>navigator.clipboard.readText());expect(JSON.parse(text).solveMs).toBe(data.solveMs);
  const download=page.waitForEvent('download');await page.locator('#share-json').click();expect(JSON.parse(await readFile(await (await download).path(),'utf8')).solveMs).toBe(data.solveMs);
@@ -38,7 +39,7 @@ test('historical PBs remain in the album after a new PB and the complete album m
  await page.addInitScript(({recordings,U,R,view})=>{if(window.name==='album-seeded-second')return;window.name='album-seeded-second';const saved=JSON.parse(localStorage.getItem('master-fto-v1')),solve=saved.solves[3];Object.assign(solve,{history:[U,R],redo:[],undoFloor:2,recordings,view});Object.assign(solve.timer,{status:'ready',elapsedMs:0});localStorage.setItem('master-fto-v1',JSON.stringify(saved));},{recordings:recorder.serialize(),U,R,view});
  await page.reload();await ready(page);expect((await snap(page)).timer.status).toBe('ready');await page.keyboard.press('KeyK');await page.waitForTimeout(50);await page.keyboard.press('KeyF');await expect.poll(async()=>(await snap(page)).timer.status).toBe('finished');expect((await snap(page)).timer.newBest).toBe(true);
  await page.locator('#album').click();await expect(page.locator('#album-list .album-entry')).toHaveCount(2);await expect(page.locator('.album-pb')).toHaveCount(2);await page.locator('#close-album').click();await page.reload();await ready(page);await page.locator('#album').click();await expect(page.locator('#album-list .album-entry')).toHaveCount(2);await page.locator('#close-album').click();
- await page.locator('#settings').click();const downloaded=page.waitForEvent('download');await page.locator('#export-user-data').click();const buffer=await readFile(await (await downloaded).path()),backup=JSON.parse(buffer);expect(backup.album.entries).toHaveLength(2);expect(backup.album.entries.every(e=>e.pb)).toBe(true);
+ await openSettings(page);const downloaded=page.waitForEvent('download');await page.locator('#export-user-data').click();const buffer=await readFile(await (await downloaded).path()),backup=JSON.parse(buffer);expect(backup.album.entries).toHaveLength(2);expect(backup.album.entries.every(e=>e.pb)).toBe(true);
  const fresh=await browser.newContext(),other=await fresh.newPage();await other.goto('/');await ready(other);await other.locator('#settings').click();await other.locator('#import-user-data').setInputFiles({name:'backup.json',mimeType:'application/json',buffer});await expect(other.locator('#confirm-message')).toContainText('2 album recordings');await Promise.all([other.waitForEvent('framenavigated'),other.locator('#confirm-accept').click()]);await ready(other);await other.locator('#album').click();await expect(other.locator('#album-list .album-entry')).toHaveCount(2);await expect(other.locator('.album-pb')).toHaveCount(2);await fresh.close();
 });
 

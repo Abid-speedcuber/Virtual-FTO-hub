@@ -1,3 +1,4 @@
+import {createShortLink,getCloudRecording} from './network.js';
 import {validateRecording,withoutInspection} from './solve-recording.js';
 import {recordingLink,recordingJSON,parseRecordingText,recordingPayload,decodeRecording,clearRecordingLink,recordingID} from './recording-codec.js';
 import {icon} from './icons.js';
@@ -15,6 +16,7 @@ export class RecordingUI{
   $('share-current').onclick=()=>this.share(this.current?.()??this.getRecordings().last,{home:true});$('share-pb').onclick=()=>this.share(this.getRecordings().pb,{home:true});
   $('share-watch').innerHTML=icon('resume')+'Watch solve';$('share-watch').onclick=()=>{if(this.shareData)this.play(this.shareData);};
   $('close-share').onclick=()=>$('share-dialog').close();$('share-link').onclick=()=>this.copy(this.shareLink,'Link copied');$('share-text').onclick=()=>this.copy(this.shareText,'Recording text copied');
+  $('share-short').onclick=async()=>{const data=this.shareData,version=this.shareVersion;if(!data||data.size!==3)return;$('share-short').disabled=true;try{const link=await createShortLink(data);if(version!==this.shareVersion)return;await this.copy(link,'Temporary link copied · expires in 30 days');}catch(error){if(version===this.shareVersion)$('share-message').textContent=error.message;}finally{if(version===this.shareVersion)$('share-short').disabled=false;}};
   $('share-json').onclick=()=>{if(this.shareData)downloadJSON(this.shareData,`fto-${this.shareData.size}x${this.shareData.size}-${Math.round(this.shareData.solveMs)}.ftoreplay.json`);};
   $('share-album').onclick=async()=>{
    if(!this.shareData||$('share-album').disabled||$('share-album').hidden)return;
@@ -36,7 +38,8 @@ export class RecordingUI{
   if(!original)return;const version=++this.shareVersion;
   try{this.shareData=withoutInspection(validateRecording(original));this.shareText=recordingJSON(this.shareData);}catch(error){this.openImport();$('paste-message').textContent=error.message;return;}
   (this.pauseForShare??this.pause)();$('share-title').textContent=`Share ${this.shareData.size} × ${this.shareData.size} · ${formatTime(this.shareData.solveMs)}`;
-  this.shareLink=null;$('share-link').disabled=true;$('share-watch').hidden=!home||this.isReplaying();$('share-album').hidden=!home;$('share-album').disabled=true;$('share-album').textContent='Checking album…';$('share-message').textContent='';$('share-output').hidden=true;$('share-link-size').textContent='Preparing compact link…';$('share-dialog').showModal();if(home)this.refreshAlbumState();
+  this.shareLink=null;$('share-link').hidden=this.shareData.size===4;$('share-short').hidden=this.shareData.size!==3;$('share-short').disabled=false;$('share-link').disabled=true;$('share-watch').hidden=!home||this.isReplaying();$('share-album').hidden=!home;$('share-album').disabled=true;$('share-album').textContent='Checking album…';$('share-message').textContent='';$('share-output').hidden=true;$('share-link-size').textContent=this.shareData.size===4?'':'Preparing compact link…';$('share-dialog').showModal();if(home)this.refreshAlbumState();
+  if(this.shareData.size===4)return;
   try{const link=await recordingLink(this.shareData);if(version!==this.shareVersion)return;this.shareLink=link;$('share-link').disabled=false;$('share-link-size').textContent=`Link: ${link.length.toLocaleString()} characters`;}catch(error){if(version===this.shareVersion)$('share-link-size').textContent=error.message;}
  }
  async refreshAlbumState(){
@@ -56,11 +59,13 @@ export class RecordingUI{
  async renderAlbum(){
   const version=++this.albumVersion;$('album-message').textContent='Loading recordings…';$('album-list').replaceChildren();
   try{
-   const entries=await this.album.list();if(version!==this.albumVersion)return;$('album-message').textContent=entries.length?'':'Save a recording from Share. New PBs are saved here automatically.';
+   const entries=await this.album.list();if(version!==this.albumVersion)return;$('album-message').textContent=entries.length?'':'Your last 12 solves and PB recordings appear here. You can also save a recording from Share.';
    for(const entry of entries){
     const row=document.createElement('li');row.dataset.id=entry.id;row.className='album-entry';
     const info=document.createElement('div');info.className='album-info';const title=document.createElement('strong');title.textContent=`${entry.size} × ${entry.size} FTO · ${formatTime(entry.solveMs)}`;info.append(title);
     if(entry.pb){const badge=document.createElement('span');badge.className='album-pb';badge.textContent='[PB]';info.append(badge);}
+    for(const count of entry.averagePB??[]){const badge=document.createElement('span');badge.className='album-pb';badge.textContent=`ao${count} PB`;info.append(badge);}
+    if(entry.recent&&!entry.pb&&!entry.averagePB?.length){const badge=document.createElement('span');badge.className='album-recent';badge.textContent='Recent';info.append(badge);}
     const date=new Date(entry.completedAt),stamp=document.createElement('time');stamp.dateTime=entry.completedAt;stamp.textContent=`${date.toLocaleDateString()} · ${date.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;info.append(stamp);
     const watch=document.createElement('button');watch.innerHTML=icon('resume');watch.className='album-play';watch.setAttribute('aria-label',`Play ${entry.size} × ${entry.size} solve ${formatTime(entry.solveMs)}`);watch.title='Play solve';watch.onclick=async()=>{try{this.play(await this.album.get(entry.id));}catch(error){$('album-message').textContent=error.message;}};
     const share=document.createElement('button');share.innerHTML=icon('share');share.setAttribute('aria-label',`Share ${entry.size} × ${entry.size} solve ${formatTime(entry.solveMs)}`);share.className='share-recording';share.onclick=async()=>{try{await this.share(await this.album.get(entry.id));}catch(error){$('album-message').textContent=error.message;}};
@@ -89,6 +94,13 @@ export class RecordingUI{
  hideLinkToast(){clearTimeout(this.linkToastTimer);$('recording-link-toast').hidden=true;}
  cancelSharedLink(){this.linkVersion++;this.hideLinkToast();}
  async openSharedLink(){
+  const cloud=new URLSearchParams(location.hash.slice(1));
+  if(cloud.has('short')||cloud.has('rank')){
+   this.pause();const version=++this.linkVersion;this.showLinkToast('Loading recording…');
+   try{let data=await getCloudRecording(cloud.has('short')?'short':'rank',cloud.get('short')??cloud.get('rank'));
+    data=withoutInspection(validateRecording(data));if(data.size!==3)throw Error('Only 3×3 recordings are supported here');if(version!==this.linkVersion)return;this.play(data);this.showLinkToast('Recording loaded','success');
+   }catch(error){if(version===this.linkVersion)this.showLinkToast(error.message,'error');}return;
+  }
   let payload;try{payload=recordingPayload();}catch(error){this.showLinkToast(`Couldn’t import link: ${error.message}`,'error');return;}if(!payload){this.cancelSharedLink();return;}
   this.pause();this.importVersion++;this.importBusy=false;this.setImportBusy(false);const version=++this.linkVersion;
   history.replaceState(history.state,'',location.pathname+location.search+'#replay='+payload);this.showLinkToast('Importing link…');

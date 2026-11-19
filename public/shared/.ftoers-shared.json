@@ -1,0 +1,10 @@
+{
+  "source": "FTOers public/shared",
+  "files": {
+    "account.js": "6d079dfbcfcf2ded114bd8b7427f72f1fd868790bb97ba1c309a01084da4cdbf",
+    "account.css": "f65264141bd2671495c71f06ec5f04e56f2837ad7a2fcc73c1ca4a7574a950d5",
+    "config.js": "8c4922438e23f679390172eaa14c9269bdaaa7abe3a7054b40572231e9e958cd",
+    "supabase.js": "50ff31c051b43bc4cb24b5ca17921494f57bfb0bd6e418a2ed827e009f9342a8",
+    "SUPABASE-LICENSE": "334dd6820e2eaeab2064e7c59001b810566728a28a41a7c1dbf69bbee17d0936"
+  }
+}

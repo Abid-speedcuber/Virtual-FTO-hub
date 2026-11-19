@@ -1,3 +1,4 @@
+import {openSettings} from './helpers.js';
 import {test,expect} from '@playwright/test';
 import {defaultConfig} from '../../src/keyboard-engine.js';
 test.setTimeout(90000);
@@ -5,7 +6,7 @@ const snapshot=page=>page.evaluate(()=>window.fto.snapshot());
 async function open(page){
  const config=defaultConfig(3);config.modes[0].bindings.push({id:'legacy-seven',trigger:'7',action:{type:'depth',depth:7}},{id:'legacy-seventeen',trigger:'Shift+7',action:{type:'depth',depth:17}},{id:'dependent',trigger:'2+G',action:{type:'move',face:'R',dir:1,kind:'outer',depth:1}});
  await page.addInitScript(config=>{if(!localStorage.getItem('master-fto-keyboard-v2'))localStorage.setItem('master-fto-keyboard-v2',JSON.stringify({version:2,profiles:{3:config},display:config.display}));},config);
- await page.goto('/');await page.waitForFunction(()=>window.fto?.snapshot().ready);await page.locator('#settings').click();await page.locator('#animate').uncheck();await page.locator('#edit-keyboard').click();await page.locator('#customize-bindings').click();
+ await page.goto('/');await page.waitForFunction(()=>window.fto?.snapshot().ready);await openSettings(page);await page.locator('#animate').uncheck();await page.locator('#edit-keyboard').click();await page.locator('#customize-bindings').click();
 }
 async function typeMove(page,code='Digit2'){
  await page.locator(`#binding-board-svg [data-code="${code}"]`).click({modifiers:['Control']});await expect(page.locator('#key-role-dialog')).toBeVisible();await page.locator('#key-role-type').selectOption('move');await expect(page.locator('#key-role-action')).toHaveCount(0);

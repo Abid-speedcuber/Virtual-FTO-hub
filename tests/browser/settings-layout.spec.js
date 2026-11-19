@@ -1,7 +1,8 @@
+import {openSettings} from './helpers.js';
 import {test,expect} from '@playwright/test';
 const ready=page=>page.waitForFunction(()=>window.fto?.snapshot().ready);
 for(const width of [1280,390,320])test(`settings are aligned and navigable at ${width}px`,async({page})=>{
- await page.setViewportSize({width,height:850});await page.goto('/');await ready(page);await page.locator('#settings').click();
+ await page.setViewportSize({width,height:850});await page.goto('/');await ready(page);await openSettings(page);
  await expect(page.locator('#settings-dialog')).toBeVisible();
  const measurements=await page.locator('#settings-dialog').evaluate(dialog=>{
   const body=dialog.querySelector('.settings-body'),box=dialog.getBoundingClientRect(),header=dialog.querySelector('.settings-header').getBoundingClientRect();

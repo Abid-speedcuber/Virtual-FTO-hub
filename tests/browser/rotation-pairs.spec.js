@@ -1,3 +1,4 @@
+import {openSettings} from './helpers.js';
 import {test,expect} from '@playwright/test';
 import {defaultConfig} from '../../src/keyboard-engine.js';
 import {ROTATION_PAIRS} from '../../src/rotation-actions.js';
@@ -24,7 +25,7 @@ test('all 47 pair bindings execute against the current hold and persist after re
 });
 test('face-pair searches expose legacy aliases and bindable pairs while retaining remapping',async({page})=>{
  await page.goto('/');await page.waitForFunction(()=>window.fto?.snapshot().ready);
- await page.locator('#settings').click();await page.locator('#edit-keyboard').click();await page.locator('#customize-bindings').click();
+ await openSettings(page);await page.locator('#edit-keyboard').click();await page.locator('#customize-bindings').click();
  await page.locator('#catalog-search').fill('{U, R}');await expect(page.locator('#catalog-rows')).toContainText('Rot half-U');await expect(page.locator('tr[data-action="rotate:pair:U,R"]')).toBeVisible();await expect(page.locator('#rotation-apply')).toBeVisible();
  await page.locator('#catalog-search').fill('{L,R}');await expect(page.locator('#catalog-rows')).toContainText('Rot T');
  await page.locator('#catalog-search').fill('Rot T');await expect(page.locator('#catalog-rows tr')).toHaveCount(2);

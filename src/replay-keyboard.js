@@ -35,7 +35,7 @@ export class ReplayKeyboard{
   }
   this.visibleMove=this.moveFlash&&at-this.moveFlash.at<220?this.moveFlash.label:'';
   this.engine.activateSuffixes(Math.max(0,at));this.engine.expire(Math.max(0,at));
-  this.modeLabel.textContent=`Solver’s keyboard · ${this.engine.mode.name}`;this.turnStats=this.stats.at(at);this.statsLabel.textContent=`${this.turnStats.tps.toFixed(1)} TPS`;this.statsLabel.title=`${this.stats.seconds}s window · Peak ${this.turnStats.peak.toFixed(1)} TPS · ${this.turnStats.total} turns`;
+  this.modeLabel.textContent=`${this.data.size===3&&this.data.solver?.username?this.data.solver.username+'’s keyboard':'Solver’s keyboard'} · ${this.engine.mode.name}`;this.turnStats=this.stats.at(at);this.statsLabel.textContent=`${this.turnStats.tps.toFixed(1)} TPS`;this.statsLabel.title=`${this.stats.seconds}s window · Peak ${this.turnStats.peak.toFixed(1)} TPS · ${this.turnStats.total} turns`;
   // Most replay frames have no keyboard change. Keep timer/TPS updates above,
   // but only resolve all key labels after an input, hold deadline or expiry.
   const context={size:this.data.size,canPause:at>=0&&at<this.data.duration,manualPaused:this.paused,defaultMove:{depth:1,count:1,dir:1}};

@@ -1,3 +1,4 @@
+import {openSettings,openAbout} from './helpers.js';
 import {test,expect} from '@playwright/test';
 import {withSettings} from './helpers.js';
 const ready=page=>page.waitForFunction(()=>window.fto?.snapshot().ready);
@@ -13,7 +14,7 @@ test('fixed branded header, About, and new defaults',async({page})=>{
   await page.locator('#edit-keyboard').click();await expect(page.locator('#keyboard-layout')).toHaveValue('60');await page.locator('#close-keyboard').click();
   await page.locator('#animate-scrambling').uncheck();
  });
- await page.locator('#about').click();await expect(page.locator('#about-dialog')).toBeVisible();await expect(page.locator('#about-dialog')).toContainText('by Abid Ibn Ashraf');await page.keyboard.press('Escape');
+ await openAbout(page);await expect(page.locator('#about-dialog')).toBeVisible();await expect(page.locator('#about-dialog')).toContainText('by Abid Ibn Ashraf');await page.keyboard.press('Escape');
  await page.reload();await ready(page);await withSettings(page,()=>expect(page.locator('#animate-scrambling')).not.toBeChecked());
 });
 
@@ -28,7 +29,7 @@ test('keyboard and its switch disappear when space is limited and return with pr
  await page.setViewportSize({width:1360,height:720});await expect(page.locator('#keyboard-overlay')).toBeVisible();await withSettings(page,()=>expect(page.locator('#show-keyboard')).toBeChecked());
  await page.screenshot({path:'test-results/polish-desktop.png'});
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'test-results/polish-mobile.png'});
- await page.locator('#settings').click();await page.locator('#settings-dialog').screenshot({path:'test-results/polish-settings.png'});
+ await openSettings(page);await page.locator('#settings-dialog').screenshot({path:'test-results/polish-settings.png'});
 });
 
 for(const method of ['same document','DevTools','other tab'])test(`cleared times stay cleared: ${method}`,async({page,context})=>{
@@ -47,5 +48,5 @@ for(const method of ['same document','DevTools','other tab'])test(`cleared times
   const other=await context.newPage();await other.goto('/');await ready(other);await other.evaluate(()=>localStorage.clear());await other.close();
  }
  await expect(page.locator('#solve-times li')).toHaveCount(0);await expect(page.locator('#timer-pb')).toHaveText('—');
- await page.locator('#settings').click();await page.locator('#close-settings').click();await page.reload();await ready(page);await expect(page.locator('#solve-times li')).toHaveCount(0);
+ await openSettings(page);await page.locator('#close-settings').click();await page.reload();await ready(page);await expect(page.locator('#solve-times li')).toHaveCount(0);
 });

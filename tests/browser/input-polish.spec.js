@@ -1,3 +1,4 @@
+import {openSettings} from './helpers.js';
 import {test,expect} from '@playwright/test';
 import {withSettings} from './helpers.js';
 const ready=page=>page.waitForFunction(()=>window.fto?.snapshot().ready);
@@ -16,7 +17,7 @@ test('all keyboard layouts have a small padded inset without side letterboxing',
  await page.setViewportSize({width:1600,height:720});await page.goto('/');await ready(page);
  await withSettings(page,()=>page.locator('#show-keyboard').check());
  for(const layout of ['60','ansi','iso'])for(const numpad of layout==='60'?[false]:[false,true]){
-  await page.locator('#settings').click();await page.locator('#edit-keyboard').click();await page.locator('#keyboard-layout').selectOption(layout);
+  await openSettings(page);await page.locator('#edit-keyboard').click();await page.locator('#keyboard-layout').selectOption(layout);
   if(layout!=='60')await page.locator('#keyboard-numpad').setChecked(numpad);
   await page.locator('#close-keyboard').click();await page.locator('#close-settings').click();
   const bounds=await page.locator('#keyboard-overlay').evaluate(el=>{

@@ -37,9 +37,11 @@ export async function decodeRecording(payload){
 }
 export async function recordingLink(data){return SHARE_BASE+'#replay='+await encodeRecording(data);}
 export function recordingPayload(url=location.href){return new URLSearchParams(new URL(url).hash.slice(1)).get('replay');}
-export function clearRecordingLink(){if(recordingPayload())history.replaceState(history.state,'',location.pathname+location.search);}
+export function clearRecordingLink(){if(recordingPayload()||/^(#short=|#rank=)/.test(location.hash))history.replaceState(history.state,'',location.pathname+location.search);}
 export async function parseRecordingText(text){
  const trimmed=text.trim();if(encoder.encode(trimmed).length>Math.ceil(MAX_RECORDING_BYTES*1.4))throw Error('Recording is too large');if(trimmed.startsWith('{')){if(encoder.encode(trimmed).length>MAX_RECORDING_BYTES)throw Error('Recording is too large');return withoutInspection(validateRecording(JSON.parse(trimmed)));}
  if(trimmed.startsWith('1.'))return decodeRecording(trimmed);
+ let cloud;try{cloud=new URLSearchParams(new URL(trimmed).hash.slice(1));}catch{}
+ if(cloud?.has('short')||cloud?.has('rank')){const {getCloudRecording}=await import('./network.js');const data=validateRecording(await getCloudRecording(cloud.has('short')?'short':'rank',cloud.get('short')??cloud.get('rank')));if(data.size!==3)throw Error('Only 3×3 recordings support temporary links');return withoutInspection(data);}
  let payload;try{payload=recordingPayload(trimmed);}catch{}if(!payload)throw Error('Paste an FTO recording link or recording JSON');return decodeRecording(payload);
 }

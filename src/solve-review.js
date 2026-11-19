@@ -1,0 +1,29 @@
+import {validateRecording} from './solve-recording.js';
+import {formatTime} from './solve-timer.js';
+// Review is a controller for the simulator's existing replay viewer.
+export class SolveReview {
+ constructor({rpc,isAdmin,play,pause}){
+  Object.assign(this,{rpc,isAdmin,play,pause});this.revision=0;this.evidence=null;this.approvable=false;
+  const panel=document.createElement('aside');this.panel=panel;panel.id='solve-review-panel';panel.hidden=true;panel.setAttribute('aria-label','Review solves');
+  panel.innerHTML='<header><h2>Review solves</h2><div><button data-collapse aria-label="Collapse review" aria-expanded="true">−</button><button data-close aria-label="Close review">×</button></div></header><div data-body><label>Submission<select data-submission aria-label="Submission to review"></select></label><ol data-evidence></ol><label>Review note<input data-note maxlength="500" placeholder="Optional"></label><div class="review-decision"><button data-reject>Reject</button><button data-approve class="primary">Approve</button></div></div><p data-message role="status"></p>';
+  document.body.append(panel);this.relocate=()=>{const parent=document.documentElement.classList.contains('compact-ui')?document.body:document.getElementById('solve-panel');if(parent&&panel.parentElement!==parent)parent.append(panel);};this.relocate();new MutationObserver(this.relocate).observe(document.documentElement,{attributes:true,attributeFilter:['class']});this.$=selector=>panel.querySelector(selector);
+  this.$('[data-close]').onclick=()=>this.close();this.$('[data-collapse]').onclick=()=>{const hidden=!this.$('[data-body]').hidden;this.$('[data-body]').hidden=hidden;this.$('[data-collapse]').textContent=hidden?'+':'−';this.$('[data-collapse]').setAttribute('aria-expanded',String(!hidden));};
+  this.$('[data-submission]').onchange=()=>this.loadEvidence();
+  this.$('[data-approve]').onclick=()=>this.decide(true);this.$('[data-reject]').onclick=()=>this.decide(false);
+  document.addEventListener('ftoers-identity-change',()=>{if(!this.isAdmin())this.close();});
+ }
+ controls(enabled){for(const selector of ['[data-approve]','[data-reject]','[data-note]'])this.$(selector).disabled=!enabled||(selector==='[data-approve]'&&!this.approvable);}
+ close(){this.revision++;this.panel.hidden=true;document.documentElement.classList.remove('reviewing');this.evidence=null;this.approvable=false;this.$('[data-evidence]').replaceChildren();}
+ async open(){if(!this.isAdmin())return;this.pause();this.panel.hidden=false;document.documentElement.classList.add('reviewing');this.relocate();this.$('[data-body]').hidden=false;this.$('[data-collapse]').setAttribute('aria-expanded','true');this.$('[data-collapse]').textContent='−';await this.loadQueue();}
+ async loadQueue(){const version=++this.revision;this.controls(false);this.evidence=null;this.approvable=false;this.$('[data-message]').textContent='Loading submissions…';this.$('[data-evidence]').replaceChildren();
+  try{const rows=await this.rpc('review_queue');if(version!==this.revision||!this.isAdmin())return;const select=this.$('[data-submission]');select.replaceChildren();for(const row of rows){const option=document.createElement('option');option.value=row.id;option.textContent=`${row.username} · ${row.metric} · ${formatTime(row.ms)}`;select.append(option);}select.disabled=!rows.length;this.$('[data-message]').textContent=rows.length?'':'No pending submissions.';if(rows.length)await this.loadEvidence();}catch(error){if(version===this.revision)this.$('[data-message]').textContent=error.message;}
+ }
+ async loadEvidence(){const version=++this.revision,id=this.$('[data-submission]').value;if(!id)return;this.controls(false);this.evidence=null;this.approvable=false;this.$('[data-evidence]').replaceChildren();this.$('[data-note]').value='';this.$('[data-message]').textContent='Loading recordings…';
+  try{const evidence=await this.rpc('review_evidence',{submission:id});if(version!==this.revision||!this.isAdmin())return;if(!Array.isArray(evidence)||!evidence.length)throw Error('Recording evidence is unavailable.');
+   this.evidence=evidence;this.approvable=true;for(const [index,entry] of evidence.entries()){const li=document.createElement('li'),time=document.createElement('span');time.textContent=`${index+1}. ${entry.dnf?'DNF':formatTime(entry.ms)}`;li.append(time);if(entry.recording){let recording;try{recording=validateRecording(entry.recording);}catch{this.approvable=false;const invalid=document.createElement('span');invalid.textContent='Invalid recording';li.append(invalid);this.$('[data-evidence]').append(li);continue;}const watch=document.createElement('button');watch.textContent='Watch';watch.setAttribute('aria-label',`Watch evidence solve ${index+1}`);watch.onclick=()=>{if(!this.isAdmin())return;this.play(recording);for(const button of this.$('[data-evidence]').querySelectorAll('button'))button.removeAttribute('aria-current');watch.setAttribute('aria-current','true');};li.append(watch);}else if(!entry.dnf){this.approvable=false;const missing=document.createElement('span');missing.textContent='Recording missing';li.append(missing);}this.$('[data-evidence]').append(li);}this.controls(true);this.$('[data-message]').textContent=this.approvable?'Watch the evidence before deciding.':'Evidence is invalid or missing. This submission can be rejected.';
+  }catch(error){if(version===this.revision)this.$('[data-message]').textContent=error.message;}
+ }
+ async decide(approve){if(!this.isAdmin()||!this.evidence)return;const id=this.$('[data-submission]').value,version=this.revision;this.controls(false);this.$('[data-message]').textContent='Saving decision…';
+  try{await this.rpc('review_submission',{submission:id,approve,note:this.$('[data-note]').value});if(version!==this.revision)return;await this.loadQueue();}catch(error){if(version===this.revision){this.$('[data-message]').textContent=error.message;this.controls(true);}}
+ }
+}

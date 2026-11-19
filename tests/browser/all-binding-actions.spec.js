@@ -1,6 +1,7 @@
+import {openSettings} from './helpers.js';
 import {test,expect} from '@playwright/test';
 test('every All filter renders the complete list without page limits',async({page})=>{
- test.setTimeout(60000);await page.goto('/');await page.waitForFunction(()=>window.fto?.snapshot().ready);await page.locator('#settings').click();await page.locator('#edit-keyboard').click();await page.locator('#customize-bindings').click();
+ test.setTimeout(60000);await page.goto('/');await page.waitForFunction(()=>window.fto?.snapshot().ready);await openSettings(page);await page.locator('#edit-keyboard').click();await page.locator('#customize-bindings').click();
  await expect(page.locator('#catalog-rows tr')).toHaveCount(165);await expect(page.locator('#catalog-next,#catalog-prev')).toHaveCount(0);
  for(const action of ['move:BR:-1:wide:3:false','move:D:-1:slice:3:false','command:::reset','hold-slice:::','next-mode:::'])await expect(page.locator(`tr[data-action="${action}"]`)).toHaveCount(1);
  await page.locator('#catalog-category').selectOption('slices');await expect(page.locator('#catalog-rows tr')).toHaveCount(32);

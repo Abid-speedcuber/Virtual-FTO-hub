@@ -1,3 +1,4 @@
+import {openSettings} from './helpers.js';
 import {test,expect} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 import {SolveRecorder} from '../../src/solve-recording.js';
@@ -36,18 +37,18 @@ test('replay runs on home with solver bindings, audible events, previous-PB spli
 });
 
 test('named methods are peers of presets and the final phase has its own name without an extra Finish',async({page})=>{
- test.setTimeout(90000);await page.goto('/');await ready(page);await page.locator('#settings').click();await page.locator('#configure-splits').click();
+ test.setTimeout(90000);await page.goto('/');await ready(page);await openSettings(page);await page.locator('#configure-splits').click();
  await page.locator('#split-method').selectOption('bencisco');await expect(page.locator('#save-splits')).toBeHidden();expect((await snap(page)).splits.profile.method).toBe('bencisco');
  for(const name of ['My reduction','My last layer']){
   await page.locator('#split-method').selectOption('custom');await page.locator('#method-name').fill(name);await page.getByLabel('Remove phase 1',{exact:true}).click();await page.getByLabel('Phase 1 name',{exact:true}).fill('LL');await page.locator('#save-splits').click();
   await expect(page.locator('#split-method option:checked')).toHaveText(name);expect((await snap(page)).splits.profile.phases).toEqual([{name:'LL',type:'finish'}]);
  }
  const options=await page.locator('#split-method option').allTextContents();expect(options).toContain('My reduction');expect(options).toContain('My last layer');expect(options).not.toContain('Custom phases');
- await page.locator('#close-splits').click();await page.locator('#close-settings').click();await page.reload();await ready(page);await page.locator('#settings').click();await page.locator('#configure-splits').click();await expect(page.locator('#split-method option:checked')).toHaveText('My last layer');
+ await page.locator('#close-splits').click();await page.locator('#close-settings').click();await page.reload();await ready(page);await openSettings(page);await page.locator('#configure-splits').click();await expect(page.locator('#split-method option:checked')).toHaveText('My last layer');
 });
 
 test('full user backup restores bindings, named methods, PB recordings, times and preferences on a fresh browser',async({page,browser})=>{
- test.setTimeout(90000);await seedFinished(page);await page.goto('/');await ready(page);await page.locator('#settings').click();const download=page.waitForEvent('download');await page.locator('#export-user-data').click();const file=await download,buffer=await readFile(await file.path());const backup=JSON.parse(buffer.toString());expect(backup.entries['master-fto-future']).toBe('{"retained":true}');
+ test.setTimeout(90000);await seedFinished(page);await page.goto('/');await ready(page);await openSettings(page);const download=page.waitForEvent('download');await page.locator('#export-user-data').click();const file=await download,buffer=await readFile(await file.path());const backup=JSON.parse(buffer.toString());expect(backup.entries['master-fto-future']).toBe('{"retained":true}');
  const context=await browser.newContext(),other=await context.newPage();await other.goto('/');await ready(other);await other.locator('#settings').click();await other.locator('#import-user-data').setInputFiles({name:'my-fto-backup.json',mimeType:'application/json',buffer});await expect(other.locator('#confirm-message')).toContainText('1 saved times');
  await Promise.all([other.waitForEvent('framenavigated'),other.locator('#confirm-accept').click()]);await ready(other);
  const restored=await other.evaluate(()=>({app:JSON.parse(localStorage.getItem('master-fto-v1')),settings:JSON.parse(localStorage.getItem('master-fto-settings-v1')),keyboard:JSON.parse(localStorage.getItem('master-fto-keyboard-v2')),future:localStorage.getItem('master-fto-future')}));

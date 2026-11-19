@@ -1,3 +1,4 @@
+import {openSettings} from './helpers.js';
 import {test,expect} from '@playwright/test';
 import {defaultConfig} from '../../src/keyboard-engine.js';
 const ready=page=>page.waitForFunction(()=>window.fto?.snapshot().ready);
@@ -18,7 +19,7 @@ test('all gray pauses wait for a resume key after focus, dialogs, and reload',as
  await page.keyboard.press('KeyI');const running=await snap(page);expect(running.timer.status).toBe('running');expect(running.history).toHaveLength(1);
  await page.evaluate(()=>{window.dispatchEvent(new Event('blur'));window.dispatchEvent(new Event('focus'));});
  expect((await snap(page)).timer.status).toBe('paused');await expect(page.locator('#pause-message')).toBeVisible();
- await page.locator('#settings').click();await page.locator('#close-settings').click();expect((await snap(page)).timer.status).toBe('paused');
+ await openSettings(page);await page.locator('#close-settings').click();expect((await snap(page)).timer.status).toBe('paused');
  await page.keyboard.press('KeyI');expect((await snap(page)).history).toHaveLength(1);expect((await snap(page)).timer.status).toBe('running');
  await page.locator('#scramble').click();await page.locator('#confirm-cancel').click();expect((await snap(page)).timer.status).toBe('paused');
  await page.reload();await ready(page);expect((await snap(page)).timer.status).toBe('paused');expect((await snap(page)).stickerColors).toEqual(Array(8).fill('888888'));
@@ -30,14 +31,14 @@ for(const options of [{auto:true,defaultMode:'cif',expected:'cif'},{auto:false,d
   await seed(page,{...options,activeMode:'eif-l'});await page.keyboard.press('KeyF');const finished=await snap(page);
   expect(finished.timer.status).toBe('finished');expect(finished.keyboard.baseMode).toBe(options.expected);
   await page.locator('#scramble').click();await expect(page.locator('#confirm-title')).toHaveText('Start a new timed solve?');await expect(page.locator('#confirm-message')).toContainText('Saved times are kept');await expect(page.locator('#confirm-message')).not.toContainText('replaces the current solve');await page.locator('#confirm-cancel').click();
-  await page.locator('#settings').click();await expect(page.locator('#auto-default-mode')).toBeChecked({checked:options.auto});await page.locator('#close-settings').click();await page.reload();await ready(page);expect((await snap(page)).keyboard.baseMode).toBe(options.expected);
+  await openSettings(page);await expect(page.locator('#auto-default-mode')).toBeChecked({checked:options.auto});await page.locator('#close-settings').click();await page.reload();await ready(page);expect((await snap(page)).keyboard.baseMode).toBe(options.expected);
  });
 }
 
 test('move and rotation pickers contain 4x4 direction grids and save the chosen action',async({page})=>{
- await page.goto('/');await ready(page);await page.locator('#settings').click();await expect(page.locator('#auto-default-mode')).toBeChecked();await expect(page.locator('#pointer-mode option[value="legacy"]')).toHaveText('Orbit + click');await page.locator('#edit-keyboard').click();
+ await page.goto('/');await ready(page);await openSettings(page);await expect(page.locator('#auto-default-mode')).toBeChecked();await expect(page.locator('#pointer-mode option[value="legacy"]')).toHaveText('Orbit + click');await page.locator('#edit-keyboard').click();
  await page.locator('#catalog-category').selectOption('turns');await page.locator('tr[data-action="move:R:-1:outer:1:false"] .add-key').click();await page.locator('#bind-key-trigger').fill('X');await page.locator('#bind-key-save').click();
  expect((await snap(page)).keyboard.config.modes[0].bindings.find(b=>b.trigger==='X').action).toMatchObject({type:'move',face:'R',dir:-1});
  await page.locator('#catalog-category').selectOption('rotations');await page.locator('tr[data-action="rotate:D:-1"] .add-key').click();await page.locator('#bind-key-trigger').fill('N');await page.locator('#bind-key-save').click();expect((await snap(page)).keyboard.config.modes[0].bindings.find(b=>b.trigger==='N').action).toMatchObject({type:'rotate',face:'D',dir:-1});
- await page.locator('#close-keyboard').click();await page.locator('#auto-default-mode').uncheck();await page.locator('#close-settings').click();await page.reload();await ready(page);await page.locator('#settings').click();await expect(page.locator('#auto-default-mode')).not.toBeChecked();await page.locator('#edit-keyboard').click();await expect(page.locator('#keyboard-default-mode')).toHaveValue('eif-r');
+ await page.locator('#close-keyboard').click();await page.locator('#auto-default-mode').uncheck();await page.locator('#close-settings').click();await page.reload();await ready(page);await openSettings(page);await expect(page.locator('#auto-default-mode')).not.toBeChecked();await page.locator('#edit-keyboard').click();await expect(page.locator('#keyboard-default-mode')).toHaveValue('eif-r');
 });

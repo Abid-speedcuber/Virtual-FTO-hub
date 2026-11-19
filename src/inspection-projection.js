@@ -5,7 +5,7 @@ const faceIndices=new Map(FACES.map((face,index)=>[face.normal.join(','),index])
 export const PROJECTION_OFFSET=1.0;
 export const PROJECTION_BACK_OFFSET=.65;
 export const MAX_PROJECTION_DISTANCE=2;
-export const PROJECTION_OPACITY=1;
+export const PROJECTION_OPACITY=.6;
 export const clampProjectionOpacity=value=>Math.round(Math.max(0,Math.min(1,Number.isFinite(value)?value:PROJECTION_OPACITY))*100)/100;
 export const projectionDistance=(value,fallback)=>Math.round(Math.max(0,Math.min(MAX_PROJECTION_DISTANCE,Number.isFinite(value)?value:fallback))*100)/100;
 const STICKER_INSET=.003;

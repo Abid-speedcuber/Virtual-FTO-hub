@@ -28,6 +28,8 @@ export function validateRecording(data,{incomplete=false}={}){
   if(e.type==='key'&&(typeof e.code!=='string'||e.code.length>50||!['down','up'].includes(e.edge)))throw Error('Invalid recorded key');
   if(e.type==='pointer'&&!validPointer(e))throw Error('Invalid recorded pointer');
  }
+ if(data.solver!=null&&(data.size!==3||typeof data.solver.username!=='string'||!/^[A-Za-z0-9_]{3,24}$/.test(data.solver.username)))throw Error('Invalid solver username');
+ if(data.usedUndo!==undefined&&typeof data.usedUndo!=='boolean')throw Error('Invalid undo flag');
  if(data.complete&&data.duration<previous)throw Error('Invalid recording duration');
  return data;
 }

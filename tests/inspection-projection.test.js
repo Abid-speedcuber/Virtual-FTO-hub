@@ -62,7 +62,7 @@ test('orbiting reuses buffers, changing colors updates them, and disabled projec
  for(let i=0;i<100;i++){camera.position.set(Math.cos(i*.1)*10,3,Math.sin(i*.1)*10);projection.render({size:4,state,colors,camera});}
  assert.deepEqual(projection.meshes.map(mesh=>mesh.geometry.attributes.position.version),versions);assert.equal(projection.meshes.length,8);
  assert.ok(projection.root.position.clone().addScaledVector(camera.position.clone().normalize(),PROJECTION_BACK_OFFSET).length()<1e-12);
- for(const mesh of projection.meshes){assert.ok(Math.abs(mesh.position.length()-PROJECTION_OFFSET)<1e-12);assert.equal(mesh.material.opacity,1);assert.equal(mesh.material.transparent,false);}
+ for(const mesh of projection.meshes){assert.ok(Math.abs(mesh.position.length()-PROJECTION_OFFSET)<1e-12);assert.equal(mesh.material.opacity,.6);assert.equal(mesh.material.transparent,true);}
  projection.render({size:4,state,colors:{...colors,U:'#123456'},camera});const expected=new THREE.Color('#123456'),actual=projection.meshes[0].geometry.attributes.color;assert.ok(Math.abs(actual.getX(3)-expected.r)<1e-6);
  projection.setVisible(false);assert.equal(projection.root.visible,false);projection.dispose();assert.equal(scene.children.length,0);
 });
@@ -96,5 +96,5 @@ test('opacity updates and clamps without rebuilding geometry, and zero opacity s
  projection.setOpacity(1);projection.render({size:3,state,colors,camera});for(const mesh of projection.meshes){assert.equal(mesh.material.opacity,1);assert.equal(mesh.material.transparent,false);}
  assert.deepEqual(projection.meshes.map(mesh=>mesh.geometry.attributes.position),positions);assert.deepEqual(positions.map(attribute=>attribute.version),versions);
  projection.setOpacity(-1);projection.render({size:3,state,colors,camera});assert.equal(projection.opacity,0);assert.ok(projection.meshes.every(mesh=>!mesh.visible));
- projection.setOpacity(5);assert.equal(projection.opacity,1);projection.setOpacity(NaN);assert.equal(projection.opacity,1);projection.dispose();
+ projection.setOpacity(5);assert.equal(projection.opacity,1);projection.setOpacity(NaN);assert.equal(projection.opacity,.6);projection.dispose();
 });

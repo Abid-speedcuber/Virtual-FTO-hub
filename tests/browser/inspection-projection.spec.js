@@ -1,3 +1,4 @@
+import {openSettings} from './helpers.js';
 import {writeFile} from 'node:fs/promises';
 import {test,expect} from '@playwright/test';
 import * as THREE from 'three';
@@ -23,8 +24,8 @@ test('rear stickers appear in the puzzle canvas and orbit with it, with no atlas
  await page.keyboard.press('KeyI');await expect.poll(async()=>(await page.evaluate(()=>window.fto.snapshot())).inspectionProjection.visible).toBe(false);await page.keyboard.press('Escape');expect((await page.evaluate(()=>window.fto.snapshot())).inspectionProjection.visible).toBe(false);
 });
 test('projection preference persists, replay hides it, and exiting replay restores inspection',async({page})=>{
- await seed(page);await page.goto('/');await ready(page);await page.locator('#settings').click();await page.locator('#show-inspection-faces').uncheck();await page.locator('#close-settings').click();expect((await page.evaluate(()=>window.fto.snapshot())).inspectionProjection.visible).toBe(false);
- await page.reload();await ready(page);await page.locator('#settings').click();await expect(page.locator('#show-inspection-faces')).not.toBeChecked();await page.locator('#show-inspection-faces').check();await page.locator('#close-settings').click();expect((await page.evaluate(()=>window.fto.snapshot())).inspectionProjection.visible).toBe(true);
+ await seed(page);await page.goto('/');await ready(page);await openSettings(page);await page.locator('#show-inspection-faces').uncheck();await page.locator('#close-settings').click();expect((await page.evaluate(()=>window.fto.snapshot())).inspectionProjection.visible).toBe(false);
+ await page.reload();await ready(page);await openSettings(page);await expect(page.locator('#show-inspection-faces')).not.toBeChecked();await page.locator('#show-inspection-faces').check();await page.locator('#close-settings').click();expect((await page.evaluate(()=>window.fto.snapshot())).inspectionProjection.visible).toBe(true);
  let time=0;const recorder=new SolveRecorder({},()=>time);recorder.arm({size:3,scramble:[U],view:{rotation:[0,0,0,1],radius:10},keyboard:defaultConfig(3)});recorder.event('start');time=1000;const recording=recorder.finish(1000,false);
  await page.locator('#album').click();await page.locator('#album-import-recording').click();await page.locator('#recording-paste').fill(JSON.stringify(recording));await page.locator('#recording-paste-load').click();expect((await page.evaluate(()=>window.fto.snapshot())).inspectionProjection.visible).toBe(false);await page.locator('#home-replay-exit').click();expect((await page.evaluate(()=>window.fto.snapshot())).inspectionProjection.visible).toBe(true);
  await page.locator('#mobile-reset').click();await page.locator('#confirm-accept').click();await expect.poll(async()=>(await page.evaluate(()=>window.fto.snapshot())).inspectionProjection.visible).toBe(false);
@@ -32,8 +33,8 @@ test('projection preference persists, replay hides it, and exiting replay restor
 test('mobile projection stays in the original canvas without adding panels or intercepting touch',async({page})=>{
  await page.setViewportSize({width:390,height:844});await seed(page,{size:4});await page.goto('/');await ready(page);
  const canvas=page.locator('#viewport>canvas'),before=await canvas.boundingBox();await page.screenshot({path:'test-results/inspection-projection-mobile.png'});
- await page.locator('#settings').click();await page.locator('#show-inspection-faces').uncheck();await page.locator('#close-settings').click();expect(await canvas.boundingBox()).toEqual(before);
- await page.locator('#settings').click();await page.locator('#show-inspection-faces').check();await page.locator('#close-settings').click();expect(await canvas.boundingBox()).toEqual(before);
+ await openSettings(page);await page.locator('#show-inspection-faces').uncheck();await page.locator('#close-settings').click();expect(await canvas.boundingBox()).toEqual(before);
+ await openSettings(page);await page.locator('#show-inspection-faces').check();await page.locator('#close-settings').click();expect(await canvas.boundingBox()).toEqual(before);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
 });
 
@@ -74,7 +75,7 @@ test('projection shows only hidden faces and preserves front pixels through edge
 });
 test('projection defaults off and all sliders enable, update appearance, and persist independently',async({page})=>{
  await seed(page,{enabled:null});await page.goto('/');await ready(page);expect((await page.evaluate(()=>window.fto.snapshot())).inspectionProjection.visible).toBe(false);
- await page.locator('#settings').click();const toggle=page.getByRole('switch',{name:'Show back sticker projection during inspection',exact:true}),outward=page.locator('#inspection-projection-outward'),backward=page.locator('#inspection-projection-backward'),opacity=page.locator('#inspection-projection-opacity');
+ await openSettings(page);const toggle=page.getByRole('switch',{name:'Show back sticker projection during inspection',exact:true}),outward=page.locator('#inspection-projection-outward'),backward=page.locator('#inspection-projection-backward'),opacity=page.locator('#inspection-projection-opacity');
  await expect(toggle).not.toBeChecked();await expect(outward).toBeDisabled();await expect(backward).toBeDisabled();await expect(opacity).toBeDisabled();await expect(outward).toHaveValue('100');await expect(backward).toHaveValue('65');await expect(opacity).toHaveValue('100');
  await toggle.check();await expect(outward).toBeEnabled();await expect(backward).toBeEnabled();await expect(opacity).toBeEnabled();
  const change=(input,value)=>input.evaluate((el,value)=>{el.value=String(value);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));},value);
@@ -82,13 +83,13 @@ test('projection defaults off and all sliders enable, update appearance, and per
  await expect.poll(async()=>{const p=(await page.evaluate(()=>window.fto.snapshot())).inspectionProjection;return [p.outward,p.backward,Math.round(Math.hypot(...p.setback)*100)];}).toEqual([1.5,1.2,120]);
  const projection=(await page.evaluate(()=>window.fto.snapshot())).inspectionProjection;expect(projection.opacity).toBe(.45);expect(projection.faces.every(face=>face.opacity===.45)).toBe(true);expect(projection.faces.length).toBeGreaterThan(0);for(const face of projection.faces)expect(Math.hypot(...face.offset)).toBeCloseTo(1.5,10);
  await toggle.uncheck();await expect(outward).toBeDisabled();await expect(backward).toBeDisabled();await expect(opacity).toBeDisabled();await page.locator('#close-settings').click();await page.reload();await ready(page);
- await page.locator('#settings').click();await expect(toggle).not.toBeChecked();await expect(outward).toBeDisabled();await expect(backward).toBeDisabled();await expect(opacity).toBeDisabled();await expect(outward).toHaveValue('150');await expect(backward).toHaveValue('120');await expect(opacity).toHaveValue('45');
+ await openSettings(page);await expect(toggle).not.toBeChecked();await expect(outward).toBeDisabled();await expect(backward).toBeDisabled();await expect(opacity).toBeDisabled();await expect(outward).toHaveValue('150');await expect(backward).toHaveValue('120');await expect(opacity).toHaveValue('45');
  await toggle.check();await page.locator('#close-settings').click();await expect.poll(async()=>(await page.evaluate(()=>window.fto.snapshot())).inspectionProjection.visible).toBe(true);
  await page.reload();await ready(page);const restored=(await page.evaluate(()=>window.fto.snapshot())).inspectionProjection;expect(restored.visible).toBe(true);expect(restored.outward).toBe(1.5);expect(restored.backward).toBe(1.2);expect(restored.opacity).toBe(.45);
 });
 test('projection settings fit narrow screens and saved out-of-range distances are clamped',async({page})=>{
  await page.setViewportSize({width:320,height:740});await page.addInitScript(()=>{localStorage.setItem('master-fto-settings-v1',JSON.stringify({showInspectionFaces:true,inspectionProjectionOutward:50,inspectionProjectionBackward:-5,inspectionProjectionOpacity:5}));});
- await page.goto('/');await ready(page);await page.locator('#settings').click();await expect(page.locator('#inspection-projection-outward')).toHaveValue('200');await expect(page.locator('#inspection-projection-backward')).toHaveValue('0');await expect(page.locator('#inspection-projection-opacity')).toHaveValue('100');
+ await page.goto('/');await ready(page);await openSettings(page);await expect(page.locator('#inspection-projection-outward')).toHaveValue('200');await expect(page.locator('#inspection-projection-backward')).toHaveValue('0');await expect(page.locator('#inspection-projection-opacity')).toHaveValue('100');
  await page.locator('#inspection-projection-settings').scrollIntoViewIfNeeded();expect(await page.locator('.settings-body').evaluate(el=>el.scrollWidth-el.clientWidth)).toBeLessThanOrEqual(1);
  await page.locator('#settings-dialog').screenshot({path:'test-results/inspection-projection-settings-mobile.png'});
 });

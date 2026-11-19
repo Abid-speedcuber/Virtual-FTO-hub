@@ -1,10 +1,11 @@
+import {openSettings} from './helpers.js';
 import {test,expect} from '@playwright/test';
 import {defaultConfig} from '../../src/keyboard-engine.js';
 const snapshot=page=>page.evaluate(()=>window.fto.snapshot());
 async function setup(page){
  const config=defaultConfig(3);config.commandVersion=1;config.sequenceTimeout=2200;config.modes.push({id:'mine',name:'Mine',bindings:[]});
  await page.addInitScript(config=>{localStorage.setItem('master-fto-keyboard-v2',JSON.stringify({profiles:{3:config,4:config},display:config.display}));localStorage.setItem('master-fto-settings-v1',JSON.stringify({animate:false,follow:false}));},config);
- await page.goto('/');await page.waitForFunction(()=>window.fto?.snapshot().ready);await page.keyboard.press('KeyF');await page.locator('#settings').click();await page.locator('#edit-keyboard').click();
+ await page.goto('/');await page.waitForFunction(()=>window.fto?.snapshot().ready);await page.keyboard.press('KeyF');await openSettings(page);await page.locator('#edit-keyboard').click();
 }
 async function cancel(page){await page.locator('#confirm-cancel').click();await page.waitForFunction(()=>!document.querySelector('#confirm-dialog').hasAttribute('data-pending'));}
 async function accept(page){await page.locator('#confirm-accept').click();await page.waitForFunction(()=>!document.querySelector('#confirm-dialog').hasAttribute('data-pending'));}

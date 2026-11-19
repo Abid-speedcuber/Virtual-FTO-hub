@@ -71,7 +71,7 @@ export class KeyboardUI{
   try{localStorage.setItem('master-fto-keyboard-v2',JSON.stringify({version:2,profiles:this.profiles,display:this.config.display}));this.storageOK=true;}catch{this.storageOK=false;}
   this.status?.();
  }
- blocked(event){return document.documentElement.classList.contains('replaying')||!!document.querySelector('dialog[open]')||event?.target?.closest?.('input,select,textarea,[contenteditable=true]');}
+ blocked(event){return document.documentElement.classList.contains('replaying')||!!document.querySelector('dialog[open],.ft-menu:popover-open,#solve-review-panel:not([hidden])')||event?.target?.closest?.('input,select,textarea,[contenteditable=true]');}
  install(){
   $('show-keyboard').onchange=()=>{this.config.display.show=$('show-keyboard').checked;this.renderSettings();this.render();this.save();};
   $('edit-keyboard').onclick=()=>{this.clear();this.catalog.openPreferences();$('keyboard-dialog').showModal();};
@@ -87,7 +87,7 @@ export class KeyboardUI{
   $('keyboard-sequence-timeout').onchange=()=>{this.config.sequenceTimeout=Math.round(Math.max(200,Math.min(10000,Number($('keyboard-sequence-timeout').value)||1400)));this.engine.config.sequenceTimeout=this.config.sequenceTimeout;this.save();};
   window.addEventListener('keydown',e=>this.down(e));window.addEventListener('keyup',e=>this.up(e));
   window.addEventListener('blur',()=>this.clear());document.addEventListener('visibilitychange',()=>{if(document.hidden)this.clear();});
-  $('settings').addEventListener('click',()=>this.clear());
+  document.addEventListener('ftoers-settings',()=>this.clear());
  }
  commit(next){
   validateConfig(next);migrateNames(next);next.suffixMode='one-shot';

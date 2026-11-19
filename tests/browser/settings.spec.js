@@ -1,3 +1,4 @@
+import {openSettings} from './helpers.js';
 import {test,expect} from '@playwright/test';
 import {withSettings} from './helpers.js';
 const ready=page=>page.waitForFunction(()=>window.fto);
@@ -12,7 +13,7 @@ test('default solve screen has only the puzzle and five essential actions',async
   await expect(page.getByRole('button',{name:'Keyboard & bindings'})).toBeVisible();
   await page.keyboard.press('f');expect((await snap(page)).history).toHaveLength(0);
  });
- await page.locator('#settings').click();await page.keyboard.press('Escape');await expect(page.locator('#settings-dialog')).not.toBeVisible();
+ await openSettings(page);await page.keyboard.press('Escape');await expect(page.locator('#settings-dialog')).not.toBeVisible();
  await page.keyboard.press('f');await page.waitForFunction(()=>window.fto.snapshot().history.length===1);
 });
 test('all preferences and the camera view survive reload',async({page})=>{
@@ -45,7 +46,7 @@ test('mobile canvas and settings fit without horizontal overflow',async({page})=
  await page.setViewportSize({width:390,height:844});
  expect(await page.evaluate(()=>({width:document.documentElement.scrollWidth,height:document.documentElement.scrollHeight}))).toEqual({width:390,height:844});
  await page.screenshot({path:'test-results/minimal-mobile.png'});
- await page.locator('#settings').click();
+ await openSettings(page);
  const box=await page.locator('#settings-dialog').boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(390);
  await page.locator('#settings-dialog').screenshot({path:'test-results/settings-mobile.png'});
 });

@@ -1,10 +1,11 @@
+import {openSettings} from './helpers.js';
 import {test,expect} from '@playwright/test';
 import {defaultConfig} from '../../src/keyboard-engine.js';
 import {withSettings,scramble} from './helpers.js';
 const snap=page=>page.evaluate(()=>window.fto.snapshot());
 const ready=page=>page.waitForFunction(()=>window.fto?.snapshot().ready);
 async function setup(page,size=3){await page.goto('/');await ready(page);await page.locator('#size').selectOption(String(size));await withSettings(page,async()=>{await page.locator('#animate').uncheck();await page.locator('#show-keyboard').check();});}
-async function open(page){await page.locator('#settings').click();await page.locator('#edit-keyboard').click();}
+async function open(page){await openSettings(page);await page.locator('#edit-keyboard').click();}
 async function close(page){await page.locator('#close-keyboard').click();await page.locator('#close-settings').click();}
 async function reset(page,preset){await open(page);await page.locator(`#keyboard-reset-${preset}`).click();await close(page);}
 const angle=(a,b)=>2*Math.acos(Math.min(1,Math.abs(a.reduce((sum,v,i)=>sum+v*b[i],0))));

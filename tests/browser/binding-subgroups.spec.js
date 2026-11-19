@@ -1,6 +1,7 @@
+import {openSettings} from './helpers.js';
 import {test,expect} from '@playwright/test';
 test('subgroups browse every face at a depth and stay usable on narrow screens',async({page})=>{
- test.setTimeout(60000);await page.goto('/');await page.waitForFunction(()=>window.fto?.snapshot().ready);await page.locator('#settings').click();await page.locator('#edit-keyboard').click();await page.locator('#customize-bindings').click();await page.locator('#keyboard-puzzle').selectOption('20');
+ test.setTimeout(60000);await page.goto('/');await page.waitForFunction(()=>window.fto?.snapshot().ready);await openSettings(page);await page.locator('#edit-keyboard').click();await page.locator('#customize-bindings').click();await page.locator('#keyboard-puzzle').selectOption('20');
  await page.locator('#catalog-category').selectOption('slices');await page.locator('#catalog-subgroup').selectOption('depth:16');
  await expect(page.locator('#catalog-rows tr')).toHaveCount(16);await expect(page.locator('#catalog-rows')).toContainText('16R');await expect(page.locator('#catalog-rows')).toContainText('16BR′');
  await page.locator('#catalog-subgroup').selectOption('depth:19');await expect(page.locator('#catalog-rows')).toContainText('19U′');

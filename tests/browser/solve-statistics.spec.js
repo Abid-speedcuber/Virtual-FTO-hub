@@ -1,3 +1,4 @@
+import {openSettings} from './helpers.js';
 import {test,expect} from '@playwright/test';
 import {defaultConfig} from '../../src/keyboard-engine.js';
 test.setTimeout(90000);
@@ -35,7 +36,7 @@ test('statistics replace splits; times and averages open reports, comments and p
 
 test('reset-on-start resolves the first move in the default mode and can be disabled',async({page})=>{
  const keyboard=defaultConfig(3);await seed(page,{keyboard});await page.keyboard.press('Tab');expect((await snap(page)).keyboard.modeName).toBe('EIF-R');await page.keyboard.press('KeyG');let state=await snap(page);expect(state.keyboard.modeName).toBe('CIF');expect(state.history.at(-1).name).toBe('F');
- await page.locator('#mobile-pause').click();await page.locator('#settings').click();await page.locator('#auto-default-mode').uncheck();await page.locator('#close-settings').click();await escapes(page);await page.waitForFunction(()=>window.fto.snapshot().timer.status==='ready');await page.keyboard.press('Tab');await page.keyboard.press('KeyG');state=await snap(page);expect(state.keyboard.modeName).toBe('EIF-R');expect(state.history.at(-1).name).toBe('R');
+ await page.locator('#mobile-pause').click();await openSettings(page);await page.locator('#auto-default-mode').uncheck();await page.locator('#close-settings').click();await escapes(page);await page.waitForFunction(()=>window.fto.snapshot().timer.status==='ready');await page.keyboard.press('Tab');await page.keyboard.press('KeyG');state=await snap(page);expect(state.keyboard.modeName).toBe('EIF-R');expect(state.history.at(-1).name).toBe('R');
 });
 
 test('held Shift still produces a slice when the first turn resets the mode',async({page})=>{

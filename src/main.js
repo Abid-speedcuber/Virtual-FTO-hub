@@ -1,3 +1,5 @@
+import {SolveReview} from './solve-review.js';
+import {network,currentSolver,initNetwork,networkRPC,accountIsAdmin} from './network.js';
 import {rotationPairForMove} from './rotation-actions.js';
 import {StatisticsUI} from './statistics-ui.js';
 import {scrambleText,resultText,averageWindow} from './solve-statistics.js';
@@ -10,7 +12,7 @@ import {TURN_ANIMATION_MS,parallelMoves,bandAngle} from './parallel-turns.js';
 import {SolveTimer,formatTime,averageOf5} from './solve-timer.js';
 import {PhaseTracker,phaseProfile,profileKey} from './solve-phases.js';
 import {SolveRecorder} from './solve-recording.js';
-import {RecordingAlbum,validateAlbumBackup} from './recording-album.js';
+import {RecordingAlbum,validateAlbumBackup,newlyBestAverages} from './recording-album.js';
 import {clearRecordingLink,recordingPayload} from './recording-codec.js';
 import {CIF_COLOR_FACES,faceColorLabel,ColorSchemeReference} from './color-scheme.js';
 import {HomeReplay} from './home-replay.js';
@@ -104,7 +106,7 @@ let faceColors=Object.fromEntries(FACES.map(face=>{
  const saved=preferences.faceColors?.[face.name];
  return [face.name,typeof saved==='string'&&/^#[0-9a-f]{6}$/i.test(saved)?saved.toLowerCase():face.color];
 }));
-for(const [id,key,fallback] of [['disable-sounds','disableSounds',false],['follow','follow',true],['animate','animate',true],['animate-scrambling','animateScrambling',true],['show-labels','showLabels',true],['show-inspection-faces','showInspectionFaces',false],['auto-default-mode','autoDefaultMode',true],['auto-next-solve','autoNextSolve',false],['show-statistics','showStatistics',false],['print-stat-scrambles','printStatScrambles',true]]){
+for(const [id,key,fallback] of [['disable-sounds','disableSounds',false],['follow','follow',true],['animate','animate',true],['animate-scrambling','animateScrambling',true],['show-labels','showLabels',true],['show-inspection-faces','showInspectionFaces',false],['auto-default-mode','autoDefaultMode',true],['auto-next-solve','autoNextSolve',false],['show-statistics','showStatistics',true],['print-stat-scrambles','printStatScrambles',true]]){
  $(id).checked=typeof preferences[key]==='boolean'?preferences[key]:fallback;
 }
 const projectionSettings={outward:projectionDistance(preferences.inspectionProjectionOutward,PROJECTION_OFFSET),backward:projectionDistance(preferences.inspectionProjectionBackward,PROJECTION_BACK_OFFSET),opacity:clampProjectionOpacity(preferences.inspectionProjectionOpacity)};
@@ -275,11 +277,11 @@ function toggleManualPause(){
  while(queue.length){const action=queue.shift(),move=actionMove(action);if(move)commitAction(action,move);}
  build();if(session.status==='running'){manualPaused=true;keyboard?.clear({selection:true});controls.cancelAll();pauseSession();}else{save();update();draw();}
 }
-function resumeManualPause(){if(scrambleRequest||session.status!=='paused'||document.hidden||document.querySelector('dialog[open]'))return;manualPaused=false;keyboard?.clear({selection:true});session.resume();recorder.event('resume');save();update();draw();}
+function resumeManualPause(){if(scrambleRequest||session.status!=='paused'||document.hidden||document.querySelector('dialog[open],.ft-menu:popover-open,#solve-review-panel:not([hidden])'))return;manualPaused=false;keyboard?.clear({selection:true});session.resume();recorder.event('resume');save();update();draw();}
 $('pause').onclick=toggleManualPause;
 // Consume the resume key so it cannot also turn a face or select a suffix.
 window.addEventListener('keydown',event=>{
- if(replayActive||!manualPaused||event.code==='Escape'||document.querySelector('dialog[open]')||event.repeat)return;
+ if(replayActive||!manualPaused||event.code==='Escape'||document.querySelector('dialog[open],.ft-menu:popover-open,#solve-review-panel:not([hidden])')||event.repeat)return;
  recordKey('down',event);event.preventDefault();event.stopImmediatePropagation();resumeManualPause();
 },true);
 function layoutSolveSpace(){
@@ -300,11 +302,12 @@ function update(){
  $('mobile-undo').disabled=$('undo').disabled;$('mobile-redo').disabled=$('redo').disabled;$('mobile-scramble').disabled=scrambling;$('mobile-history').disabled=scrambling;
 
 }
-function armRecording(){if($('auto-default-mode').checked)keyboard?.returnToDefault();recorder.arm({size,scramble:history.slice(0,undoFloor),view:{rotation:controls.rotation.toArray(),radius:controls.radius},keyboard:keyboard?.snapshot().config,colors:faceColors,previousBest:session.bestMs===null?null:{ms:session.bestMs,splitData:session.times.find(t=>t.ms===session.bestMs)?.splitData??null}});}
+function armRecording(){network.arm(size);if($('auto-default-mode').checked)keyboard?.returnToDefault();recorder.arm({size,scramble:history.slice(0,undoFloor),view:{rotation:controls.rotation.toArray(),radius:controls.radius},keyboard:keyboard?.snapshot().config,colors:faceColors,previousBest:session.bestMs===null?null:{ms:session.bestMs,splitData:session.times.find(t=>t.ms===session.bestMs)?.splitData??null}});}
 function enqueue(action){
+ if(action.type==='undo'&&['ready','running','paused'].includes(session.status)){network.markUndo();if(recorder.attempt)recorder.attempt.usedUndo=true;}
  if(replayActive||queue.length+(active?.turns.length??0)>=500||isScrambling()||session.status==='paused')return false;
  if(['undo','redo'].includes(action.type)&&!actionMove(action,true))return false;
- const now=performance.now();pacing.input(now);if(viewTween)viewTween.deadline=Math.min(viewTween.deadline,now+animationDuration(pacing.duration()));if(session.status==='ready'&&!session.scrambleText)session.scrambleText=scrambleText(history.slice(0,undoFloor));if(session.start()){if($('auto-default-mode').checked&&keyboard&&keyboard.engine.mode.id!==(keyboard.config.defaultMode??keyboard.config.modes[0].id))keyboard.returnToDefault();const config=structuredClone(keyboard?.config);if(config)config.activeMode=keyboard.engine.mode.id;recorder.begin({rotation:displayedCamera.quaternion.clone().invert().toArray(),radius:controls.radius},config,{pending:keyboard?.engine.pending,slicePending:keyboard?.engine.slicePending,pendingSource:keyboard?.engine.pendingSource,sliceSource:keyboard?.engine.sliceSource});}action.elapsedMs=session.elapsed();action.recordId=recorder.accept(action);queue.push(action);if(action.type==='move')keyboard?.recordTurn();playSound(action.type==='undo'?'undo':'move');pump();return true;
+ const now=performance.now();pacing.input(now);if(viewTween)viewTween.deadline=Math.min(viewTween.deadline,now+animationDuration(pacing.duration()));if(session.status==='ready'&&!session.scrambleText)session.scrambleText=scrambleText(history.slice(0,undoFloor));if(session.start()){network.start();if(recorder.attempt&&size===3)recorder.attempt.solver=currentSolver();if($('auto-default-mode').checked&&keyboard&&keyboard.engine.mode.id!==(keyboard.config.defaultMode??keyboard.config.modes[0].id))keyboard.returnToDefault();const config=structuredClone(keyboard?.config);if(config)config.activeMode=keyboard.engine.mode.id;recorder.begin({rotation:displayedCamera.quaternion.clone().invert().toArray(),radius:controls.radius},config,{pending:keyboard?.engine.pending,slicePending:keyboard?.engine.slicePending,pendingSource:keyboard?.engine.pendingSource,sliceSource:keyboard?.engine.sliceSource});}action.elapsedMs=session.elapsed();action.recordId=recorder.accept(action);queue.push(action);if(action.type==='move')keyboard?.recordTurn();playSound(action.type==='undo'?'undo':'move');pump();return true;
 }
 function pendingTimeline(prune=false){
  const past=history.slice();let future=redo.slice();const valid=[];
@@ -338,7 +341,8 @@ function commitAction(action,move){
   if(action.type==='undo')phaseTracker.rewind(state,elapsed,{turnIndex:history.length-undoFloor});else phaseTracker.observe(state,elapsed,{finished:solved,turnIndex:history.length-undoFloor});
   if(solved&&session.finish(phaseTracker.serialize(),elapsed)){
    const recording=recorder.finish(session.lastMs,session.newBest,phaseTracker.serialize());
-   if(session.newBest&&recording)archivePB(recording);
+   network.finish(recording);
+   archiveAttempt(recording);
    solveEnd=history.length;undoFloor=solveEnd;redo=[];
    if($('auto-default-mode').checked)keyboard?.returnToDefault();
    const finishedSession=session,finishedEntry=session.times.at(-1);
@@ -404,6 +408,7 @@ $('undo').onclick=()=>enqueue({type:'undo'});$('redo').onclick=()=>enqueue({type
 function abandonAttempt(){
  if(!session.scrambleText)session.scrambleText=scrambleText(history.slice(0,undoFloor));
  if(!session.dnf())return false;
+ network.finish(null);archiveAttempt(null);
  recorder.discard();if($('auto-default-mode').checked)keyboard?.returnToDefault();queue=[];active=null;viewTween=null;manualPaused=false;build();save();update();requestDraw();return true;
 }
 async function startScramble({skipConfirmation=false}={}){
@@ -434,7 +439,7 @@ async function startScramble({skipConfirmation=false}={}){
 $('scramble').onclick=()=>startScramble();
 let scrambleEscapes=[];
 window.addEventListener('keydown',event=>{
- const eligible=!replayActive&&!isScrambling()&&!document.querySelector('dialog[open]')&&!event.target?.closest?.('input,textarea,select,[contenteditable=true]');
+ const eligible=!replayActive&&!isScrambling()&&!document.querySelector('dialog[open],.ft-menu:popover-open,#solve-review-panel:not([hidden])')&&!event.target?.closest?.('input,textarea,select,[contenteditable=true]');
  if(event.code!=='Escape'||!eligible||event.shiftKey||event.ctrlKey||event.metaKey||event.altKey){scrambleEscapes=[];return;}if(event.repeat)return;
  const now=performance.now();if(scrambleEscapes.length&&now-scrambleEscapes.at(-1)>400)scrambleEscapes=[];scrambleEscapes=scrambleEscapes.filter(at=>now-at<=800);scrambleEscapes.push(now);
  if(scrambleEscapes.length===3){scrambleEscapes=[];event.preventDefault();event.stopImmediatePropagation();startScramble({skipConfirmation:true});}
@@ -476,6 +481,7 @@ function renderSize(){
  $('puzzles').title=`Choose puzzle · ${puzzleName(size)}`;$('puzzles').querySelector('.puzzle-button-name').textContent=puzzleName(size);keyboard?.render();
 }
 function selectSize(nextSize){
+ network.invalidate();network.attempt=null;
  cancelScrambleRequest();$('scramble-error').hidden=true;
  // Save completed and pending turns before switching to another puzzle size.
  if(session.pause())recorder.event('pause');manualPaused=session.status==='paused';solves[size]=structuredClone(currentSolve());queue=[];viewTween=null;pacing.reset();
@@ -495,6 +501,8 @@ $('pointer-mode').onchange=()=>{controls.cancelAll();pointerMode=$('pointer-mode
 renderPointerMode();renderSize();$('labels').hidden=!$('show-labels').checked;
 window.addEventListener('blur',()=>{controls.cancelAll();pauseSession();});
 window.addEventListener('focus',resumeSession);
+document.addEventListener('ftoers-account-open',()=>{controls.cancelAll();keyboard?.clear({selection:true});pauseSession();});
+document.addEventListener('ftoers-account-close',resumeSession);
 document.addEventListener('visibilitychange',()=>{if(document.hidden){controls.cancelAll();saveSettings();pauseSession();}else resumeSession();});
 $('show-inspection-faces').onchange=()=>{renderProjectionSettings();syncInspection();requestDraw();saveSettings();};
 for(const key of ['outward','backward','opacity']){
@@ -503,9 +511,9 @@ for(const key of ['outward','backward','opacity']){
  input.onchange=saveSettings;
 }
 $('show-labels').onchange=()=>{$('labels').hidden=!$('show-labels').checked;requestDraw();saveSettings();};
-$('settings').onclick=()=>{homeReplay?.stop();controls.cancelAll();$('settings-dialog').showModal();pauseSession();};
+document.addEventListener('ftoers-settings',()=>{homeReplay?.stop();controls.cancelAll();$('settings-dialog').showModal();pauseSession();});
 $('close-settings').onclick=()=>$('settings-dialog').close();
-for(const [button,dialog,close] of [['puzzles','puzzle-dialog','close-puzzles'],['mobile-history','history-dialog','close-history'],['touch-turn-bias','touch-bias-dialog','close-touch-bias']]){
+for(const [button,dialog,close] of [['leaderboard','leaderboard-dialog','close-leaderboard'],['puzzles','puzzle-dialog','close-puzzles'],['mobile-history','history-dialog','close-history'],['touch-turn-bias','touch-bias-dialog','close-touch-bias']]){
  $(button).onclick=()=>{homeReplay?.stop();controls.cancelAll();$(dialog).showModal();pauseSession();};
  $(close).onclick=()=>$(dialog).close();
 }
@@ -519,10 +527,10 @@ phaseUI=new PhaseUI({getSize:()=>size,getConfig:target=>phaseProfiles[target??si
 },mark:markSplit});
 $('mobile-split').innerHTML=icon('split');
 window.addEventListener('keydown',event=>{
- if(event.code!=='Enter'||event.repeat||event.target?.closest?.('input,select,textarea,[contenteditable=true]')||document.querySelector('dialog[open]'))return;
+ if(event.code!=='Enter'||event.repeat||event.target?.closest?.('input,select,textarea,[contenteditable=true]')||document.querySelector('dialog[open],.ft-menu:popover-open,#solve-review-panel:not([hidden])'))return;
  if(session.status==='running'&&phaseTracker.profile.phases[phaseTracker.next]?.type==='manual'){event.preventDefault();event.stopImmediatePropagation();markSplit();}
 },true);
-$('about').onclick=()=>{homeReplay?.stop();controls.cancelAll();$('about-dialog').showModal();pauseSession();};
+document.addEventListener('ftoers-about',()=>{homeReplay?.stop();controls.cancelAll();$('about-dialog').showModal();pauseSession();});
 $('close-about').onclick=()=>$('about-dialog').close();
 let colorReference=null;
 function renderColorSwatches(){
@@ -651,6 +659,9 @@ homeReplay=new HomeReplay({pause:pauseSession,onStart:()=>{$('solve-summary').se
 }});
 const recordingUI=new RecordingUI({album,confirm:confirmPaused,isReplaying:()=>homeReplay.active,pauseForShare:()=>{if(homeReplay.active)homeReplay.pause();else pauseSession();},current:()=>homeReplay.active?homeReplay.sharedData:recorder.last,getSize:()=>size,getRecordings:()=>({last:recorder.last,pb:recorder.pb}),pause:()=>{homeReplay.stop();pauseSession();},play:data=>homeReplay.start(data)});
 for(const id of ['share-current','share-pb','mobile-share-current','history-share-pb','home-replay-share'])$(id).innerHTML=icon('share');
+const solveReview=new SolveReview({rpc:networkRPC,isAdmin:accountIsAdmin,play:data=>homeReplay.start(data),pause:()=>{homeReplay.pause();pauseSession();}});
+document.addEventListener('ftoers-review',()=>solveReview.open());
+function archiveAttempt(recording){album.remember(recording,{size,entry:session.times.at(-1),pb:!!recording&&session.newBest,averagePB:newlyBestAverages(session.times,averageWindow)}).catch(error=>{$('album-message').textContent='Couldn’t retain recordings: '+error.message;});}
 function archivePB(recording,completedAt){
  album.add(recording,{pb:true,automatic:true,completedAt,shouldSave:()=>!detectClearedSolve()}).catch(error=>{$('album-message').textContent=`Couldn’t save PB to the album: ${error.message}`;});
 }
@@ -690,8 +701,8 @@ for(const type of ['pointerdown','pointermove','pointerup','pointercancel','whee
 },{capture:true,passive:true});
 initialized=true;resizeViewport();resumeSession();pump();draw();prepareFtoScramble();
 for(const saved of Object.values(solves)){const pb=saved.recordings?.pbIsLast?saved.recordings.last:saved.recordings?.pb;if(pb)archivePB(pb,pb.completedAt??saved.timer?.bestAt);}
-recordingUI.openSharedLink();
-window.addEventListener('hashchange',()=>{if(recordingPayload())recordingUI.openSharedLink();else{recordingUI.cancelSharedLink();homeReplay.stop();}});
+initNetwork().then(()=>recordingUI.openSharedLink());
+window.addEventListener('hashchange',()=>{if(recordingPayload()||/^(#short=|#rank=)/.test(location.hash))recordingUI.openSharedLink();else{recordingUI.cancelSharedLink();homeReplay.stop();}});
 let lastTimerSave=performance.now();
 setInterval(()=>{
  if(session.status==='running'){

@@ -1,6 +1,7 @@
+import {openSettings,openAbout} from './helpers.js';
 import {test,expect} from '@playwright/test';
 const ready=page=>page.waitForFunction(()=>window.fto?.snapshot().ready);
-async function settings(page){await page.goto('/');await ready(page);await page.locator('#settings').click();await page.locator('#edit-keyboard').click();}
+async function settings(page){await page.goto('/');await ready(page);await openSettings(page);await page.locator('#edit-keyboard').click();}
 async function editor(page){await settings(page);await page.locator('#customize-bindings').click();}
 async function modes(page){if(!await page.locator('#catalog-mode-picker').evaluate(el=>el.open))await page.locator('#catalog-mode-choice').click();}
 test('keyboard preferences are separate from bindings and only relevant widths are listed',async({page})=>{
@@ -17,7 +18,7 @@ test('mode dropdown creates and manages modes without activating the live keyboa
 test('puzzle choices use white-top green-front CIF, toolbar order and updated About links',async({page})=>{
  await page.setViewportSize({width:1440,height:900});await page.goto('/');await ready(page);expect(await page.locator('.topbar-actions>button').evaluateAll(els=>els.map(el=>el.id))).toEqual(['puzzles','album','settings','about']);await expect(page.locator('.puzzle-button-name')).toBeVisible();await expect(page.locator('.puzzle-button-name')).toContainText('3');
  await page.locator('#puzzles').click();await page.locator('#puzzle-choices [data-size="4"]').click();const hold=await page.evaluate(()=>window.fto.snapshot().hold);expect(hold).toEqual({up:'U',front:'BR',notation:'CIF'});await expect(page.locator('.puzzle-button-name')).toContainText('Master');
- await page.locator('#settings').click();await expect(page.locator('#settings-dialog')).not.toContainText('Make the simulator');await expect(page.locator('#save-status')).toBeHidden();await page.locator('#settings-dialog').screenshot({path:'test-results/settings-full-width.png'});await page.locator('#close-settings').click();await page.locator('#about').click();await expect(page.locator('#about-dialog')).toContainText('Made by Abid Ibn Ashraf.');await expect(page.locator('#about-dialog a[href="https://www.worldcubeassociation.org/persons/2024ASHR02"]')).toBeVisible();await expect(page.locator('#about-dialog a[href="https://discord.gg/p8mCQYUkaf"]')).toBeVisible();await page.locator('#about-dialog').screenshot({path:'test-results/about-updated.png'});
+ await openSettings(page);await expect(page.locator('#settings-dialog')).not.toContainText('Make the simulator');await expect(page.locator('#save-status')).toBeHidden();await page.locator('#settings-dialog').screenshot({path:'test-results/settings-full-width.png'});await page.locator('#close-settings').click();await openAbout(page);await expect(page.locator('#about-dialog')).toContainText('Made by Abid Ibn Ashraf.');await expect(page.locator('#about-dialog a[href="https://www.worldcubeassociation.org/persons/2024ASHR02"]')).toBeVisible();await expect(page.locator('#about-dialog a[href="https://discord.gg/p8mCQYUkaf"]')).toBeVisible();await page.locator('#about-dialog').screenshot({path:'test-results/about-updated.png'});
  await page.locator('#close-about').click();await page.setViewportSize({width:390,height:844});await expect(page.locator('.puzzle-button-name')).toBeHidden();
 });
 test('preferences and binding modal fit narrow screens',async({page})=>{

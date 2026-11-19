@@ -1,3 +1,4 @@
+import {openSettings} from './helpers.js';
 import {installKeyboard} from './keyboard-fixture.js';
 import {test,expect} from '@playwright/test';
 import {withSettings,scramble,assignBinding} from './helpers.js';
@@ -10,7 +11,7 @@ async function setup(page,size='20'){
   await page.locator('#size').selectOption(size);await page.locator('#animate').uncheck();await page.locator('#show-keyboard').check();
  });
 }
-async function editor(page){await page.locator('#settings').click();await page.locator('#edit-keyboard').click();}
+async function editor(page){await openSettings(page);await page.locator('#edit-keyboard').click();}
 async function closeEditor(page){await page.locator('#close-keyboard').click();await page.locator('#close-settings').click();}
 async function bind(page,trigger,{type='move',face='U',dir='-1',kind='outer',depth='1',mode}={}){
  const action=type==='move'?`move:${face}:${Number(dir)}:${kind}:${Number(depth)}:false`:type==='depth'?`depth:${Number(depth)}::`:type==='hold-mode'?`hold-mode::${mode}:`:type==='suffix-slice'?'suffix-slice:::':`${type}:::`;
