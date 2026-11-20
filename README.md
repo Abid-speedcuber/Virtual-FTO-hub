@@ -64,7 +64,9 @@ which is opened from the album icon in the topbar. Older PB videos stay there
 after a faster PB replaces them. Any shared recording can be saved manually;
 album rows show puzzle size, solve time, date, time and a [PB] badge.
 
-Open the recording album and choose **Import recording to watch** in its fixed
+The album retains recordings for the latest 12 attempts per supported puzzle size, as well as PB and manually saved recordings. Open the latest **ao5** or **ao12** statistics and choose **Share** to save that average as one album entry. Saved averages keep their member recordings beyond the rolling 12; overlapping averages reference the same recording rows. Open an average in the album to replay each solve, copy its report, or export a JSON package containing its recordings. Importing that package merges it into the album without duplicating recordings or changing timer results. Abandoning a started attempt retains a DNF replay through the moment it was stopped, including any partial turn. Older DNFs whose recordings were discarded remain visible as DNF slots; an average with a missing completed recording cannot be saved. Saved averages are included in full user backups.
+
+Open the recording album and choose **Import recording** in its fixed
 footer. Paste a recording link/JSON, drop a file, or choose a file to watch it
 directly on the home screen with the solver’s
 keyboard, recorded sounds and previous-PB splits. The action island becomes a

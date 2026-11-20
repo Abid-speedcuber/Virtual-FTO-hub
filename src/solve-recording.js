@@ -29,6 +29,7 @@ export function validateRecording(data,{incomplete=false}={}){
   if(e.type==='pointer'&&!validPointer(e))throw Error('Invalid recorded pointer');
  }
  if(data.solver!=null&&(data.size!==3||typeof data.solver.username!=='string'||!/^[A-Za-z0-9_]{3,24}$/.test(data.solver.username)))throw Error('Invalid solver username');
+ if(data.dnf!==undefined&&typeof data.dnf!=='boolean')throw Error('Invalid DNF flag');
  if(data.usedUndo!==undefined&&typeof data.usedUndo!=='boolean')throw Error('Invalid undo flag');
  if(data.complete&&data.duration<previous)throw Error('Invalid recording duration');
  return data;
@@ -112,11 +113,11 @@ export class SolveRecorder{
   this.event('start');
  }
  accept(action){const id=++this.nextId;this.event('accept',{id,action:action.type,source:action.source??'keyboard',elapsedMs:action.elapsedMs});return id;}
- finish(ms,newBest,splitData=null){
+ finish(ms,newBest,splitData=null,{dnf=false}={}){
   if(!this.attempt)return;
-  const data=this.attempt;data.solveMs=ms;data.duration=this.time();data.complete=true;data.completedAt=new Date(this.clock()).toISOString();
+  const data=this.attempt;if(dnf)data.dnf=true;data.solveMs=ms;data.duration=this.time();data.complete=true;data.completedAt=new Date(this.clock()).toISOString();
   data.splitData=clone(splitData);data.previousBest=data.previousBest??(this.pb?{ms:this.pb.solveMs,splitData:clone(this.pb.splitData)}:null);
-  delete data.epoch;delete data.waitingKeys;delete data.waitingPointers;delete data.pausedAt;delete data.pauseOffsetMs;delete data.checkpointAt;this.last=data;if(newBest)this.pb=data;this.attempt=null;return data;
+  delete data.epoch;delete data.waitingKeys;delete data.waitingPointers;delete data.pausedAt;delete data.pauseOffsetMs;delete data.checkpointAt;this.last=data;if(newBest&&!dnf)this.pb=data;this.attempt=null;return data;
  }
  discard(){this.attempt=null;}
  serialize(){if(this.attempt)this.attempt.checkpointAt=this.clock();return {last:this.last,...(this.pb===this.last&&this.pb?{pbIsLast:true}:{pb:this.pb}),attempt:this.attempt};}
@@ -130,7 +131,7 @@ export class RecordingTimeline{
   this.state=this.data.initial.scramble.reduce(applyMove,solvedState(this.data.size));this.view=this.data.initial.view;this.hold=null;this.keys=new Set();this.motions=new Map();this.paused=false;this.elapsed=0;this.runningSince=null;this.index=0;this.at=-1;
  }
  frame(at){
-  if(at<this.at)this.reset();this.at=at;
+  at=Math.min(at,this.data.duration);if(at<this.at)this.reset();this.at=at;
   while(this.index<this.data.events.length){
    const e=this.data.events[this.index];if(e.at>at)break;this.index++;
    if(e.type==='view'){this.view=e.view;this.hold=e.hold;}
@@ -142,7 +143,7 @@ export class RecordingTimeline{
    if(e.type==='pause'){if(this.runningSince!==null)this.elapsed+=e.at-this.runningSince;this.runningSince=null;this.paused=true;this.keys.clear();}
   }
   const finished=at>=this.data.duration,elapsed=finished?this.data.solveMs:this.elapsed+(this.runningSince!==null?at-this.runningSince:0);
-  return {state:this.state,view:this.view,hold:this.hold,keys:[...this.keys],paused:finished?false:this.paused,elapsed,motions:finished?[]:[...this.motions.values()].map(m=>({...m,progress:Math.min(1,Math.max(0,(at-m.started)/m.duration))}))};
+  return {state:this.state,view:this.view,hold:this.hold,keys:[...this.keys],paused:finished?false:this.paused,elapsed,motions:finished&&!this.data.dnf?[]:[...this.motions.values()].map(m=>({...m,progress:Math.min(1,Math.max(0,(at-m.started)/m.duration))}))};
  }
 }
 export const recordingFrame=(data,at)=>new RecordingTimeline(data).frame(at);

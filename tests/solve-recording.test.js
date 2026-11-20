@@ -62,3 +62,12 @@ test('undo keypress sounds survive validation, serialization, and legacy sound r
  let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder);recorder.event('start');recorder.accept({type:'undo'});recorder.event('sound',{kind:'undo'});now=100;const data=recorder.finish(100,false);
  assert.doesNotThrow(()=>validateRecording(JSON.parse(JSON.stringify(data))));const {recordedSounds}=await import('../src/replay-presentation.js');assert.deepEqual(recordedSounds(data).map(e=>e.kind),['undo']);const legacy={...data,events:data.events.filter(e=>e.type!=='sound')};assert.deepEqual(recordedSounds(legacy).map(e=>e.kind),['undo']);
 });
+
+test('abandoned solves retain a DNF replay, the unfinished position and a frozen partial animation without replacing PB',async()=>{
+ const {encodeRecording,decodeRecording,recordingID}=await import('../src/recording-codec.js');
+ let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder);recorder.event('start');now=100;const pb=recorder.finish(100,true);
+ arm(recorder);recorder.event('start');recorder.event('turn',{id:1,move:inverse(R)});now=150;recorder.event('animate',{id:2,move:U,duration:100});now=175;
+ const data=recorder.finish(75,true,null,{dnf:true});assert.equal(validateRecording(data).dnf,true);assert.equal(data.complete,true);assert.equal(recorder.pb,pb);assert.equal(recorder.last,data);
+ const last=recordingFrame(data,data.duration);assert.equal(isSolved(last.state),false);assert.equal(last.motions.length,1);assert.equal(last.motions[0].progress,.25);assert.deepEqual(recordingFrame(data,100000),last);
+ const decoded=await decodeRecording(await encodeRecording(data));assert.equal(decoded.dnf,true);assert.equal(await recordingID(decoded),await recordingID(data));assert.throws(()=>validateRecording({...data,dnf:'true'}),/DNF flag/);
+});

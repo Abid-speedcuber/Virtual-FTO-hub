@@ -1,6 +1,7 @@
 import {SolveReview} from './solve-review.js';
 import {network,currentSolver,initNetwork,networkRPC,accountIsAdmin} from './network.js';
 import {rotationPairForMove} from './rotation-actions.js';
+import {AverageRecordingUI} from './recording-average-ui.js';
 import {StatisticsUI} from './statistics-ui.js';
 import {scrambleText,resultText,averageWindow} from './solve-statistics.js';
 import * as THREE from 'three';
@@ -32,7 +33,7 @@ const $=id=>document.getElementById(id);
 const storageKey='master-fto-v1';
 const album=new RecordingAlbum();
 let homeReplay=null,replayActive=false;
-let keyboard,phaseUI,statisticsUI,initialized=false,renderedMoves=0,manualPaused=false,scrambleRequest=null;
+let keyboard,phaseUI,statisticsUI,averageUI,initialized=false,renderedMoves=0,manualPaused=false,scrambleRequest=null;
 const isScrambling=()=>!!scrambleRequest||session.status==='scrambling';
 function cancelScrambleRequest(){const request=scrambleRequest;scrambleRequest=null;request?.abort();}
 const pacing=new TurnPacing();
@@ -129,7 +130,7 @@ function saveSettings(){
 const sounds=new PuzzleSounds(()=>$('disable-sounds').checked);
 function playSound(kind='move'){recorder.event('sound',{kind});sounds.play(kind);}
 $('disable-sounds').onchange=saveSettings;for(const id of ['auto-default-mode','auto-next-solve','show-statistics','print-stat-scrambles'])$(id).onchange=()=>{saveSettings();renderTimer();};
-statisticsUI=new StatisticsUI({getSession:()=>session,save:()=>{timesKey='';save();renderTimer();},settings:saveSettings,pause:pauseSession});
+statisticsUI=new StatisticsUI({getSession:()=>session,save:()=>{timesKey='';save();renderTimer();},settings:saveSettings,pause:pauseSession,share:window=>averageUI.shareCurrent(window)});
 function queueSettingsSave(){clearTimeout(settingsTimer);settingsTimer=setTimeout(saveSettings,150);}
 const viewport=$('viewport');
 const scene=new THREE.Scene();
@@ -251,7 +252,7 @@ function renderTimer(){
  const lastResult=session.times.at(-1),waiting=['ready','scrambling'].includes(status);
  const text=waiting&&lastResult?resultText(lastResult):status==='idle'?'00:00':status==='finished'&&session.lastDnf?'DNF':formatTime(session.elapsed());if($('timer-value').textContent!==text)$('timer-value').textContent=text;
  $('history-pb').textContent=formatTime(session.bestMs);
- const canShareLast=['finished','ready','scrambling'].includes(status)&&!!recorder.last&&!lastResult?.dnf&&recorder.last.solveMs===lastResult?.ms;
+ const canShareLast=['finished','ready','scrambling'].includes(status)&&!!recorder.last&&!!recorder.last.dnf===!!lastResult?.dnf&&recorder.last.solveMs===lastResult?.ms;
  $('share-current').hidden=!canShareLast;$('share-pb').hidden=!recorder.pb;
  $('mobile-share-current').hidden=!canShareLast;$('mobile-share-current').style.order='1';$('history-share-pb').hidden=!recorder.pb;
  $('mobile-timer').textContent=text;renderMobileControls(status);
@@ -408,7 +409,8 @@ $('undo').onclick=()=>enqueue({type:'undo'});$('redo').onclick=()=>enqueue({type
 function abandonAttempt(){
  if(!session.scrambleText)session.scrambleText=scrambleText(history.slice(0,undoFloor));
  if(!session.dnf())return false;
- network.finish(null);archiveAttempt(null);
+ const recording=recorder.finish(session.lastMs,false,phaseTracker.serialize(),{dnf:true});
+ network.finish(null);archiveAttempt(recording);
  recorder.discard();if($('auto-default-mode').checked)keyboard?.returnToDefault();queue=[];active=null;viewTween=null;manualPaused=false;build();save();update();requestDraw();return true;
 }
 async function startScramble({skipConfirmation=false}={}){
@@ -651,13 +653,14 @@ homeReplay=new HomeReplay({pause:pauseSession,onStart:()=>{$('solve-summary').se
  if(trace?.profile?.phases?.length){
   const same=data.previousBest?.splitData&&profileKey(data.previousBest.splitData.profile)===profileKey(trace.profile);
   const reference=same?{ms:data.previousBest.ms,groups:data.previousBest.splitData.groups}:null;
-  const shown={...trace,groups:trace.groups.filter(g=>g.ms<=replayFrame.elapsed),reference,complete:replayFrame.stage==='Solve'&&replayFrame.elapsed>=data.solveMs};
+  const shown={...trace,groups:trace.groups.filter(g=>g.ms<=replayFrame.elapsed),reference,complete:!data.dnf&&replayFrame.stage==='Solve'&&replayFrame.elapsed>=data.solveMs};
   phaseUI.render({enabled:true,profile:trace.profile,detectorVersion:trace.detectorVersion,complete:shown.complete,groups:shown.groups,reference,serialize:()=>shown},replayFrame.elapsed,shown.complete?'finished':'running',true);
   $('split-reference').textContent=reference?`Solver’s previous PB · ${formatTime(reference.ms)}`:data.previousBest?`Previous PB · ${formatTime(data.previousBest.ms)} · no matching split data`:'No previous PB recorded';$('history-split-reference').textContent=$('split-reference').textContent;
  }else{document.querySelector('.splits-panel').hidden=true;document.querySelector('.time-columns').classList.add('without-splits');}
  $('solve-summary').setAttribute('aria-label','Recorded timer and key presses');
 }});
 const recordingUI=new RecordingUI({album,confirm:confirmPaused,isReplaying:()=>homeReplay.active,pauseForShare:()=>{if(homeReplay.active)homeReplay.pause();else pauseSession();},current:()=>homeReplay.active?homeReplay.sharedData:recorder.last,getSize:()=>size,getRecordings:()=>({last:recorder.last,pb:recorder.pb}),pause:()=>{homeReplay.stop();pauseSession();},play:data=>homeReplay.start(data)});
+averageUI=new AverageRecordingUI({album,getSession:()=>session,getSize:()=>size,pause:pauseSession,play:data=>homeReplay.start(data)});recordingUI.averages=averageUI;
 for(const id of ['share-current','share-pb','mobile-share-current','history-share-pb','home-replay-share'])$(id).innerHTML=icon('share');
 const solveReview=new SolveReview({rpc:networkRPC,isAdmin:accountIsAdmin,play:data=>homeReplay.start(data),pause:()=>{homeReplay.pause();pauseSession();}});
 document.addEventListener('ftoers-review',()=>solveReview.open());
@@ -684,7 +687,7 @@ async function importUserDataFile(file){
  try{
   if(file.size>128*1024*1024)throw Error('Backup must be smaller than 128 MB');
   $('user-data-import-message').textContent='Checking backup…';const data=JSON.parse(await file.text()),summary=validateUserData(data);if(data.album)await validateAlbumBackup(data.album);$('user-data-import-message').textContent='';
-  const albumSummary=data.album?` and ${data.album.entries.length} album recordings`:'';
+  const albumSummary=data.album?` and ${data.album.entries.length} album recordings${data.album.groups?.length?` and ${data.album.groups.length} saved averages`:''}`:'';
   if(!await confirmPaused(`Restore ${file.name}? This replaces this device’s FTO data with ${summary.puzzles} puzzles and ${summary.times} saved times${albumSummary}, including all settings, methods and recordings.`,'Restore backup','Restore user data?'))return;
   const before=exportUserData(localStorage);storageCleared=true;
   try{restoreUserData(localStorage,data);if(data.album)await album.restoreValidated(data.album);}

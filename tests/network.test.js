@@ -13,7 +13,7 @@ test('undo is permanent eligibility evidence even if followed by redo',async()=>
  assert.equal(s.calls[1].args.replay.usedUndo,true);assert.equal(s.calls[1].args.replay.solver.username,'Abid');assert.equal(replay.usedUndo,undefined);
 });
 test('abandoned online attempts submit DNF rather than disappearing from average windows',async()=>{
- const s=setup();s.network.arm(3);s.network.start();await s.network.finish(null);assert.equal(s.calls[1].args.replay,null);
+ for(const recording of [null,{...replay,dnf:true}]){const s=setup();s.network.arm(3);s.network.start();await s.network.finish(recording);assert.equal(s.calls[1].args.replay,null);}
 });
 test('offline gaps invalidate an attempt and start a fresh average sequence',async()=>{
  const s=setup();s.network.arm(3);s.network.start();await s.network.queue;const sequence=s.network.sequence;

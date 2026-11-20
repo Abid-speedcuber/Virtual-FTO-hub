@@ -20,7 +20,7 @@ export class OnlineAttempts {
   const a=this.attempt;this.attempt=null;
   if(!a?.ticket)return Promise.resolve();
   const valid=a.valid&&this.online()&&a.owner===this.getProfile()?.id;
-  const replay=valid&&recording&&recording.size===3?structuredClone(recording):null;
+  const replay=valid&&recording&&!recording.dnf&&recording.size===3?structuredClone(recording):null;
   if(replay){replay.solver=a.solver;replay.usedUndo=!!(a.undo||recording.usedUndo);}
   const task=this.queue.then(async()=>{
    const attempt=await a.ticket;

@@ -9,6 +9,7 @@ complete IndexedDB recording album, including:
 - Every manually saved album recording and every archived historical PB, including
   its puzzle size, solve time, date/time and PB label. Album deletion markers are
   included so deleted PB clips do not reappear on the other computer.
+- Saved ao5/ao12 groups and their member recordings. Overlapping groups reference the same compressed recording entries.
 - All keyboard presets, custom bindings, modes, default modes and overlay settings.
 - The per-size named-method library and selected split method.
 - Face colors, camera hold/zoom, pointer controls, biases, animation and audio settings.
@@ -34,3 +35,5 @@ destination album intact. Keys outside the app’s
 
 Keep the backup file for recovery. Clearing browser site data also clears the
 app’s local times, recordings, methods and preferences.
+
+For a single average, use **Statistics → Share → Download JSON**. Its `fto-recording-average-v1` file includes the average and unique member recordings. **Recording album → Import recording** merges this package into the album; repeated imports reuse existing entries and leave timer history unchanged.

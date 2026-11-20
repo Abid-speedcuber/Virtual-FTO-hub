@@ -8,7 +8,7 @@ const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg
 const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']});
 await mkdir('/tmp/ftoers-qa',{recursive:true});
 try{
- const context=await browser.newContext({viewport:{width:1280,height:1080}});
+ const context=await browser.newContext({viewport:{width:1280,height:1080}});context.setDefaultTimeout(15000);
  const errors=[];
  await context.route('https://ftoers.test/**',async route=>{const url=new URL(route.request().url());if(url.pathname.endsWith('/shared/config.js')){await route.fulfill({contentType:'text/javascript',body:"export const backendConfig={url:'',key:''};"});return;}let target=url.pathname.startsWith('/virtual/')?path.join(dist,url.pathname.slice(9)):path.join(root,url.pathname);if(url.pathname.endsWith('/'))target=path.join(target,'index.html');try{const body=await readFile(target);await route.fulfill({contentType:types[path.extname(target)]||'application/octet-stream',body});}catch{await route.fulfill({status:404,body:'Not found'});}});
  const home=await context.newPage();home.on('pageerror',e=>errors.push(e.message));
@@ -33,9 +33,11 @@ try{
   if(size===3)assert.match(await simulator.locator('.keyboard-readout').last().textContent(),/TestSolver’s keyboard/);
   await simulator.locator('#home-replay-share').click();await simulator.locator('#share-dialog').waitFor();
   assert.equal(await simulator.locator('#share-link').isVisible(),size===3);assert.equal(await simulator.locator('#share-short').isVisible(),size===3);
-  await simulator.screenshot({path:`/tmp/ftoers-qa/share-${size}.png`});await simulator.locator('#close-share').click();await simulator.locator('#home-replay-exit').click();
+  const textBox=await simulator.locator('#share-text').boundingBox(),jsonBox=await simulator.locator('#share-json').boundingBox();assert.ok(Math.abs(textBox.y-jsonBox.y)<1);assert.ok(Math.abs(textBox.width-jsonBox.width)<1);
+  await simulator.screenshot({path:`/tmp/ftoers-qa/share-${size}.png`});await simulator.setViewportSize({width:320,height:844});assert.equal(await simulator.locator('#share-dialog').evaluate(e=>e.scrollWidth>e.clientWidth),false);await simulator.screenshot({path:`/tmp/ftoers-qa/share-${size}-mobile.png`});await simulator.setViewportSize({width:1280,height:1080});await simulator.locator('#close-share').click();await simulator.locator('#home-replay-exit').click();
  }
+ const last=await replay(3,'Solver');await simulator.addInitScript(last=>{localStorage.setItem('master-fto-v1',JSON.stringify({size:3,solves:{3:{history:[],redo:[],undoFloor:0,recordings:{last,pb:last},timer:{status:'finished',elapsedMs:last.solveMs,lastMs:last.solveMs,bestMs:last.solveMs,completed:1,times:[{ms:last.solveMs}]}}}}));},last);await simulator.reload();await simulator.waitForFunction(()=>window.fto?.snapshot().ready);await simulator.locator('#share-current:visible,#mobile-share-current:visible').click();await simulator.locator('#share-album[data-saved=true]').waitFor();assert.equal(await simulator.locator('#share-watch').isVisible(),true);await simulator.setViewportSize({width:390,height:844});await simulator.screenshot({path:'/tmp/ftoers-qa/share-current-mobile.png'});
  assert.deepEqual(errors,[],'No uncaught browser errors');
  console.log('Offline browser checks passed: desktop/mobile homepage, signup controls, shared account module, solver attribution, 3x3 and 4x4 sharing.');
  await context.close();
-}finally{await browser.close();}
+}catch(error){for(const context of browser.contexts())for(const page of context.pages()){console.log('Page',page.url());await page.screenshot({path:'/tmp/ftoers-qa/failure.png'}).catch(()=>{});}throw error;}finally{await browser.close();}
