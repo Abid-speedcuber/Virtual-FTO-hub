@@ -11,7 +11,7 @@ export function downloadJSON(data,name){
 }
 export class RecordingUI{
  constructor({getSize,getRecordings,pause,play,current,album,pauseForShare,confirm,isReplaying=()=>false}){
-  Object.assign(this,{getSize,getRecordings,pause,play,current,album,pauseForShare,confirm,isReplaying});this.shareVersion=0;this.linkVersion=0;this.albumStateVersion=0;this.albumVersion=0;this.importVersion=0;this.importBusy=false;
+  Object.assign(this,{getSize,getRecordings,pause,play,current,album,pauseForShare,confirm,isReplaying});this.shareVersion=0;this.linkVersion=0;this.albumStateVersion=0;this.albumVersion=0;this.importVersion=0;this.importBusy=false;this.selecting=false;this.selectedRecordings=new Set();this.selectedGroups=new Set();this.bulkBusy=false;
   $('close-recording-link-toast').onclick=()=>this.hideLinkToast();
   $('history-recordings').onclick=()=>this.openAlbum();
   $('mobile-share-current').onclick=()=>this.share(this.getRecordings().last,{home:true});$('history-share-pb').onclick=()=>this.share(this.getRecordings().pb);$('home-replay-share').onclick=()=>this.share(this.current?.());
@@ -29,6 +29,9 @@ export class RecordingUI{
   window.addEventListener('focus',()=>{if($('share-dialog').open&&!$('share-album').hidden)this.refreshAlbumState();});
   $('album').innerHTML=icon('video');$('album').onclick=()=>this.openAlbum();$('close-album').onclick=()=>$('album-dialog').close();
   $('album-import-recording').onclick=()=>this.openImport();
+  $('album-select').onclick=()=>{this.selecting=true;this.updateSelection();};$('album-select-done').onclick=()=>{this.selecting=false;this.selectedRecordings.clear();this.selectedGroups.clear();this.updateSelection();};
+  $('album-select-all').onchange=()=>{this.selectedGroups=new Set($('album-select-all').checked?this.albumGroups.map(group=>group.id):[]);this.selectedRecordings=new Set($('album-select-all').checked?this.albumEntries.map(entry=>entry.id):[]);this.updateSelection();};
+  $('album-delete-selected').onclick=()=>this.deleteSelected();
   $('close-paste').onclick=()=>{this.cancelImport();$('paste-dialog').close();};$('paste-dialog').addEventListener('cancel',()=>this.cancelImport());
   $('recording-paste-load').onclick=()=>this.watchImported($('recording-paste').value);
   $('choose-recording-file').onclick=()=>$('recording-import').click();$('recording-import').onchange=event=>this.watchImported(event.target.files[0]);
@@ -56,18 +59,18 @@ export class RecordingUI{
   catch{$('share-output').value=text;$('share-output').hidden=false;$('share-output').focus();$('share-output').select();$('share-message').textContent='Select and copy the text below.';}
  }
  async openAlbum(){
-  this.pause();$('album-dialog').showModal();await this.renderAlbum();
+  this.pause();this.selecting=false;this.selectedRecordings.clear();this.selectedGroups.clear();$('album-dialog').showModal();await this.renderAlbum();
  }
  async renderAlbum(){
   const version=++this.albumVersion;$('album-message').textContent='Loading recordings…';$('album-list').replaceChildren();
   try{
-   const [all,groups]=await Promise.all([this.album.list(),this.album.listGroups()]);if(version!==this.albumVersion)return;const referenced=new Set(groups.flatMap(g=>g.members.map(m=>m.id))),entries=all.filter(e=>e.recent||e.pb||e.averagePB?.length||e.manual!==false||!referenced.has(e.id));$('album-message').textContent=entries.length||groups.length?'':'Your last 12 solves and PB recordings appear here. You can also save a recording from Share.';
+   const [all,groups]=await Promise.all([this.album.list(),this.album.listGroups()]);if(version!==this.albumVersion)return;const referenced=new Set(groups.flatMap(g=>g.members.map(m=>m.id))),entries=all.filter(e=>e.recent||e.pb||e.averagePB?.length||e.manual!==false||!referenced.has(e.id));this.albumEntries=entries;this.albumGroups=groups;this.recordingGroups=new Map();for(const group of groups)for(const member of group.members)if(member.id){if(!this.recordingGroups.has(member.id))this.recordingGroups.set(member.id,new Set());this.recordingGroups.get(member.id).add(group.id);}$('album-message').textContent=entries.length||groups.length?'':'Your last 12 solves and PB recordings appear here. You can also save a recording from Share.';
    for(const group of groups){
     const row=document.createElement('li');row.className='album-entry album-average';row.dataset.id=group.id;
     const info=document.createElement('div');info.className='album-info';const title=document.createElement('strong');title.textContent=`${group.size} × ${group.size} FTO · ao${group.count} · ${formatTime(group.averageMs===null?Infinity:group.averageMs)}`;const date=document.createElement('time');date.dateTime=group.completedAt;date.textContent=new Date(group.completedAt).toLocaleString();info.append(title,date);
     const view=document.createElement('button');view.innerHTML=icon('share');view.setAttribute('aria-label',`Open ao${group.count} ${formatTime(group.averageMs===null?Infinity:group.averageMs)}`);view.onclick=()=>this.averages.show(group).catch(error=>{$('album-message').textContent=error.message;});
     const remove=document.createElement('button');remove.innerHTML=icon('trash');remove.className='album-delete';remove.setAttribute('aria-label',`Delete ao${group.count}`);remove.onclick=async()=>{try{if(!await this.confirm(`Delete this saved ao${group.count}? Recordings used by other saved averages, recent solves or personal bests will be kept.`,'Delete average','Delete saved average?'))return;await this.album.removeGroup(group.id);await this.renderAlbum();}catch(error){$('album-message').textContent=error.message;}};
-    const actions=document.createElement('div');actions.className='album-actions';actions.append(view,remove);row.append(info,actions);$('album-list').append(row);
+    const actions=document.createElement('div');actions.className='album-actions';actions.append(view,remove);row.append(info,actions);this.addSelection(row,group.id,true,title.textContent);$('album-list').append(row);
    }
    for(const entry of entries){
     const row=document.createElement('li');row.dataset.id=entry.id;row.className='album-entry';
@@ -81,9 +84,22 @@ export class RecordingUI{
     const remove=document.createElement('button');remove.innerHTML=icon('trash');remove.className='album-delete';remove.setAttribute('aria-label',`Delete ${entry.size} × ${entry.size} solve ${result(entry)}`);remove.title=referenced.has(entry.id)?'Used by a saved average. Delete that average first.':'Delete recording';remove.disabled=referenced.has(entry.id);remove.onclick=async()=>{
      remove.disabled=true;try{if(!await this.confirm(`Delete the ${entry.size} × ${entry.size} recording (${result(entry)}) from your album? Its solve time and personal-best result will be kept.`,'Delete recording','Delete album recording?'))return;await this.album.remove(entry.id);await this.renderAlbum();}catch(error){$('album-message').textContent=error.message;}finally{remove.disabled=false;}
     };
-    const actions=document.createElement('div');actions.className='album-actions';actions.append(watch,share,remove);row.append(info,actions);$('album-list').append(row);
+    const actions=document.createElement('div');actions.className='album-actions';actions.append(watch,share,remove);row.append(info,actions);this.addSelection(row,entry.id,false,title.textContent);$('album-list').append(row);
    }
-  }catch(error){$('album-message').textContent=error.message;}
+  this.updateSelection();}catch(error){$('album-message').textContent=error.message;}
+ }
+ addSelection(row,id,group,label){
+  const input=document.createElement('input');input.type='checkbox';input.className='album-selection';input.dataset.kind=group?'group':'recording';input.dataset.id=id;input.setAttribute('aria-label',`Select ${label}`);input.onchange=()=>{const set=group?this.selectedGroups:this.selectedRecordings;if(input.checked)set.add(id);else set.delete(id);this.updateSelection();};row.prepend(input);row.addEventListener('click',event=>{if(this.selecting&&!event.target.closest('button,input,a'))input.click();});
+ }
+ updateSelection(){
+  const entries=this.albumEntries??[],groups=this.albumGroups??[];for(const id of this.selectedRecordings)if(!entries.some(entry=>entry.id===id))this.selectedRecordings.delete(id);for(const id of this.selectedGroups)if(!groups.some(group=>group.id===id))this.selectedGroups.delete(id);
+  for(const checkbox of $('album-list').querySelectorAll('.album-selection')){const group=checkbox.dataset.kind==='group',id=checkbox.dataset.id,blocked=!group&&[...(this.recordingGroups?.get(id)??[])].some(owner=>!this.selectedGroups.has(owner));if(blocked)this.selectedRecordings.delete(id);checkbox.disabled=this.bulkBusy||blocked;checkbox.checked=(group?this.selectedGroups:this.selectedRecordings).has(id);checkbox.title=blocked?'Select every saved average that uses this recording first.':'';}
+  const count=this.selectedRecordings.size+this.selectedGroups.size,total=entries.length+groups.length;$('album-dialog').dataset.selecting=String(this.selecting);$('album-select').hidden=this.selecting;$('album-select').disabled=!total;$('album-selection-tools').hidden=!this.selecting;$('album-selection-help').hidden=!this.selecting||!groups.length;$('album-selected-count').textContent=`${count} selected`;$('album-delete-selected').disabled=!count||this.bulkBusy;$('album-select-done').disabled=this.bulkBusy;$('album-select-all').disabled=!total||this.bulkBusy;$('album-select-all').checked=!!total&&count===total;$('album-select-all').indeterminate=count>0&&count<total;
+ }
+ async deleteSelected(){
+  if(this.bulkBusy)return;const recordingIDs=[...this.selectedRecordings],groupIDs=[...this.selectedGroups];if(!recordingIDs.length&&!groupIDs.length)return;const version=this.albumVersion;this.bulkBusy=true;this.updateSelection();
+  try{if(!await this.confirm(`Delete ${recordingIDs.length} recording${recordingIDs.length===1?'':'s'} and ${groupIDs.length} saved average${groupIDs.length===1?'':'s'}? Solve times and PB results stay. Deleting an average also removes its recordings if nothing else retains them.`,'Delete selected','Delete album selection?'))return;const removed=await this.album.removeMany({recordingIDs,groupIDs});if(version!==this.albumVersion)return;this.selectedRecordings.clear();this.selectedGroups.clear();await this.renderAlbum();$('album-message').textContent=`Deleted ${removed.recordings} recordings and ${removed.groups} saved averages.`;}
+  catch(error){$('album-message').textContent=error.message;}finally{this.bulkBusy=false;this.updateSelection();}
  }
  openImport(){
   this.pause();this.cancelSharedLink();this.importVersion++;this.importBusy=false;$('recording-paste').value='';$('recording-import').value='';$('paste-message').textContent='';this.setImportBusy(false);if(!$('paste-dialog').open)$('paste-dialog').showModal();

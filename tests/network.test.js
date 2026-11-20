@@ -28,7 +28,7 @@ test('token refresh for the same account does not break eligibility',async()=>{
  const s=setup();s.network.arm(3);s.network.start();s.setProfile({id:'user',username:'Abid'});s.network.accountChanged();await s.network.finish(replay);assert.ok(s.calls[1].args.replay);
 });
 test('rapid solves preserve server ordering and retain their own recording snapshots',async()=>{
- const s=setup();s.network.arm(3);s.network.start();const first=s.network.finish({...replay,solveMs:2000});s.network.arm(3);s.network.start();const second=s.network.finish({...replay,solveMs:3000});await Promise.all([first,second]);assert.deepEqual(s.calls.map(c=>c.name),['begin_attempt','finish_attempt','begin_attempt','finish_attempt']);assert.deepEqual(s.calls.filter(c=>c.name==='finish_attempt').map(c=>c.args.replay.solveMs),[2000,3000]);
+ const s=setup();s.network.arm(3);s.network.start();const first=s.network.finish({...replay,solveMs:2000});s.network.arm(3);s.network.start();const second=s.network.finish({...replay,solveMs:3000});await Promise.all([first,second]);assert.deepEqual(s.calls.map(c=>c.name),['begin_attempt','record_online_attempt','begin_attempt','record_online_attempt']);assert.deepEqual(s.calls.filter(c=>c.name==='record_online_attempt').map(c=>c.args.replay.solveMs),[2000,3000]);
 });
 test('offline results are never replayed on reconnect',async()=>{
  const s=setup();s.network.arm(3);s.network.start();await s.network.queue;s.setOnline(false);await s.network.finish(replay);s.setOnline(true);await s.network.queue;assert.equal(s.calls.length,1);
@@ -39,4 +39,29 @@ test('a failed request breaks the sequence and does not cause an unhandled rejec
 
 test('signing in during inspection qualifies when the actual solve starts online',async()=>{
  const s=setup();s.setProfile(null);s.network.arm(3);s.setProfile({id:'user',username:'Abid'});s.network.accountChanged();s.network.start();await s.network.finish(replay);assert.equal(s.calls.length,2);assert.equal(s.calls[1].args.replay.solver.username,'Abid');
+});
+
+test('PB recording prepares candidates; only the explicit submit call enters the review queue',async()=>{
+ const calls=[],rows=[],messages=[],profile={id:'user'};
+ let resolveSubmit;const network=new OnlineAttempts({getProfile:()=>profile,status:m=>messages.push(m),onCandidates:c=>rows.push(c),online:()=>true,rpc:async(name,args)=>{calls.push({name,args});if(name==='begin_attempt')return 'attempt';if(name==='record_online_attempt')return {dnf:false,candidates:[{id:'pb',metric:'single',ms:1000,evidence_complete:true}]};if(name==='submit_leaderboard')return new Promise(resolve=>{resolveSubmit=resolve;});}});
+ network.arm(3);network.start();await network.finish(replay);assert.deepEqual(calls.map(c=>c.name),['begin_attempt','record_online_attempt']);assert.equal(rows.at(-1)[0].id,'pb');assert.equal(rows.at(-1)[0].busy,false);
+ const a=network.submit('pb'),b=network.submit('pb');assert.equal(a,b);await Promise.resolve();assert.equal(calls.filter(c=>c.name==='submit_leaderboard').length,1);assert.equal(rows.at(-1)[0].busy,true);resolveSubmit({status:'pending'});await a;assert.deepEqual(rows.at(-1),[]);assert.match(messages.at(-1),/administrator approval/);
+});
+test('undo PBs show the invalid result without sending a submission',async()=>{
+ const messages=[],calls=[];const network=new OnlineAttempts({getProfile:()=>({id:'u'}),online:()=>true,status:m=>messages.push(m),rpc:async(name,args)=>{calls.push(name);return name==='begin_attempt'?'ticket':{dnf:true,invalid_pb:true,candidates:[]};}});network.arm(3);network.start();network.markUndo();await network.finish(replay,{localPB:true});assert.match(messages.at(-1),/PB solve is invalid.*undo/);assert.equal(calls.includes('submit_leaderboard'),false);
+});
+test('old backend failures never fall back to an auto-submitting RPC',async()=>{
+ const calls=[],messages=[];const network=new OnlineAttempts({getProfile:()=>({id:'u'}),online:()=>true,status:m=>messages.push(m),rpc:async name=>{calls.push(name);if(name==='begin_attempt')return 'ticket';throw Error('Could not find public.record_online_attempt');}});network.arm(3);network.start();await network.finish(replay);assert.deepEqual(calls,['begin_attempt','record_online_attempt']);assert.match(messages.at(-1),/unavailable.*backend update.*saved on this device/);
+});
+test('account changes clear PB actions and ignore a stale candidate response',async()=>{
+ let profile={id:'first'},resolve;const rows=[];const network=new OnlineAttempts({getProfile:()=>profile,online:()=>true,onCandidates:r=>rows.push(r),rpc:async()=>new Promise(r=>{resolve=r;})});const load=network.loadCandidates();profile={id:'second'};network.accountChanged();resolve([{id:'private',metric:'single',ms:100,evidence_complete:true}]);await load;assert.deepEqual(rows.at(-1),[]);
+});
+
+test('a local undo PB still explains its ineligibility without an online ticket',async()=>{
+ const messages=[];const network=new OnlineAttempts({getProfile:()=>null,online:()=>true,rpc:async()=>{throw Error('No network request should be sent');},status:m=>messages.push(m)});network.arm(3);network.markUndo();await network.finish({...replay,usedUndo:true},{localPB:true});assert.match(messages.at(-1),/PB solve is invalid.*undo/);
+});
+
+test('timer-only legacy averages never expose a submit action',async()=>{
+ const calls=[],snapshots=[];const network=new OnlineAttempts({getProfile:()=>({id:'u'}),online:()=>true,onCandidates:rows=>snapshots.push(rows),rpc:async(name,args)=>{calls.push(name);if(name==='begin_attempt')return 'ticket';if(name==='record_online_attempt')return {candidates:[{id:'legacy',metric:'ao5',ms:1000},{id:'complete',metric:'single',ms:1200,evidence_complete:true}]};if(name==='my_leaderboard_candidates')return [{id:'legacy',metric:'ao12',ms:1000,evidence_complete:false}];}});
+ network.arm(3);network.start();await network.finish(replay);assert.deepEqual(snapshots.at(-1).map(row=>row.id),['complete']);await network.submit('legacy');assert.equal(calls.includes('submit_leaderboard'),false);await network.loadCandidates();assert.deepEqual(snapshots.at(-1),[]);
 });

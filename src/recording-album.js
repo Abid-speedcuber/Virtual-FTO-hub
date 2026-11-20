@@ -71,8 +71,24 @@ export class RecordingAlbum extends EventTarget{
  async list(){await this.flush();return (await this.rows()).map(metadata).sort((a,b)=>Date.parse(b.completedAt)-Date.parse(a.completedAt)||Date.parse(b.savedAt)-Date.parse(a.savedAt)||a.id.localeCompare(b.id));}
  async get(id){const db=await this.open();const row=await new Promise((resolve,reject)=>{const request=db.transaction('recordings').objectStore('recordings').get(id);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});if(!row)throw Error('Recording is no longer in the album');return decodeRecording(row.payload);}
  async has(id){await this.flush();const db=await this.open();return new Promise((resolve,reject)=>{const request=db.transaction('recordings').objectStore('recordings').getKey(id);request.onsuccess=()=>resolve(request.result!==undefined);request.onerror=()=>reject(request.error);});}
- async remove(id){
-  await this.flush();const db=await this.open();return new Promise((resolve,reject)=>{const tx=db.transaction(['recordings','deleted-recordings','average-groups'],'readwrite');let failure;const groups=tx.objectStore('average-groups').getAll();groups.onsuccess=()=>{if(groups.result.some(g=>g.members.some(m=>m.id===id))){failure=Error('This recording belongs to a saved average. Delete that average first.');tx.abort();return;}const store=tx.objectStore('recordings'),get=store.get(id);get.onsuccess=()=>{if(!get.result)return;store.delete(id);tx.objectStore('deleted-recordings').put({id,deletedAt:new Date().toISOString(),pb:get.result.pb});};};tx.oncomplete=()=>{resolve();this.dispatchEvent(new Event('change'));};tx.onabort=()=>reject(failure??tx.error??Error('Could not delete recording'));});
+ async remove(id){return this.removeMany({recordingIDs:[id]});}
+ async removeMany({recordingIDs=[],groupIDs=[]}={}){
+  if(!Array.isArray(recordingIDs)||!Array.isArray(groupIDs)||recordingIDs.length>20000||groupIDs.length>2000||recordingIDs.some(id=>!/^r-[a-f0-9]{64}$/.test(id))||groupIDs.some(id=>!/^a-[a-f0-9]{64}$/.test(id)))throw Error('Invalid album selection');
+  const selected=new Set(recordingIDs),selectedGroups=new Set(groupIDs);await this.flush();const db=await this.open();
+  return new Promise((resolve,reject)=>{
+   const tx=db.transaction(['recordings','deleted-recordings','average-groups','solve-windows'],'readwrite'),store=tx.objectStore('recordings'),groups=tx.objectStore('average-groups'),windows=tx.objectStore('solve-windows');let failure,allGroups,allWindows,removed=0,removedGroups=0;
+   const apply=()=>{
+    if(!allGroups||!allWindows)return;
+    const kept=new Set(allGroups.filter(group=>!selectedGroups.has(group.id)).flatMap(group=>group.members.map(member=>member.id)));
+    if([...selected].some(id=>kept.has(id))){failure=Error('This recording belongs to a saved average. Select that average too, or leave its recording unselected.');tx.abort();return;}
+    const affected=new Set(selected),recent=new Set(allWindows.flatMap(window=>window.entries.map(entry=>entry.id)));
+    for(const group of allGroups)if(selectedGroups.has(group.id)){groups.delete(group.id);removedGroups++;for(const member of group.members)if(member.id)affected.add(member.id);}
+    for(const window of allWindows)if(window.entries.some(entry=>selected.has(entry.id)))windows.put({...window,entries:window.entries.map(entry=>selected.has(entry.id)?{...entry,id:null}:entry)});
+    for(const id of affected){const get=store.get(id);get.onsuccess=()=>{const row=get.result;if(!row)return;const explicit=selected.has(id);if(!explicit&&(kept.has(id)||recent.has(id)||row.pb||row.manual!==false||row.averagePB?.length))return;store.delete(id);removed++;if(explicit)tx.objectStore('deleted-recordings').put({id,deletedAt:new Date().toISOString(),pb:row.pb});};}
+   };
+   const readGroups=groups.getAll();readGroups.onsuccess=()=>{allGroups=readGroups.result;apply();};const readWindows=windows.getAll();readWindows.onsuccess=()=>{allWindows=readWindows.result;apply();};
+   tx.oncomplete=()=>{resolve({recordings:removed,groups:removedGroups});this.dispatchEvent(new Event('change'));};tx.onabort=()=>reject(failure??tx.error??Error('Could not delete album selection'));
+  });
  }
  async listGroups(){await this.flush();return (await this.rows('average-groups')).sort((a,b)=>Date.parse(b.completedAt)-Date.parse(a.completedAt)||a.id.localeCompare(b.id));}
  async getGroup(id){const groups=await this.listGroups(),group=groups.find(g=>g.id===id);if(!group)throw Error('This average is no longer in the album');return group;}
@@ -97,9 +113,7 @@ export class RecordingAlbum extends EventTarget{
    tx.oncomplete=()=>{resolve(group);this.dispatchEvent(new Event('change'));};tx.onabort=()=>reject(failure??tx.error??Error('Could not save average'));
   });this.pending.add(task);task.finally(()=>this.pending.delete(task)).catch(()=>{});return task;
  }
- async removeGroup(id){
-  await this.flush();const db=await this.open();return new Promise((resolve,reject)=>{const tx=db.transaction(['recordings','average-groups','solve-windows'],'readwrite'),groups=tx.objectStore('average-groups'),request=groups.getAll();request.onsuccess=()=>{const group=request.result.find(g=>g.id===id);if(!group)return;groups.delete(id);const keep=new Set(request.result.filter(g=>g.id!==id).flatMap(g=>g.members.map(m=>m.id))),windows=tx.objectStore('solve-windows').getAll();windows.onsuccess=()=>{for(const window of windows.result)for(const member of window.entries)keep.add(member.id);const store=tx.objectStore('recordings');for(const member of group.members){if(!member.id||keep.has(member.id))continue;const get=store.get(member.id);get.onsuccess=()=>{const row=get.result;if(row&&!row.pb&&row.manual===false&&!row.averagePB?.length)store.delete(row.id);};}};};tx.oncomplete=()=>{resolve();this.dispatchEvent(new Event('change'));};tx.onabort=()=>reject(tx.error??Error('Could not delete average'));});
- }
+ async removeGroup(id){return this.removeMany({groupIDs:[id]});}
  async exportGroup(group){
   const backup=await this.export(),ids=new Set(group.members.map(m=>m.id).filter(Boolean));
   const entries=backup.entries.filter(row=>ids.has(row.id)).map(row=>({...row,pb:false,manual:false,averagePB:[],recent:false}));

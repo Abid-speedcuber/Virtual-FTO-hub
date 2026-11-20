@@ -37,3 +37,5 @@ Keep the backup file for recovery. Clearing browser site data also clears the
 app’s local times, recordings, methods and preferences.
 
 For a single average, use **Statistics → Share → Download JSON**. Its `fto-recording-average-v1` file includes the average and unique member recordings. **Recording album → Import recording** merges this package into the album; repeated imports reuse existing entries and leave timer history unchanged.
+
+Album bulk deletion removes the selected local recordings and saved-average entries in one transaction after confirmation. Timer history and PB times are preserved. Recording deletion markers are included in backups; notification read state is held separately in the signed-in account on Supabase.

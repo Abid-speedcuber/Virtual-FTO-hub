@@ -6,7 +6,7 @@ import {KeyboardEngine,validateConfig,defaultConfig} from './keyboard-engine.js'
 import {RecordingTimeline,withoutInspection,withoutPauses} from './solve-recording.js';
 export class ReplayPresentation{
  constructor(original){
-  this.data=withoutPauses(withoutInspection(original));this.data.splitData=migrateCustomTrace(this.data.splitData,this.data.size);if(this.data.previousBest)this.data.previousBest.splitData=migrateCustomTrace(this.data.previousBest.splitData,this.data.size);this.soundEvents=recordedSounds(this.data);this.timeline=new RecordingTimeline(this.data);this.turnMs=160;this.scrambleMs=this.data.initial.scramble.length*this.turnMs;this.pauseMs=1000;this.orbitMs=2000;this.orbitStart=this.scrambleMs+this.pauseMs;this.readyStart=this.orbitStart+this.orbitMs;this.introMs=this.readyStart+this.pauseMs;this.duration=this.introMs+this.data.duration;
+  this.data=withoutPauses(withoutInspection(original));this.data.splitData=migrateCustomTrace(this.data.splitData,this.data.size);if(this.data.previousBest)this.data.previousBest.splitData=migrateCustomTrace(this.data.previousBest.splitData,this.data.size);this.soundEvents=recordedSounds(this.data);this.timeline=new RecordingTimeline(this.data);this.turnMs=160;this.scrambleMs=this.data.initial.scramble.length*this.turnMs;this.aligned=Math.abs(new THREE.Quaternion().fromArray(snappedViewRotation(DEFAULT_CIF_FRAME).toArray()).dot(new THREE.Quaternion().fromArray(this.data.initial.view.rotation)))>1-1e-6;this.pauseMs=this.aligned?200:1000;this.orbitMs=this.aligned?(Math.abs(HOME_POSITION.length()-this.data.initial.view.radius)>.01?200:0):2000;this.readyPauseMs=this.aligned?300:1000;this.orbitStart=this.scrambleMs+this.pauseMs;this.readyStart=this.orbitStart+this.orbitMs;this.introMs=this.readyStart+this.readyPauseMs;this.duration=this.introMs+this.data.duration;
   const homeFrame=DEFAULT_CIF_FRAME,rotation=snappedViewRotation(homeFrame);this.scrambleTokens=formatScramble(this.data.initial.scramble,this.data.size,homeFrame);this.home={rotation:rotation.toArray(),radius:HOME_POSITION.length()};
   this.states=[solvedState(this.data.size)];for(const move of this.data.initial.scramble)this.states.push(applyMove(this.states.at(-1),move));
  }
@@ -17,7 +17,7 @@ export class ReplayPresentation{
   if(at<this.orbitStart)return {...still,view:this.home,stage:'Scramble complete'};
   if(at<this.readyStart){
    const p=(at-this.orbitStart)/this.orbitMs,progress=p*p*(3-2*p),rotation=new THREE.Quaternion().fromArray(this.home.rotation).slerp(new THREE.Quaternion().fromArray(this.data.initial.view.rotation),progress).toArray();
-   return {...still,view:{rotation,radius:this.home.radius+(this.data.initial.view.radius-this.home.radius)*progress},stage:'Reorienting'};
+   return {...still,view:{rotation,radius:this.home.radius+(this.data.initial.view.radius-this.home.radius)*progress},stage:this.aligned?'Adjusting view':'Reorienting'};
   }
   if(at<this.introMs)return {...still,view:this.data.initial.view,stage:'Ready'};
   return {...this.timeline.frame(at-this.introMs),stage:'Solve'};

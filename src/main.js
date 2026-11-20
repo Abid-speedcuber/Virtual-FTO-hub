@@ -342,7 +342,7 @@ function commitAction(action,move){
   if(action.type==='undo')phaseTracker.rewind(state,elapsed,{turnIndex:history.length-undoFloor});else phaseTracker.observe(state,elapsed,{finished:solved,turnIndex:history.length-undoFloor});
   if(solved&&session.finish(phaseTracker.serialize(),elapsed)){
    const recording=recorder.finish(session.lastMs,session.newBest,phaseTracker.serialize());
-   network.finish(recording);
+   network.finish(recording,{localPB:session.newBest});
    archiveAttempt(recording);
    solveEnd=history.length;undoFloor=solveEnd;redo=[];
    if($('auto-default-mode').checked)keyboard?.returnToDefault();

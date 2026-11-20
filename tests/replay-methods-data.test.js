@@ -64,3 +64,13 @@ test('migrating an unfinished last-layer checkpoint does not mark the renamed fi
  const legacy={profile:{method:'custom',phases:[{name:'FB',type:'pattern',stickers:[0]},{name:'LL',type:'pattern',stickers:[1]},{name:'Finish',type:'finish'}]},groups:[{start:0,end:0,ms:10},{start:1,end:1,ms:20}],complete:false};
  const next=migrateCustomTrace(legacy,3);assert.deepEqual(next.groups.map(g=>g.end),[0]);assert.equal(next.profile.phases.at(-1).name,'LL');assert.equal(next.complete,false);
 });
+
+test('home-oriented recordings skip the orbit and shorten intro waits, including equivalent quaternion signs',async()=>{
+ const {DEFAULT_CIF_FRAME,snappedViewRotation,HOME_POSITION}=await import('../src/orientation.js');
+ for(const sign of [1,-1]){
+  let now=0;const recorder=new SolveRecorder({},()=>now),rotation=snappedViewRotation(DEFAULT_CIF_FRAME).toArray().map(n=>n*sign);
+  recorder.arm({size:3,scramble:[],view:{rotation,radius:HOME_POSITION.length()},keyboard:defaultConfig(3),colors:{}});recorder.event('start');now=500;const data=recorder.finish(500,false),presentation=new ReplayPresentation(data);
+  assert.equal(presentation.orbitMs,0);assert.equal(presentation.introMs,500);assert.equal(presentation.frame(199).stage,'Scramble complete');assert.equal(presentation.frame(200).stage,'Ready');assert.equal(presentation.frame(500).stage,'Solve');assert.equal(presentation.duration,1000);
+  data.initial.view.radius=10;const zoom=new ReplayPresentation(data);assert.equal(zoom.orbitMs,200);assert.equal(zoom.frame(300).stage,'Adjusting view');assert.equal(zoom.introMs,700);
+ }
+});
