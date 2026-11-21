@@ -1,0 +1,15 @@
+node_modules/
+dist/
+repo/
+src/vendor/
+public/shared/
+public/*.svg
+public/*.json
+public/*.webmanifest
+package-lock.json
+test-results/
+playwright-report/
+
+# Generated copyright/reference and third-party assets stay byte-for-byte intact.
+LICENSE
+NOTICE.md

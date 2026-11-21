@@ -35,17 +35,17 @@ The UTF-8 JSON object contains:
 
 Event types:
 
-| Type | Recorded data |
-| --- | --- |
-| `key` | Physical `code`, `down`/`up` edge, repeat flag and Shift/Ctrl/Alt/Meta flags; includes virtual-key input |
-| `pointer` | Pointer edge, normalized viewport coordinates, button, pointer ID and wheel delta |
-| `view` | The displayed quaternion, radius and current U/F notation hold |
-| `start` | First accepted turn |
-| `reset-input` | Clear held keys and pending modifiers at a pause cut |
-| `sound` | Actual move-click or suffix-tone decisions made during the solve |
-| `accept` | Accepted action ID, source, action type and official elapsed time |
-| `animate` | Action ID, resolved geometric move and animation duration |
-| `turn` | Action ID and the geometric move actually committed |
+| Type          | Recorded data                                                                                            |
+| ------------- | -------------------------------------------------------------------------------------------------------- |
+| `key`         | Physical `code`, `down`/`up` edge, repeat flag and Shift/Ctrl/Alt/Meta flags; includes virtual-key input |
+| `pointer`     | Pointer edge, normalized viewport coordinates, button, pointer ID and wheel delta                        |
+| `view`        | The displayed quaternion, radius and current U/F notation hold                                           |
+| `start`       | First accepted turn                                                                                      |
+| `reset-input` | Clear held keys and pending modifiers at a pause cut                                                     |
+| `sound`       | Actual move-click or suffix-tone decisions made during the solve                                         |
+| `accept`      | Accepted action ID, source, action type and official elapsed time                                        |
+| `animate`     | Action ID, resolved geometric move and animation duration                                                |
+| `turn`        | Action ID and the geometric move actually committed                                                      |
 
 Moves use the simulator's signed integer face normals, direction `1` or `-1`,
 layer kind, and slice depth/count where relevant. Commit events include Undo and

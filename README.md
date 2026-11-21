@@ -103,7 +103,6 @@ Every sticker vertex uses an integer lattice. A turn is an exact signed coordina
 
 3×3 scrambles use [csTimer author Chen Shuang’s random-state FTO scrambler](https://gist.github.com/cs0x7f/1579492aa43c794d529057386c489702): sample a legal state, solve it, and invert that solution. Generation runs locally in `src/worker.js`. One scramble is prepared when the app opens; consuming it immediately starts preparing the next one, so normal scramble requests do not wait for generation. Other sizes keep their random-move scrambles. Both animated and instant scrambling use the generated sequence; the timer starts on your first turn afterward.
 
-
 - `npm test`: geometry, inverse/permutation stress, all 48 CIF/EIF holds, gestures, keyboard resolution, pacing, and timers.
 - `npm run test:browser`: real mouse/touch/keyboard input, suffixes, modes, pause/resume, persistence, recordings, and responsive layout. Requires Google Chrome or Playwright Chromium.
 - `npm run preview`: serve the production build.

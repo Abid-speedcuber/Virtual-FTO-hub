@@ -6,13 +6,13 @@ Measured November 17, 2026 against commit `f7da6ee`. The retained changes batch 
 
 Median wall time for each workload, after one warm-up and five measured repetitions. Lower is better.
 
-| Workload | Before | After | Reduction |
-| --- | ---: | ---: | ---: |
-| 4×4 replay: 8 animated frames | 196.0 ms | 11.1 ms | 94.3% |
-| Replay keyboard: 60 updates without a key-state change | 6125.3 ms | 139.2 ms | 97.7% |
-| Split table: 60 timer updates | 37.6 ms | 13.1 ms | 65.2% |
-| Live input: 20 turns | 9331.4 ms | 3854.1 ms | 58.7% |
-| Live input: 20 turns with a retained 10,001-event recording | 11117.6 ms | 3462.0 ms | 68.9% |
+| Workload                                                    |     Before |     After | Reduction |
+| ----------------------------------------------------------- | ---------: | --------: | --------: |
+| 4×4 replay: 8 animated frames                               |   196.0 ms |   11.1 ms |     94.3% |
+| Replay keyboard: 60 updates without a key-state change      |  6125.3 ms |  139.2 ms |     97.7% |
+| Split table: 60 timer updates                               |    37.6 ms |   13.1 ms |     65.2% |
+| Live input: 20 turns                                        |  9331.4 ms | 3854.1 ms |     58.7% |
+| Live input: 20 turns with a retained 10,001-event recording | 11117.6 ms | 3462.0 ms |     68.9% |
 
 The largest replay improvements came from avoiding repeated keyboard work and batching sticker geometry. The live-input figures combine buffer reuse, keyboard caching, split-row reuse, and deferred checkpoints; they do not isolate the contribution of each change.
 

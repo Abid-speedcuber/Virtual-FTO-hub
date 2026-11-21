@@ -9,15 +9,15 @@ Keys display actions rather than physical letters. Unbound shortcut-prefix keys 
 Each puzzle size has independent, editable bindings. Every size has CIF, EIF-R, and EIF-L, with outer moves, number suffixes, Shift for Slice, and common commands. Only 3×3 also includes **E– cntr**.
 
 | Physical keys | CIF moves |
-| --- | --- |
-| F / J | U′ / U |
-| G / H | F′ / F |
-| E / D | L′ / L |
-| I / K | R / R′ |
-| R / U | B′ / B |
-| S / W | BL / BL′ |
-| L / O | BR′ / BR |
-| A / ; | D / D′ |
+| ------------- | --------- |
+| F / J         | U′ / U    |
+| G / H         | F′ / F    |
+| E / D         | L′ / L    |
+| I / K         | R / R′    |
+| R / U         | B′ / B    |
+| S / W         | BL / BL′  |
+| L / O         | BR′ / BR  |
+| A / ;         | D / D′    |
 
 Numbers 2–9 select that width; 0 selects 10, and 1 selects 11. Shift+1–9 selects 11–19; Shift+0 selects 20. Shift+8 (`*`) or NumpadMultiply selects 18. Two-wide suffixes are labeled **Wide**. Out-of-range suffixes are blank and inactive; full-size widths are labeled **Rot** and rotate the view without adding a turn, TPS, or timer start.
 

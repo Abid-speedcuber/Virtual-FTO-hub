@@ -1,12 +1,19 @@
 // Render the app's actual 2x2 geometry, square-on, into a transparent PNG.
 // Run with the Vite dev server available: node scripts/render-logo.mjs [origin]
-import {chromium} from '@playwright/test';
-import {writeFile} from 'node:fs/promises';
-const origin=process.argv[2]??'http://127.0.0.1:5173';
-const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||'/usr/bin/google-chrome',args:['--no-sandbox','--enable-unsafe-swiftshader']});
-try{
- const page=await browser.newPage({viewport:{width:1024,height:1024}});
- await page.route('**/logo-render.html',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><head><style>html,body{margin:0;background:transparent}canvas{display:block}</style><script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js"}}</script></head><body><script type="module">
+import { chromium } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
+const origin = process.argv[2] ?? 'http://127.0.0.1:5173';
+const browser = await chromium.launch({
+  headless: true,
+  executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
+  args: ['--no-sandbox', '--enable-unsafe-swiftshader'],
+});
+try {
+  const page = await browser.newPage({ viewport: { width: 1024, height: 1024 } });
+  await page.route('**/logo-render.html', (route) =>
+    route.fulfill({
+      contentType: 'text/html',
+      body: `<!doctype html><html><head><style>html,body{margin:0;background:transparent}canvas{display:block}</style><script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js"}}</script></head><body><script type="module">
  import * as THREE from 'three';
  import {solvedState,FACES} from '/src/puzzle.js';
  import {bodyGeometry} from '/src/body-geometry.js';
@@ -29,9 +36,13 @@ try{
  }
  positions.forEach((vertices,i)=>add(vertices,FACES[i].color));
  renderer.render(scene,camera);window.logoPNG=renderer.domElement.toDataURL('image/png');
- </script></body></html>`}));
- await page.goto(`${origin}/logo-render.html`);
- await page.waitForFunction(()=>window.logoPNG);
- const png=await page.evaluate(()=>window.logoPNG.split(',')[1]);
- await writeFile(new URL('../public/logo.png',import.meta.url),Buffer.from(png,'base64'));
-}finally{await browser.close();}
+ </script></body></html>`,
+    }),
+  );
+  await page.goto(`${origin}/logo-render.html`);
+  await page.waitForFunction(() => window.logoPNG);
+  const png = await page.evaluate(() => window.logoPNG.split(',')[1]);
+  await writeFile(new URL('../public/logo.png', import.meta.url), Buffer.from(png, 'base64'));
+} finally {
+  await browser.close();
+}

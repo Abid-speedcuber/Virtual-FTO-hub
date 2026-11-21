@@ -1,73 +1,223 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {SolveRecorder,validateRecording,recordingFrame} from '../src/solve-recording.js';
-import {solvedState,applyMove,inverse,signature,isSolved} from '../src/puzzle.js';
-const U={normal:[1,1,1],layer:'slice',depth:1,count:1,dir:1,name:'U'},R={normal:[1,1,-1],layer:'slice',depth:1,count:1,dir:1,name:'R'};
-const view={rotation:[0,0,0,1],radius:10};
-const arm=(recorder,size=3)=>recorder.arm({size,scramble:[U,R],view,keyboard:{preset:'abid'},colors:{U:'#ffffff'}});
+import { SolveRecorder, validateRecording, recordingFrame } from '../src/solve-recording.js';
+import { solvedState, applyMove, inverse, signature, isSolved } from '../src/puzzle.js';
+const U = { normal: [1, 1, 1], layer: 'slice', depth: 1, count: 1, dir: 1, name: 'U' },
+  R = { normal: [1, 1, -1], layer: 'slice', depth: 1, count: 1, dir: 1, name: 'R' };
+const view = { rotation: [0, 0, 0, 1], radius: 10 };
+const arm = (recorder, size = 3) =>
+  recorder.arm({
+    size,
+    scramble: [U, R],
+    view,
+    keyboard: { preset: 'abid' },
+    colors: { U: '#ffffff' },
+  });
 
-test('recordings retain raw keys, views and interrupted turns while excluding pauses on 2x2–4x4',()=>{
- for(const size of [2,3,4]){
-  let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder,size);
-  now=20;recorder.event('key',{code:'KeyF',edge:'down',repeat:false});recorder.event('start');const id=recorder.accept({type:'move',elapsedMs:0});
-  recorder.event('animate',{id,move:inverse(R),duration:145});now=50;recorder.view({rotation:[0,.6,0,.8],radius:11},{up:'U',front:'F',notation:'CIF'});
-  now=60;recorder.event('turn',{id,move:inverse(R)}); // animation was interrupted
-  now=70;recorder.event('key',{code:'KeyF',edge:'up'});recorder.event('pause');now=700;recorder.event('resume');
-  now=730;const second=recorder.accept({type:'move',elapsedMs:80});recorder.event('turn',{id:second,move:inverse(U)});recorder.finish(80,true);
-  const recording=validateRecording(recorder.last);assert.equal(recording.size,size);assert.equal(recording.events.find(e=>e.type==='key').at,0);
-  const during=recordingFrame(recording,20);assert.equal(during.motions.length,1);assert.deepEqual(during.keys,['KeyF']);
-  const interrupted=recordingFrame(recording,45);assert.equal(interrupted.motions.length,0);assert.equal(interrupted.view.radius,11);
-  assert.equal(recording.duration,80);assert.ok(!recording.events.some(e=>['pause','resume'].includes(e.type)));const afterCut=recordingFrame(recording,55);assert.equal(afterCut.paused,false);assert.equal(afterCut.elapsed,55);
-  const final=recordingFrame(recording,recording.duration);assert.ok(isSolved(final.state));assert.equal(final.elapsed,80);assert.equal(final.motions.length,0);
-  assert.equal(signature(recordingFrame(recording,0).state),signature([U,R].reduce(applyMove,solvedState(size))));
- }
+test('recordings retain raw keys, views and interrupted turns while excluding pauses on 2x2–4x4', () => {
+  for (const size of [2, 3, 4]) {
+    let now = 0;
+    const recorder = new SolveRecorder({}, () => now);
+    arm(recorder, size);
+    now = 20;
+    recorder.event('key', { code: 'KeyF', edge: 'down', repeat: false });
+    recorder.event('start');
+    const id = recorder.accept({ type: 'move', elapsedMs: 0 });
+    recorder.event('animate', { id, move: inverse(R), duration: 145 });
+    now = 50;
+    recorder.view(
+      { rotation: [0, 0.6, 0, 0.8], radius: 11 },
+      { up: 'U', front: 'F', notation: 'CIF' },
+    );
+    now = 60;
+    recorder.event('turn', { id, move: inverse(R) }); // animation was interrupted
+    now = 70;
+    recorder.event('key', { code: 'KeyF', edge: 'up' });
+    recorder.event('pause');
+    now = 700;
+    recorder.event('resume');
+    now = 730;
+    const second = recorder.accept({ type: 'move', elapsedMs: 80 });
+    recorder.event('turn', { id: second, move: inverse(U) });
+    recorder.finish(80, true);
+    const recording = validateRecording(recorder.last);
+    assert.equal(recording.size, size);
+    assert.equal(recording.events.find((e) => e.type === 'key').at, 0);
+    const during = recordingFrame(recording, 20);
+    assert.equal(during.motions.length, 1);
+    assert.deepEqual(during.keys, ['KeyF']);
+    const interrupted = recordingFrame(recording, 45);
+    assert.equal(interrupted.motions.length, 0);
+    assert.equal(interrupted.view.radius, 11);
+    assert.equal(recording.duration, 80);
+    assert.ok(!recording.events.some((e) => ['pause', 'resume'].includes(e.type)));
+    const afterCut = recordingFrame(recording, 55);
+    assert.equal(afterCut.paused, false);
+    assert.equal(afterCut.elapsed, 55);
+    const final = recordingFrame(recording, recording.duration);
+    assert.ok(isSolved(final.state));
+    assert.equal(final.elapsed, 80);
+    assert.equal(final.motions.length, 0);
+    assert.equal(
+      signature(recordingFrame(recording, 0).state),
+      signature([U, R].reduce(applyMove, solvedState(size))),
+    );
+  }
 });
 
-test('last solve changes each finish, PB stays until a new best, and both survive serialization',()=>{
- let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder);now=100;recorder.finish(100,true);const pb=recorder.pb;
- assert.equal(recorder.serialize().pbIsLast,true);
- arm(recorder);now=300;recorder.finish(200,false);assert.equal(recorder.pb,pb);assert.equal(recorder.last.solveMs,200);
- const restored=new SolveRecorder(JSON.parse(JSON.stringify(recorder.serialize())),()=>now);assert.equal(restored.pb.solveMs,100);assert.equal(restored.last.solveMs,200);
- arm(restored);now=350;restored.finish(50,true);assert.equal(restored.pb,restored.last);assert.equal(restored.pb.solveMs,50);
- restored.discard();assert.ok(restored.last);assert.ok(restored.pb);
- arm(restored,5);assert.equal(restored.attempt,null);
+test('last solve changes each finish, PB stays until a new best, and both survive serialization', () => {
+  let now = 0;
+  const recorder = new SolveRecorder({}, () => now);
+  arm(recorder);
+  now = 100;
+  recorder.finish(100, true);
+  const pb = recorder.pb;
+  assert.equal(recorder.serialize().pbIsLast, true);
+  arm(recorder);
+  now = 300;
+  recorder.finish(200, false);
+  assert.equal(recorder.pb, pb);
+  assert.equal(recorder.last.solveMs, 200);
+  const restored = new SolveRecorder(JSON.parse(JSON.stringify(recorder.serialize())), () => now);
+  assert.equal(restored.pb.solveMs, 100);
+  assert.equal(restored.last.solveMs, 200);
+  arm(restored);
+  now = 350;
+  restored.finish(50, true);
+  assert.equal(restored.pb, restored.last);
+  assert.equal(restored.pb.solveMs, 50);
+  restored.discard();
+  assert.ok(restored.last);
+  assert.ok(restored.pb);
+  arm(restored, 5);
+  assert.equal(restored.attempt, null);
 });
 
-test('an unfinished recording survives reload with its original event times and animation IDs',()=>{
- let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder);now=50;recorder.event('start');const id=recorder.accept({type:'move',elapsedMs:0});recorder.event('pause');
- const restored=new SolveRecorder(JSON.parse(JSON.stringify(recorder.serialize())),()=>now);now=500;restored.event('resume');assert.ok(restored.accept({type:'undo',elapsedMs:20})>id);
- assert.equal(restored.attempt.events[0].at,0);assert.equal(restored.attempt.events.at(-1).at,0);
+test('an unfinished recording survives reload with its original event times and animation IDs', () => {
+  let now = 0;
+  const recorder = new SolveRecorder({}, () => now);
+  arm(recorder);
+  now = 50;
+  recorder.event('start');
+  const id = recorder.accept({ type: 'move', elapsedMs: 0 });
+  recorder.event('pause');
+  const restored = new SolveRecorder(JSON.parse(JSON.stringify(recorder.serialize())), () => now);
+  now = 500;
+  restored.event('resume');
+  assert.ok(restored.accept({ type: 'undo', elapsedMs: 20 }) > id);
+  assert.equal(restored.attempt.events[0].at, 0);
+  assert.equal(restored.attempt.events.at(-1).at, 0);
 });
 
-test('shared recordings reject corrupt views, moves, event types, times and incomplete files',()=>{
- let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder);recorder.event('start');now=10;recorder.event('turn',{id:1,move:U});recorder.finish(10,true);
- for(const mutate of [d=>d.size=20,d=>d.initial.view.rotation=[0,0,0,0],d=>d.events.find(e=>e.type==='turn').move.normal=[0,1,0],d=>d.events[0].at=-1,d=>d.events[0].type='script',d=>d.complete=false,d=>d.duration=0]){
-  const data=structuredClone(recorder.last);mutate(data);assert.throws(()=>validateRecording(data));
- }
+test('shared recordings reject corrupt views, moves, event types, times and incomplete files', () => {
+  let now = 0;
+  const recorder = new SolveRecorder({}, () => now);
+  arm(recorder);
+  recorder.event('start');
+  now = 10;
+  recorder.event('turn', { id: 1, move: U });
+  recorder.finish(10, true);
+  for (const mutate of [
+    (d) => (d.size = 20),
+    (d) => (d.initial.view.rotation = [0, 0, 0, 0]),
+    (d) => (d.events.find((e) => e.type === 'turn').move.normal = [0, 1, 0]),
+    (d) => (d.events[0].at = -1),
+    (d) => (d.events[0].type = 'script'),
+    (d) => (d.complete = false),
+    (d) => (d.duration = 0),
+  ]) {
+    const data = structuredClone(recorder.last);
+    mutate(data);
+    assert.throws(() => validateRecording(data));
+  }
 });
 
-test('incremental playback matches independent seeking forwards and backwards',async()=>{
- const {RecordingTimeline}=await import('../src/solve-recording.js');let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder);
- now=10;recorder.event('start');now=50;recorder.event('animate',{id:1,move:inverse(R),duration:100});now=80;recorder.event('turn',{id:1,move:inverse(R)});now=100;recorder.event('pause');now=500;recorder.event('resume');now=550;recorder.event('turn',{id:2,move:inverse(U)});recorder.finish(150,true);
- const timeline=new RecordingTimeline(recorder.last);
- for(const at of [0,20,60,90,120,400,510,550,600,70,30,0,550])assert.deepEqual(timeline.frame(at),recordingFrame(recorder.last,at));
+test('incremental playback matches independent seeking forwards and backwards', async () => {
+  const { RecordingTimeline } = await import('../src/solve-recording.js');
+  let now = 0;
+  const recorder = new SolveRecorder({}, () => now);
+  arm(recorder);
+  now = 10;
+  recorder.event('start');
+  now = 50;
+  recorder.event('animate', { id: 1, move: inverse(R), duration: 100 });
+  now = 80;
+  recorder.event('turn', { id: 1, move: inverse(R) });
+  now = 100;
+  recorder.event('pause');
+  now = 500;
+  recorder.event('resume');
+  now = 550;
+  recorder.event('turn', { id: 2, move: inverse(U) });
+  recorder.finish(150, true);
+  const timeline = new RecordingTimeline(recorder.last);
+  for (const at of [0, 20, 60, 90, 120, 400, 510, 550, 600, 70, 30, 0, 550])
+    assert.deepEqual(timeline.frame(at), recordingFrame(recorder.last, at));
 });
 
-test('a final accepted move that finishes during a pause replays the finished puzzle in color',()=>{
- let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder);now=10;recorder.event('start');now=50;recorder.event('pause');now=100;recorder.finish(40,true);
- assert.equal(recorder.last.duration,40);assert.equal(recordingFrame(recorder.last,40).paused,false);
+test('a final accepted move that finishes during a pause replays the finished puzzle in color', () => {
+  let now = 0;
+  const recorder = new SolveRecorder({}, () => now);
+  arm(recorder);
+  now = 10;
+  recorder.event('start');
+  now = 50;
+  recorder.event('pause');
+  now = 100;
+  recorder.finish(40, true);
+  assert.equal(recorder.last.duration, 40);
+  assert.equal(recordingFrame(recorder.last, 40).paused, false);
 });
 
-test('undo keypress sounds survive validation, serialization, and legacy sound reconstruction',async()=>{
- let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder);recorder.event('start');recorder.accept({type:'undo'});recorder.event('sound',{kind:'undo'});now=100;const data=recorder.finish(100,false);
- assert.doesNotThrow(()=>validateRecording(JSON.parse(JSON.stringify(data))));const {recordedSounds}=await import('../src/replay-presentation.js');assert.deepEqual(recordedSounds(data).map(e=>e.kind),['undo']);const legacy={...data,events:data.events.filter(e=>e.type!=='sound')};assert.deepEqual(recordedSounds(legacy).map(e=>e.kind),['undo']);
+test('undo keypress sounds survive validation, serialization, and legacy sound reconstruction', async () => {
+  let now = 0;
+  const recorder = new SolveRecorder({}, () => now);
+  arm(recorder);
+  recorder.event('start');
+  recorder.accept({ type: 'undo' });
+  recorder.event('sound', { kind: 'undo' });
+  now = 100;
+  const data = recorder.finish(100, false);
+  assert.doesNotThrow(() => validateRecording(JSON.parse(JSON.stringify(data))));
+  const { recordedSounds } = await import('../src/replay-presentation.js');
+  assert.deepEqual(
+    recordedSounds(data).map((e) => e.kind),
+    ['undo'],
+  );
+  const legacy = { ...data, events: data.events.filter((e) => e.type !== 'sound') };
+  assert.deepEqual(
+    recordedSounds(legacy).map((e) => e.kind),
+    ['undo'],
+  );
 });
 
-test('abandoned solves retain a DNF replay, the unfinished position and a frozen partial animation without replacing PB',async()=>{
- const {encodeRecording,decodeRecording,recordingID}=await import('../src/recording-codec.js');
- let now=0;const recorder=new SolveRecorder({},()=>now);arm(recorder);recorder.event('start');now=100;const pb=recorder.finish(100,true);
- arm(recorder);recorder.event('start');recorder.event('turn',{id:1,move:inverse(R)});now=150;recorder.event('animate',{id:2,move:U,duration:100});now=175;
- const data=recorder.finish(75,true,null,{dnf:true});assert.equal(validateRecording(data).dnf,true);assert.equal(data.complete,true);assert.equal(recorder.pb,pb);assert.equal(recorder.last,data);
- const last=recordingFrame(data,data.duration);assert.equal(isSolved(last.state),false);assert.equal(last.motions.length,1);assert.equal(last.motions[0].progress,.25);assert.deepEqual(recordingFrame(data,100000),last);
- const decoded=await decodeRecording(await encodeRecording(data));assert.equal(decoded.dnf,true);assert.equal(await recordingID(decoded),await recordingID(data));assert.throws(()=>validateRecording({...data,dnf:'true'}),/DNF flag/);
+test('abandoned solves retain a DNF replay, the unfinished position and a frozen partial animation without replacing PB', async () => {
+  const { encodeRecording, decodeRecording, recordingID } =
+    await import('../src/recording-codec.js');
+  let now = 0;
+  const recorder = new SolveRecorder({}, () => now);
+  arm(recorder);
+  recorder.event('start');
+  now = 100;
+  const pb = recorder.finish(100, true);
+  arm(recorder);
+  recorder.event('start');
+  recorder.event('turn', { id: 1, move: inverse(R) });
+  now = 150;
+  recorder.event('animate', { id: 2, move: U, duration: 100 });
+  now = 175;
+  const data = recorder.finish(75, true, null, { dnf: true });
+  assert.equal(validateRecording(data).dnf, true);
+  assert.equal(data.complete, true);
+  assert.equal(recorder.pb, pb);
+  assert.equal(recorder.last, data);
+  const last = recordingFrame(data, data.duration);
+  assert.equal(isSolved(last.state), false);
+  assert.equal(last.motions.length, 1);
+  assert.equal(last.motions[0].progress, 0.25);
+  assert.deepEqual(recordingFrame(data, 100000), last);
+  const decoded = await decodeRecording(await encodeRecording(data));
+  assert.equal(decoded.dnf, true);
+  assert.equal(await recordingID(decoded), await recordingID(data));
+  assert.throws(() => validateRecording({ ...data, dnf: 'true' }), /DNF flag/);
 });

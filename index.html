@@ -1,151 +1,1365 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#111719">
-<link rel="icon" href="./favicon.ico" sizes="any"><link rel="icon" type="image/png" href="./favicon-32.png" sizes="32x32"><link rel="icon" type="image/png" href="./favicon-16.png" sizes="16x16"><link rel="apple-touch-icon" href="./apple-touch-icon.png"><link rel="manifest" href="./manifest.webmanifest">
-<title>FTO Simulator</title><style>html{background:#111719}html:not([data-app-ready]) body{visibility:hidden;pointer-events:none}</style><link rel="stylesheet" href="/src/style.css">
-</head>
-<body>
-<header class="topbar">
-<a class="site-brand" href="/" aria-label="FTOers homepage"><img src="./logo.png" width="38" height="38" alt=""><span>FTO Simulator<small>by Abid Ibn Ashraf</small></span></a>
-<nav class="topbar-actions" aria-label="Application">
-<button id="puzzles" aria-label="Choose puzzle" title="Choose puzzle" aria-haspopup="dialog" aria-controls="puzzle-dialog"></button>
-<button id="leaderboard" aria-label="3 by 3 leaderboard" title="3 × 3 leaderboard" aria-haspopup="dialog" aria-controls="leaderboard-dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8v7a4 4 0 0 1-8 0V3Zm0 2H4v3a4 4 0 0 0 4 4m8-7h4v3a4 4 0 0 1-4 4m-4 2v6m-4 0h8"/></svg></button>
-<button id="album" aria-label="Recording album" title="Recording album" aria-haspopup="dialog" aria-controls="album-dialog"></button>
-<button id="notifications" aria-label="Notifications" title="Notifications" aria-haspopup="dialog" aria-controls="notifications-dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></button>
-<span id="network-account"></span>
-</nav></header>
-<div class="app">
-<main class="solve-layout" aria-label="FTO solve space">
-<div id="viewport"><div id="labels" aria-hidden="true"></div><div id="keyboard-notice" role="status" hidden></div>
-<div id="home-replay-view"></div><div id="replay-scramble" aria-label="Replay scramble" hidden></div><nav id="home-replay-dock" aria-label="Recording playback"><button id="home-replay-play" aria-label="Play recording" title="Play"></button><div class="replay-progress-track"><input id="home-replay-progress" type="range" min="0" max="1" step="any" value="0" aria-label="Recording progress"><button id="home-replay-start-marker" aria-label="Jump to solve start" title="Solve starts here"></button></div><span id="home-replay-time">0.00</span><output id="home-replay-tps" aria-label="Replay TPS">0.0 TPS</output><button id="home-replay-share" class="share-recording" aria-label="Share this recording"></button><select id="home-replay-speed" aria-label="Replay speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select><button id="home-replay-exit" aria-label="Exit recording">✕</button><span id="home-replay-stage"></span><output id="home-replay-keys" aria-label="Recorded keys"></output></nav>
-<nav id="mobile-controls" aria-label="Solve controls">
-<button id="mobile-pause" aria-label="Pause" title="Pause"></button><div id="mobile-timer" role="timer" aria-live="off">00:00</div><button id="mobile-share-current" class="share-recording" aria-label="Share current solve recording" title="Share recording" hidden></button>
-<button id="mobile-split" aria-label="Mark split" title="Mark split" hidden></button>
-<button id="mobile-undo" aria-label="Undo" title="Undo"></button><button id="mobile-redo" aria-label="Redo" title="Redo"></button>
-<button id="mobile-reset" aria-label="Reset" title="Reset"></button><button id="mobile-scramble" aria-label="Scramble" title="Scramble"></button><button id="mobile-history" aria-label="History" title="History" aria-haspopup="dialog" aria-controls="history-dialog"></button>
-</nav>
-<nav class="history-tools" aria-label="Undo and redo"><button id="undo" disabled>↶ Undo</button><button id="redo" disabled>↷ Redo</button><button id="pause" hidden title="Escape">Pause</button></nav>
-<p id="pause-message" hidden>Press any key to resume</p><div class="puzzle-actions"><button class="primary" id="scramble">Scramble</button><button id="freeplay-reset" title="Reset to solved and return to free play">Reset</button></div>
-</div>
-<aside id="solve-panel" aria-label="Timer and input display">
-<section id="solve-summary" aria-label="Timer, splits and past times">
-<section class="timer-panel" aria-label="Solve timer"><div class="timer-main"><div class="timer-number"><div id="timer-value" role="timer" aria-live="off">00:00</div><button id="share-current" class="share-recording" aria-label="Share current solve recording" title="Share current solve recording" hidden></button></div><span id="timer-result"></span></div><dl class="timer-metrics"><div><dt>PB</dt><dd class="pb-number"><button id="timer-pb" class="stat-link" aria-label="PB single statistics">—</button><button id="share-pb" class="share-recording" aria-label="Share personal best recording" title="Share personal best recording" hidden></button></dd></div><div><dt>ao5</dt><dd><button id="timer-ao5" class="stat-link" aria-label="Current ao5 statistics">—</button></dd></div></dl></section>
-<section id="replay-input-panel" aria-label="Recorded moves and timer"><output id="replay-move-flash" aria-label="Recorded move" aria-live="off"></output><time id="replay-display-time" aria-label="Recorded solve time">0.00</time></section>
-<p id="scramble-error" role="status" hidden>Couldn’t generate a scramble. Your puzzle is unchanged. Please try again.</p>
-<div class="time-columns"><section class="splits-panel" aria-label="Solve splits" tabindex="0"><div class="section-heading"><h2>Splits</h2></div><p id="split-reference"></p><p id="splits-empty">Configure phases in Settings → Splits.</p><table id="splits-table"><thead><tr><th>Phase</th><th>Time</th><th>Seg ±</th><th>Total ±</th></tr></thead><tbody id="split-rows"></tbody></table></section><section id="statistics-panel" class="statistics-panel" aria-label="Solve statistics" hidden><div class="section-heading"><h2>Statistics</h2></div><p id="statistics-count"></p><table><thead><tr><th></th><th>Current</th><th>PB</th></tr></thead><tbody id="statistics-rows"></tbody></table></section><section class="times-panel" aria-label="Solve times"><div class="section-heading"><h2>Times</h2><span id="times-count">0</span></div><div class="time-list-head" aria-hidden="true"><span>#</span><span>Time</span><span>ao5</span><span>ao12</span></div><ol id="solve-times" aria-label="Past solve times" tabindex="0" reversed></ol><p id="times-empty">No timed solves yet.</p></section>
-</div>
-</section>
-<section id="online-pb-notices" aria-label="Online personal bests"><p id="leaderboard-status" role="status" class="network-status"></p><ul id="online-pb-list" aria-live="polite"></ul></section>
-<section id="keyboard-overlay" aria-label="Live input keyboard" hidden>
-<div class="keyboard-readout"><span id="keyboard-mode-name"></span><span id="keyboard-pending"></span><span id="keyboard-last"></span><span id="keyboard-stats"><strong id="keyboard-tps-value">0.0</strong> TPS <small>peak <span id="keyboard-peak">0.0</span> · <span id="keyboard-turns">0</span> turns</small></span></div>
-<svg id="keyboard-svg" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Physical keyboard showing bound actions"></svg>
-</section>
-<section id="replay-keyboard" aria-label="Solver keyboard"></section></aside>
-</main>
-</div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#111719" />
+    <link rel="icon" href="./favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" href="./favicon-32.png" sizes="32x32" />
+    <link rel="icon" type="image/png" href="./favicon-16.png" sizes="16x16" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <title>FTO Simulator</title>
+    <style>
+      html {
+        background: #111719;
+      }
+      html:not([data-app-ready]) body {
+        visibility: hidden;
+        pointer-events: none;
+      }
+    </style>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="site-brand" href="/" aria-label="FTOers homepage"
+        ><img src="./logo.png" width="38" height="38" alt="" /><span
+          >FTO Simulator<small>by Abid Ibn Ashraf</small></span
+        ></a
+      >
+      <nav class="topbar-actions" aria-label="Application">
+        <button
+          id="puzzles"
+          aria-label="Choose puzzle"
+          title="Choose puzzle"
+          aria-haspopup="dialog"
+          aria-controls="puzzle-dialog"
+        ></button>
+        <button
+          id="leaderboard"
+          aria-label="3 by 3 leaderboard"
+          title="3 × 3 leaderboard"
+          aria-haspopup="dialog"
+          aria-controls="leaderboard-dialog"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M8 3h8v7a4 4 0 0 1-8 0V3Zm0 2H4v3a4 4 0 0 0 4 4m8-7h4v3a4 4 0 0 1-4 4m-4 2v6m-4 0h8"
+            />
+          </svg>
+        </button>
+        <button
+          id="album"
+          aria-label="Recording album"
+          title="Recording album"
+          aria-haspopup="dialog"
+          aria-controls="album-dialog"
+        ></button>
+        <button
+          id="notifications"
+          aria-label="Notifications"
+          title="Notifications"
+          aria-haspopup="dialog"
+          aria-controls="notifications-dialog"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+          </svg>
+        </button>
+        <span id="network-account"></span>
+      </nav>
+    </header>
+    <div class="app">
+      <main class="solve-layout" aria-label="FTO solve space">
+        <div id="viewport">
+          <div id="labels" aria-hidden="true"></div>
+          <div id="keyboard-notice" role="status" hidden></div>
+          <div id="home-replay-view"></div>
+          <div id="replay-scramble" aria-label="Replay scramble" hidden></div>
+          <nav id="home-replay-dock" aria-label="Recording playback">
+            <button id="home-replay-play" aria-label="Play recording" title="Play"></button>
+            <div class="replay-progress-track">
+              <input
+                id="home-replay-progress"
+                type="range"
+                min="0"
+                max="1"
+                step="any"
+                value="0"
+                aria-label="Recording progress"
+              /><button
+                id="home-replay-start-marker"
+                aria-label="Jump to solve start"
+                title="Solve starts here"
+              ></button>
+            </div>
+            <span id="home-replay-time">0.00</span
+            ><output id="home-replay-tps" aria-label="Replay TPS">0.0 TPS</output
+            ><button
+              id="home-replay-share"
+              class="share-recording"
+              aria-label="Share this recording"
+            ></button
+            ><select id="home-replay-speed" aria-label="Replay speed">
+              <option value="0.25">0.25×</option>
+              <option value="0.5">0.5×</option>
+              <option value="1" selected>1×</option>
+              <option value="2">2×</option>
+              <option value="4">4×</option></select
+            ><button id="home-replay-exit" aria-label="Exit recording">✕</button
+            ><span id="home-replay-stage"></span
+            ><output id="home-replay-keys" aria-label="Recorded keys"></output>
+          </nav>
+          <nav id="mobile-controls" aria-label="Solve controls">
+            <button id="mobile-pause" aria-label="Pause" title="Pause"></button>
+            <div id="mobile-timer" role="timer" aria-live="off">00:00</div>
+            <button
+              id="mobile-share-current"
+              class="share-recording"
+              aria-label="Share current solve recording"
+              title="Share recording"
+              hidden
+            ></button>
+            <button id="mobile-split" aria-label="Mark split" title="Mark split" hidden></button>
+            <button id="mobile-undo" aria-label="Undo" title="Undo"></button
+            ><button id="mobile-redo" aria-label="Redo" title="Redo"></button>
+            <button id="mobile-reset" aria-label="Reset" title="Reset"></button
+            ><button id="mobile-scramble" aria-label="Scramble" title="Scramble"></button
+            ><button
+              id="mobile-history"
+              aria-label="History"
+              title="History"
+              aria-haspopup="dialog"
+              aria-controls="history-dialog"
+            ></button>
+          </nav>
+          <nav class="history-tools" aria-label="Undo and redo">
+            <button id="undo" disabled>↶ Undo</button><button id="redo" disabled>↷ Redo</button
+            ><button id="pause" hidden title="Escape">Pause</button>
+          </nav>
+          <p id="pause-message" hidden>Press any key to resume</p>
+          <div class="puzzle-actions">
+            <button class="primary" id="scramble">Scramble</button
+            ><button id="freeplay-reset" title="Reset to solved and return to free play">
+              Reset
+            </button>
+          </div>
+        </div>
+        <aside id="solve-panel" aria-label="Timer and input display">
+          <section id="solve-summary" aria-label="Timer, splits and past times">
+            <section class="timer-panel" aria-label="Solve timer">
+              <div class="timer-main">
+                <div class="timer-number">
+                  <div id="timer-value" role="timer" aria-live="off">00:00</div>
+                  <button
+                    id="share-current"
+                    class="share-recording"
+                    aria-label="Share current solve recording"
+                    title="Share current solve recording"
+                    hidden
+                  ></button>
+                </div>
+                <span id="timer-result"></span>
+              </div>
+              <dl class="timer-metrics">
+                <div>
+                  <dt>PB</dt>
+                  <dd class="pb-number">
+                    <button id="timer-pb" class="stat-link" aria-label="PB single statistics">
+                      —</button
+                    ><button
+                      id="share-pb"
+                      class="share-recording"
+                      aria-label="Share personal best recording"
+                      title="Share personal best recording"
+                      hidden
+                    ></button>
+                  </dd>
+                </div>
+                <div>
+                  <dt>ao5</dt>
+                  <dd>
+                    <button id="timer-ao5" class="stat-link" aria-label="Current ao5 statistics">
+                      —
+                    </button>
+                  </dd>
+                </div>
+              </dl>
+            </section>
+            <section id="replay-input-panel" aria-label="Recorded moves and timer">
+              <output id="replay-move-flash" aria-label="Recorded move" aria-live="off"></output
+              ><time id="replay-display-time" aria-label="Recorded solve time">0.00</time>
+            </section>
+            <p id="scramble-error" role="status" hidden>
+              Couldn’t generate a scramble. Your puzzle is unchanged. Please try again.
+            </p>
+            <div class="time-columns">
+              <section class="splits-panel" aria-label="Solve splits" tabindex="0">
+                <div class="section-heading"><h2>Splits</h2></div>
+                <p id="split-reference"></p>
+                <p id="splits-empty">Configure phases in Settings → Splits.</p>
+                <table id="splits-table">
+                  <thead>
+                    <tr>
+                      <th>Phase</th>
+                      <th>Time</th>
+                      <th>Seg ±</th>
+                      <th>Total ±</th>
+                    </tr>
+                  </thead>
+                  <tbody id="split-rows"></tbody>
+                </table>
+              </section>
+              <section
+                id="statistics-panel"
+                class="statistics-panel"
+                aria-label="Solve statistics"
+                hidden
+              >
+                <div class="section-heading"><h2>Statistics</h2></div>
+                <p id="statistics-count"></p>
+                <table>
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>Current</th>
+                      <th>PB</th>
+                    </tr>
+                  </thead>
+                  <tbody id="statistics-rows"></tbody>
+                </table>
+              </section>
+              <section class="times-panel" aria-label="Solve times">
+                <div class="section-heading">
+                  <h2>Times</h2>
+                  <span id="times-count">0</span>
+                </div>
+                <div class="time-list-head" aria-hidden="true">
+                  <span>#</span><span>Time</span><span>ao5</span><span>ao12</span>
+                </div>
+                <ol id="solve-times" aria-label="Past solve times" tabindex="0" reversed></ol>
+                <p id="times-empty">No timed solves yet.</p>
+              </section>
+            </div>
+          </section>
+          <section id="online-pb-notices" aria-label="Online personal bests">
+            <p id="leaderboard-status" role="status" class="network-status"></p>
+            <ul id="online-pb-list" aria-live="polite"></ul>
+          </section>
+          <section id="keyboard-overlay" aria-label="Live input keyboard" hidden>
+            <div class="keyboard-readout">
+              <span id="keyboard-mode-name"></span><span id="keyboard-pending"></span
+              ><span id="keyboard-last"></span
+              ><span id="keyboard-stats"
+                ><strong id="keyboard-tps-value">0.0</strong> TPS
+                <small
+                  >peak <span id="keyboard-peak">0.0</span> ·
+                  <span id="keyboard-turns">0</span> turns</small
+                ></span
+              >
+            </div>
+            <svg
+              id="keyboard-svg"
+              xmlns="http://www.w3.org/2000/svg"
+              role="group"
+              aria-label="Physical keyboard showing bound actions"
+            ></svg>
+          </section>
+          <section id="replay-keyboard" aria-label="Solver keyboard"></section>
+        </aside>
+      </main>
+    </div>
 
-<dialog id="leaderboard-dialog" class="ft-leaderboard network-dialog" aria-labelledby="leaderboard-title"><div class="dialog-heading"><h1 id="leaderboard-title">3 × 3 leaderboard</h1><button id="close-leaderboard" class="dialog-close" aria-label="Close leaderboard">×</button></div><div class="dialog-body"><div class="leaderboard-panel"><div class="board-toolbar"><div class="tabs" role="group" aria-label="Leaderboard category"><button data-metric="single" aria-pressed="true">Single</button><button data-metric="ao5" aria-pressed="false">ao5</button><button data-metric="ao12" aria-pressed="false">ao12</button></div><button id="leaderboard-rules" aria-haspopup="dialog" aria-controls="leaderboard-rules-dialog">Rules</button></div><p id="board-message" role="status">Loading leaderboard…</p><div class="table-scroll"><table><thead><tr><th scope="col">Rank</th><th scope="col">Solver</th><th scope="col">Time</th><th scope="col">Recording</th></tr></thead><tbody id="board-rows"></tbody></table></div></div></div></dialog>
-<dialog id="notifications-dialog" class="network-dialog" aria-labelledby="notifications-title"><div class="dialog-heading"><h1 id="notifications-title">Notifications</h1><button id="close-notifications" class="dialog-close" aria-label="Close notifications">×</button></div><div id="submission-notifications" class="dialog-body"><p id="submission-notifications-count"></p><div class="submission-notification-actions"><button id="submission-notifications-refresh">Refresh</button><button id="submission-notifications-read" disabled>Mark all as read</button></div><p id="submission-notifications-message" role="status">Sign in to see submission decisions.</p><button id="submission-notifications-signin" hidden>Sign in</button><ol id="submission-notifications-list" aria-label="Submission decisions"></ol></div></dialog>
-<dialog id="leaderboard-rules-dialog" class="network-dialog" aria-labelledby="leaderboard-rules-title"><div class="dialog-heading"><h1 id="leaderboard-rules-title">Leaderboard rules</h1><button id="close-leaderboard-rules" class="dialog-close" aria-label="Close leaderboard rules">×</button></div><div class="dialog-body leaderboard-rules-copy">
-<section><h2>Submitting a result</h2><p>The leaderboard is for signed-in 3 × 3 FTO solves recorded online. A result must beat your approved result in that category. Choose <strong>Submit to leaderboard</strong> to request verification; solves are never submitted automatically. A new submission replaces your pending submission in the same category, even if the new result is slower.</p></section>
-<section><h2>Undo, pauses and averages</h2><p>Using Undo or pausing after the timer starts makes a single ineligible and counts as DNF in leaderboard averages. Automatic pauses, including leaving the tab or opening a dialog during a solve, count too. Local times and recordings are kept.</p><p>ao5 and ao12 use consecutive attempts and trim the fastest and slowest result. Abandoning a started solve is a visible DNF. Replacing an unstarted scramble, including triple Escape or Reset followed by rescrambling, adds a hidden DNF to the online sequence. One DNF can be trimmed; two make that window ineligible. Every completed non-DNF member needs a recording, including trimmed solves.</p></section>
-<section><h2>Connection and continuity</h2><p>The timer keeps running through brief connection interruptions. Detected interruptions shorter than five seconds preserve eligibility; reaching five seconds makes the active solve ineligible and starts a new average sequence. Signing out, reloading or switching puzzle sizes also breaks the sequence. Offline historical times cannot be submitted as online results.</p></section>
-<section><h2>Investigation holds</h2><p>An administrator may hold a result for further investigation. You will receive a notification with their explanation. The result stays private until approved, and you will receive a separate verification or rejection message when a decision is made. Held recordings follow the 30-day review retention limit; submitting another result does not remove an existing investigation.</p></section>
-<section><h2>Keyboard layouts and verification</h2><p>Administrators review the recording and its input layout before approving a result. Macros, automated turns and layouts arranged to encode an algorithm rather than normal puzzle controls can be rejected. For example, mapping an A-perm move sequence across your home-row keys so that typing along the row executes the algorithm is not acceptable.</p><p>Custom keybindings are allowed, but suspicious layouts or input patterns may lead to a submission being rejected or a result being removed after review.</p></section>
-<section><h2>Recordings and expiry</h2><p>The recordings of the top 10 approved singles are public. Pending submissions and temporary share links expire after 30 days. These share links are separate from leaderboard replay retention.</p></section>
-<section><h2>Submission problems</h2><p>If submission glitches or your result is wrongly disqualified, save its recording and DM <strong>abid_ibn_ashraf</strong>, or ping him in the <a href="https://discord.gg/p8mCQYUkaf" target="_blank" rel="noopener">FTO Fan Club Discord</a>. Include the recording link and what happened so the result can be checked and recovered if appropriate.</p></section>
-</div></dialog>
-<dialog id="splits-dialog" aria-labelledby="splits-title">
-<div class="dialog-heading"><h1 id="splits-title">Split timing</h1><button id="close-splits" aria-label="Close split settings">✕</button></div>
-<div class="editor-selectors"><label>Puzzle<select id="split-puzzle" aria-label="Split puzzle"></select></label><label>Method<select id="split-method"></select></label></div><span id="split-size" hidden></span>
-<div id="custom-phases" hidden><label class="method-name-label" for="method-name">Method name<input id="method-name" maxlength="60" placeholder="My method"></label><div class="phase-table-heading"><span>Phase</span><span>Complete when</span></div><div id="phase-rows"></div><button id="phase-add">+ Add phase</button></div>
-<p id="split-config-message" role="status"></p><div class="editor-footer"><button id="delete-method" hidden>Delete method</button><button id="save-splits" class="primary" hidden>Save method</button></div>
-</dialog>
-<dialog id="phase-pattern-dialog" aria-labelledby="phase-pattern-title"><div class="dialog-heading"><h1 id="phase-pattern-title">Select checkpoint pieces</h1><button id="close-phase-pattern" aria-label="Close sticker selection">✕</button></div><p class="phase-help">Drag to orbit. Click a piece to select all of its stickers. Bright pieces form this checkpoint; earlier checkpoints stay included. Any valid color-neutral starting scheme is accepted.</p><label class="setting">Face<select id="pattern-face"></select></label><div class="pattern-tools"><button id="pattern-face-all">Select face</button><button id="pattern-face-clear">Clear face</button><button id="pattern-clear">Clear all</button></div><div id="phase-pattern-view"></div><p id="pattern-count"></p></dialog>
-<dialog id="puzzle-dialog" aria-labelledby="puzzle-title"><div class="dialog-heading"><h1 id="puzzle-title">Choose puzzle</h1><button id="close-puzzles" aria-label="Close puzzle selector">✕</button></div><div id="puzzle-choices" aria-label="Puzzles"></div></dialog>
-<dialog id="history-dialog" aria-labelledby="history-title"><div class="dialog-heading"><h1 id="history-title">Solve history</h1><button id="close-history" aria-label="Close history">✕</button></div><section id="history-splits" hidden><h2>Splits</h2><p id="history-split-reference" class="phase-help"></p><table class="history-splits-table"><thead><tr><th>Phase</th><th>Time</th><th>Seg ±</th><th>Total ±</th></tr></thead><tbody id="history-split-rows"></tbody></table></section><button id="history-recordings">Solve recordings</button><p class="history-pb">Personal best <strong id="history-pb">—</strong><button id="history-share-pb" class="share-recording" aria-label="Share personal best recording" hidden></button></p><div class="section-heading"><h2>Times</h2><span id="history-count">0</span></div><div class="time-list-head" aria-hidden="true"><span>#</span><span>Time</span><span>ao5</span><span>ao12</span></div><ol id="history-times" reversed></ol><p id="history-empty">No timed solves yet.</p></dialog>
-<dialog id="share-dialog" aria-labelledby="share-title"><div class="dialog-heading"><h1 id="share-title">Share recording</h1><button id="close-share" aria-label="Close sharing">×</button></div><button id="share-watch" class="primary">Watch solve</button><div class="share-options"><button id="share-link" class="share-link-row" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 13 4-4m-6 6-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2 2 1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0"/></svg><span><strong>Copy full link</strong><small>Recording included in the link</small></span></button><button id="share-short" class="share-link-row" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8M8 21h8M9 3v4l6 10v4M15 3v4L9 17v4"/></svg><span><strong>Copy short link</strong><small>Temporary · expires in 30 days</small></span></button><div class="share-file-actions"><button id="share-text">Copy as text</button><button id="share-json">Download JSON</button></div><button id="share-album">Save to album</button></div><p id="share-link-size" hidden></p><p id="share-message" role="status" aria-live="polite"></p><textarea id="share-output" aria-label="Recording to copy" readonly hidden></textarea></dialog>
-<dialog id="average-share-dialog" aria-labelledby="average-share-title"><div class="dialog-heading"><h1 id="average-share-title">Share average</h1><button id="close-average-share" aria-label="Close average">✕</button></div><div id="average-share-value"></div><p id="average-share-date"></p><button id="average-share-save" class="primary">Save to album</button><div class="average-file-actions"><button id="average-share-copy">Copy report</button><button id="average-share-json">Download JSON</button></div><details id="average-share-details"><summary id="average-share-summary">Solves</summary><ol id="average-share-solves"></ol></details><p id="average-share-message" role="status"></p><textarea id="average-share-output" aria-label="Average report" readonly hidden></textarea></dialog>
-<dialog id="album-dialog" aria-labelledby="album-title"><header class="album-header"><div class="dialog-heading"><h1 id="album-title">Recording album</h1><button id="close-album" aria-label="Close album">✕</button></div><p class="phase-help">Your recent solves, saved averages and personal bests.</p><div class="album-selection-toolbar"><button id="album-select">Select recordings</button><div id="album-selection-tools" hidden><label><input id="album-select-all" type="checkbox"> Select all</label><span id="album-selected-count" role="status">0 selected</span><button id="album-delete-selected" disabled>Delete selected</button><button id="album-select-done">Done</button></div></div><p id="album-selection-help" class="phase-help" hidden>Select a saved average too if you want to delete recordings it uses.</p><p id="album-message" role="status"></p></header><ol id="album-list" aria-label="Saved recordings"></ol><footer class="album-footer"><button id="album-import-recording" class="primary" aria-haspopup="dialog" aria-controls="paste-dialog">Import recording</button></footer></dialog>
-<dialog id="paste-dialog" aria-labelledby="paste-title"><div class="dialog-heading"><h1 id="paste-title">Import recording</h1><button id="close-paste" aria-label="Close recording import">✕</button></div><label for="recording-paste" class="recording-paste-label">Recording link or JSON</label><textarea id="recording-paste" rows="5" placeholder="Paste a recording link or JSON…"></textarea><button id="recording-paste-load" class="primary">Watch recording</button><div class="import-divider"><span>or import a file</span></div><div id="recording-drop" class="file-drop"><strong>Drop a recording file here</strong><button id="choose-recording-file">Choose a file</button><input id="recording-import" type="file" accept=".json,.ftoreplay,.txt,application/json,text/plain" hidden></div><p id="paste-message" role="status"></p></dialog>
-<dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message"><div class="dialog-heading"><h1 id="confirm-title">Replace this solve?</h1></div><p id="confirm-message"></p><form method="dialog" class="confirm-actions"><button id="confirm-cancel" value="cancel" autofocus>Cancel</button><button id="confirm-accept" value="accept" class="primary">Reset</button></form></dialog>
-<dialog id="settings-dialog" aria-labelledby="settings-title">
-<header class="settings-header">
-<div class="dialog-heading"><div><h1 id="settings-title">Settings</h1></div><button id="close-settings" aria-label="Close settings">✕</button></div>
+    <dialog
+      id="leaderboard-dialog"
+      class="ft-leaderboard network-dialog"
+      aria-labelledby="leaderboard-title"
+    >
+      <div class="dialog-heading">
+        <h1 id="leaderboard-title">3 × 3 leaderboard</h1>
+        <button id="close-leaderboard" class="dialog-close" aria-label="Close leaderboard">
+          ×
+        </button>
+      </div>
+      <div class="dialog-body">
+        <div class="leaderboard-panel">
+          <div class="board-toolbar">
+            <div class="tabs" role="group" aria-label="Leaderboard category">
+              <button data-metric="single" aria-pressed="true">Single</button
+              ><button data-metric="ao5" aria-pressed="false">ao5</button
+              ><button data-metric="ao12" aria-pressed="false">ao12</button>
+            </div>
+            <button
+              id="leaderboard-rules"
+              aria-haspopup="dialog"
+              aria-controls="leaderboard-rules-dialog"
+            >
+              Rules
+            </button>
+          </div>
+          <p id="board-message" role="status">Loading leaderboard…</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Rank</th>
+                  <th scope="col">Solver</th>
+                  <th scope="col">Time</th>
+                  <th scope="col">Recording</th>
+                </tr>
+              </thead>
+              <tbody id="board-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </dialog>
+    <dialog id="notifications-dialog" class="network-dialog" aria-labelledby="notifications-title">
+      <div class="dialog-heading">
+        <h1 id="notifications-title">Notifications</h1>
+        <button id="close-notifications" class="dialog-close" aria-label="Close notifications">
+          ×
+        </button>
+      </div>
+      <div id="submission-notifications" class="dialog-body">
+        <p id="submission-notifications-count"></p>
+        <div class="submission-notification-actions">
+          <button id="submission-notifications-refresh">Refresh</button
+          ><button id="submission-notifications-read" disabled>Mark all as read</button>
+        </div>
+        <p id="submission-notifications-message" role="status">
+          Sign in to see submission decisions.
+        </p>
+        <button id="submission-notifications-signin" hidden>Sign in</button>
+        <ol id="submission-notifications-list" aria-label="Submission decisions"></ol>
+      </div>
+    </dialog>
+    <dialog
+      id="leaderboard-rules-dialog"
+      class="network-dialog"
+      aria-labelledby="leaderboard-rules-title"
+    >
+      <div class="dialog-heading">
+        <h1 id="leaderboard-rules-title">Leaderboard rules</h1>
+        <button
+          id="close-leaderboard-rules"
+          class="dialog-close"
+          aria-label="Close leaderboard rules"
+        >
+          ×
+        </button>
+      </div>
+      <div class="dialog-body leaderboard-rules-copy">
+        <section>
+          <h2>Submitting a result</h2>
+          <p>
+            The leaderboard is for signed-in 3 × 3 FTO solves recorded online. A result must beat
+            your approved result in that category. Choose <strong>Submit to leaderboard</strong> to
+            request verification; solves are never submitted automatically. A new submission
+            replaces your pending submission in the same category, even if the new result is slower.
+          </p>
+        </section>
+        <section>
+          <h2>Undo, pauses and averages</h2>
+          <p>
+            Using Undo or pausing after the timer starts makes a single ineligible and counts as DNF
+            in leaderboard averages. Automatic pauses, including leaving the tab or opening a dialog
+            during a solve, count too. Local times and recordings are kept.
+          </p>
+          <p>
+            ao5 and ao12 use consecutive attempts and trim the fastest and slowest result.
+            Abandoning a started solve is a visible DNF. Replacing an unstarted scramble, including
+            triple Escape or Reset followed by rescrambling, adds a hidden DNF to the online
+            sequence. One DNF can be trimmed; two make that window ineligible. Every completed
+            non-DNF member needs a recording, including trimmed solves.
+          </p>
+        </section>
+        <section>
+          <h2>Connection and continuity</h2>
+          <p>
+            The timer keeps running through brief connection interruptions. Detected interruptions
+            shorter than five seconds preserve eligibility; reaching five seconds makes the active
+            solve ineligible and starts a new average sequence. Signing out, reloading or switching
+            puzzle sizes also breaks the sequence. Offline historical times cannot be submitted as
+            online results.
+          </p>
+        </section>
+        <section>
+          <h2>Investigation holds</h2>
+          <p>
+            An administrator may hold a result for further investigation. You will receive a
+            notification with their explanation. The result stays private until approved, and you
+            will receive a separate verification or rejection message when a decision is made. Held
+            recordings follow the 30-day review retention limit; submitting another result does not
+            remove an existing investigation.
+          </p>
+        </section>
+        <section>
+          <h2>Keyboard layouts and verification</h2>
+          <p>
+            Administrators review the recording and its input layout before approving a result.
+            Macros, automated turns and layouts arranged to encode an algorithm rather than normal
+            puzzle controls can be rejected. For example, mapping an A-perm move sequence across
+            your home-row keys so that typing along the row executes the algorithm is not
+            acceptable.
+          </p>
+          <p>
+            Custom keybindings are allowed, but suspicious layouts or input patterns may lead to a
+            submission being rejected or a result being removed after review.
+          </p>
+        </section>
+        <section>
+          <h2>Recordings and expiry</h2>
+          <p>
+            The recordings of the top 10 approved singles are public. Pending submissions and
+            temporary share links expire after 30 days. These share links are separate from
+            leaderboard replay retention.
+          </p>
+        </section>
+        <section>
+          <h2>Submission problems</h2>
+          <p>
+            If submission glitches or your result is wrongly disqualified, save its recording and DM
+            <strong>abid_ibn_ashraf</strong>, or ping him in the
+            <a href="https://discord.gg/p8mCQYUkaf" target="_blank" rel="noopener"
+              >FTO Fan Club Discord</a
+            >. Include the recording link and what happened so the result can be checked and
+            recovered if appropriate.
+          </p>
+        </section>
+      </div>
+    </dialog>
+    <dialog id="splits-dialog" aria-labelledby="splits-title">
+      <div class="dialog-heading">
+        <h1 id="splits-title">Split timing</h1>
+        <button id="close-splits" aria-label="Close split settings">✕</button>
+      </div>
+      <div class="editor-selectors">
+        <label>Puzzle<select id="split-puzzle" aria-label="Split puzzle"></select></label
+        ><label>Method<select id="split-method"></select></label>
+      </div>
+      <span id="split-size" hidden></span>
+      <div id="custom-phases" hidden>
+        <label class="method-name-label" for="method-name"
+          >Method name<input id="method-name" maxlength="60" placeholder="My method"
+        /></label>
+        <div class="phase-table-heading"><span>Phase</span><span>Complete when</span></div>
+        <div id="phase-rows"></div>
+        <button id="phase-add">+ Add phase</button>
+      </div>
+      <p id="split-config-message" role="status"></p>
+      <div class="editor-footer">
+        <button id="delete-method" hidden>Delete method</button
+        ><button id="save-splits" class="primary" hidden>Save method</button>
+      </div>
+    </dialog>
+    <dialog id="phase-pattern-dialog" aria-labelledby="phase-pattern-title">
+      <div class="dialog-heading">
+        <h1 id="phase-pattern-title">Select checkpoint pieces</h1>
+        <button id="close-phase-pattern" aria-label="Close sticker selection">✕</button>
+      </div>
+      <p class="phase-help">
+        Drag to orbit. Click a piece to select all of its stickers. Bright pieces form this
+        checkpoint; earlier checkpoints stay included. Any valid color-neutral starting scheme is
+        accepted.
+      </p>
+      <label class="setting">Face<select id="pattern-face"></select></label>
+      <div class="pattern-tools">
+        <button id="pattern-face-all">Select face</button
+        ><button id="pattern-face-clear">Clear face</button
+        ><button id="pattern-clear">Clear all</button>
+      </div>
+      <div id="phase-pattern-view"></div>
+      <p id="pattern-count"></p>
+    </dialog>
+    <dialog id="puzzle-dialog" aria-labelledby="puzzle-title">
+      <div class="dialog-heading">
+        <h1 id="puzzle-title">Choose puzzle</h1>
+        <button id="close-puzzles" aria-label="Close puzzle selector">✕</button>
+      </div>
+      <div id="puzzle-choices" aria-label="Puzzles"></div>
+    </dialog>
+    <dialog id="history-dialog" aria-labelledby="history-title">
+      <div class="dialog-heading">
+        <h1 id="history-title">Solve history</h1>
+        <button id="close-history" aria-label="Close history">✕</button>
+      </div>
+      <section id="history-splits" hidden>
+        <h2>Splits</h2>
+        <p id="history-split-reference" class="phase-help"></p>
+        <table class="history-splits-table">
+          <thead>
+            <tr>
+              <th>Phase</th>
+              <th>Time</th>
+              <th>Seg ±</th>
+              <th>Total ±</th>
+            </tr>
+          </thead>
+          <tbody id="history-split-rows"></tbody>
+        </table>
+      </section>
+      <button id="history-recordings">Solve recordings</button>
+      <p class="history-pb">
+        Personal best <strong id="history-pb">—</strong
+        ><button
+          id="history-share-pb"
+          class="share-recording"
+          aria-label="Share personal best recording"
+          hidden
+        ></button>
+      </p>
+      <div class="section-heading">
+        <h2>Times</h2>
+        <span id="history-count">0</span>
+      </div>
+      <div class="time-list-head" aria-hidden="true">
+        <span>#</span><span>Time</span><span>ao5</span><span>ao12</span>
+      </div>
+      <ol id="history-times" reversed></ol>
+      <p id="history-empty">No timed solves yet.</p>
+    </dialog>
+    <dialog id="share-dialog" aria-labelledby="share-title">
+      <div class="dialog-heading">
+        <h1 id="share-title">Share recording</h1>
+        <button id="close-share" aria-label="Close sharing">×</button>
+      </div>
+      <button id="share-watch" class="primary">Watch solve</button>
+      <div class="share-options">
+        <button id="share-link" class="share-link-row" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="m10 13 4-4m-6 6-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2 2 1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0"
+            /></svg
+          ><span
+            ><strong>Copy full link</strong><small>Recording included in the link</small></span
+          ></button
+        ><button id="share-short" class="share-link-row" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 3h8M8 21h8M9 3v4l6 10v4M15 3v4L9 17v4" /></svg
+          ><span
+            ><strong>Copy short link</strong><small>Temporary · expires in 30 days</small></span
+          >
+        </button>
+        <div class="share-file-actions">
+          <button id="share-text">Copy as text</button
+          ><button id="share-json">Download JSON</button>
+        </div>
+        <button id="share-album">Save to album</button>
+      </div>
+      <p id="share-link-size" hidden></p>
+      <p id="share-message" role="status" aria-live="polite"></p>
+      <textarea id="share-output" aria-label="Recording to copy" readonly hidden></textarea>
+    </dialog>
+    <dialog id="average-share-dialog" aria-labelledby="average-share-title">
+      <div class="dialog-heading">
+        <h1 id="average-share-title">Share average</h1>
+        <button id="close-average-share" aria-label="Close average">✕</button>
+      </div>
+      <div id="average-share-value"></div>
+      <p id="average-share-date"></p>
+      <button id="average-share-save" class="primary">Save to album</button>
+      <div class="average-file-actions">
+        <button id="average-share-copy">Copy report</button
+        ><button id="average-share-json">Download JSON</button>
+      </div>
+      <details id="average-share-details">
+        <summary id="average-share-summary">Solves</summary>
+        <ol id="average-share-solves"></ol>
+      </details>
+      <p id="average-share-message" role="status"></p>
+      <textarea id="average-share-output" aria-label="Average report" readonly hidden></textarea>
+    </dialog>
+    <dialog id="album-dialog" aria-labelledby="album-title">
+      <header class="album-header">
+        <div class="dialog-heading">
+          <h1 id="album-title">Recording album</h1>
+          <button id="close-album" aria-label="Close album">✕</button>
+        </div>
+        <p class="phase-help">Your recent solves, saved averages and personal bests.</p>
+        <div class="album-selection-toolbar">
+          <button id="album-select">Select recordings</button>
+          <div id="album-selection-tools" hidden>
+            <label><input id="album-select-all" type="checkbox" /> Select all</label
+            ><span id="album-selected-count" role="status">0 selected</span
+            ><button id="album-delete-selected" disabled>Delete selected</button
+            ><button id="album-select-done">Done</button>
+          </div>
+        </div>
+        <p id="album-selection-help" class="phase-help" hidden>
+          Select a saved average too if you want to delete recordings it uses.
+        </p>
+        <p id="album-message" role="status"></p>
+      </header>
+      <ol id="album-list" aria-label="Saved recordings"></ol>
+      <footer class="album-footer">
+        <button
+          id="album-import-recording"
+          class="primary"
+          aria-haspopup="dialog"
+          aria-controls="paste-dialog"
+        >
+          Import recording
+        </button>
+      </footer>
+    </dialog>
+    <dialog id="paste-dialog" aria-labelledby="paste-title">
+      <div class="dialog-heading">
+        <h1 id="paste-title">Import recording</h1>
+        <button id="close-paste" aria-label="Close recording import">✕</button>
+      </div>
+      <label for="recording-paste" class="recording-paste-label">Recording link or JSON</label
+      ><textarea
+        id="recording-paste"
+        rows="5"
+        placeholder="Paste a recording link or JSON…"
+      ></textarea
+      ><button id="recording-paste-load" class="primary">Watch recording</button>
+      <div class="import-divider"><span>or import a file</span></div>
+      <div id="recording-drop" class="file-drop">
+        <strong>Drop a recording file here</strong
+        ><button id="choose-recording-file">Choose a file</button
+        ><input
+          id="recording-import"
+          type="file"
+          accept=".json,.ftoreplay,.txt,application/json,text/plain"
+          hidden
+        />
+      </div>
+      <p id="paste-message" role="status"></p>
+    </dialog>
+    <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+      <div class="dialog-heading"><h1 id="confirm-title">Replace this solve?</h1></div>
+      <p id="confirm-message"></p>
+      <form method="dialog" class="confirm-actions">
+        <button id="confirm-cancel" value="cancel" autofocus>Cancel</button
+        ><button id="confirm-accept" value="accept" class="primary">Reset</button>
+      </form>
+    </dialog>
+    <dialog id="settings-dialog" aria-labelledby="settings-title">
+      <header class="settings-header">
+        <div class="dialog-heading">
+          <div><h1 id="settings-title">Settings</h1></div>
+          <button id="close-settings" aria-label="Close settings">✕</button>
+        </div>
+      </header>
+      <div class="settings-body">
+        <section
+          id="settings-display"
+          class="settings-group"
+          aria-labelledby="settings-display-title"
+        >
+          <h2 id="settings-display-title">Display</h2>
+          <div class="settings-rows">
+            <label class="setting"
+              ><span
+                >Statistics instead of splits<small
+                  >Current and PB single, ao5, ao12, ao25, ao100, ao300 and ao1000</small
+                ></span
+              ><input id="show-statistics" type="checkbox" role="switch"
+            /></label>
+            <label class="setting"
+              ><span
+                >Print scrambles in statistics<small
+                  >Include scrambles in copied reports and CSV exports</small
+                ></span
+              ><input id="print-stat-scrambles" type="checkbox" role="switch" checked
+            /></label>
+            <label class="setting"
+              ><span>Face labels<small>Show face names on the puzzle</small></span
+              ><input
+                type="checkbox"
+                id="show-labels"
+                role="switch"
+                checked
+                aria-label="Show face labels"
+            /></label>
+            <label class="setting"
+              ><span>Show back sticker projection during inspection</span
+              ><input
+                type="checkbox"
+                id="show-inspection-faces"
+                role="switch"
+                aria-label="Show back sticker projection during inspection"
+            /></label>
+            <fieldset
+              id="inspection-projection-settings"
+              aria-label="Back sticker projection controls"
+              disabled
+            >
+              <div class="setting range-setting">
+                <label for="inspection-projection-outward"
+                  >Outward distance<small
+                    >Spread the projected faces farther from the puzzle</small
+                  ></label
+                ><span class="range-controls"
+                  ><input
+                    id="inspection-projection-outward"
+                    type="range"
+                    min="0"
+                    max="200"
+                    step="1"
+                    value="100"
+                  /><output
+                    id="inspection-projection-outward-value"
+                    for="inspection-projection-outward"
+                    >100%</output
+                  ></span
+                >
+              </div>
+              <div class="setting range-setting">
+                <label for="inspection-projection-backward"
+                  >Backward distance<small
+                    >Move the projection farther behind the puzzle</small
+                  ></label
+                ><span class="range-controls"
+                  ><input
+                    id="inspection-projection-backward"
+                    type="range"
+                    min="0"
+                    max="200"
+                    step="1"
+                    value="65"
+                  /><output
+                    id="inspection-projection-backward-value"
+                    for="inspection-projection-backward"
+                    >65%</output
+                  ></span
+                >
+              </div>
+              <div class="setting range-setting">
+                <label for="inspection-projection-opacity"
+                  >Projection opacity<small>Make the projected stickers more subtle</small></label
+                ><span class="range-controls"
+                  ><input
+                    id="inspection-projection-opacity"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value="100"
+                  /><output
+                    id="inspection-projection-opacity-value"
+                    for="inspection-projection-opacity"
+                    >100%</output
+                  ></span
+                >
+              </div>
+            </fieldset>
+            <div class="setting">
+              <span>Color scheme<small>Choose the colors of each face</small></span
+              ><button
+                id="customize-colors"
+                aria-haspopup="dialog"
+                aria-controls="color-scheme-dialog"
+              >
+                Customize colors
+              </button>
+            </div>
+            <label class="setting"
+              ><span>Virtual keyboard<small>Live key labels, pressed keys and TPS</small></span
+              ><input type="checkbox" id="show-keyboard" role="switch" aria-label="Show keyboard"
+            /></label>
+          </div>
+        </section>
+        <section
+          id="settings-controls"
+          class="settings-group"
+          aria-labelledby="settings-controls-title"
+        >
+          <h2 id="settings-controls-title">Controls</h2>
+          <div class="settings-rows">
+            <label class="setting"
+              ><span
+                >Pointer controls<small
+                  >Choose how mouse and touch input turn the puzzle</small
+                ></span
+              ><select id="pointer-mode" aria-label="Pointer controls">
+                <option value="swipe">Swipe to turn</option>
+                <option value="legacy">Orbit + click</option>
+              </select></label
+            >
+            <div class="setting">
+              <span
+                >Touch turn bias<small
+                  >Favor common turns when swipe directions overlap</small
+                ></span
+              ><button
+                id="touch-turn-bias"
+                aria-haspopup="dialog"
+                aria-controls="touch-bias-dialog"
+              >
+                Touch turn biasness
+              </button>
+            </div>
+            <label class="setting"
+              ><span>Follow the view<small>Keyboard labels adapt when you orbit</small></span
+              ><input
+                type="checkbox"
+                id="follow"
+                role="switch"
+                checked
+                aria-label="Follow the view"
+            /></label>
+            <div class="setting label-angle-setting">
+              <label for="label-switch-angle"
+                >Face switch angle<small
+                  >Degrees past square-on before U/F switches to F/D</small
+                ></label
+              ><span class="label-angle-controls"
+                ><input
+                  type="range"
+                  id="label-switch-angle"
+                  min="0"
+                  max="40"
+                  step="1"
+                  value="15"
+                /><input
+                  type="number"
+                  id="label-switch-angle-value"
+                  min="0"
+                  max="40"
+                  step="1"
+                  value="15"
+                  aria-label="Label switch angle in degrees"
+                /><span aria-hidden="true">°</span></span
+              >
+            </div>
+            <label class="setting"
+              ><span
+                >Reset mode before and after a solve<small
+                  >Return to the default mode for each new solve and after finishing</small
+                ></span
+              ><input
+                type="checkbox"
+                id="auto-default-mode"
+                role="switch"
+                checked
+                aria-label="Reset keyboard mode before and after a solve"
+            /></label>
+            <label class="setting"
+              ><span
+                >Start next solve right away<small
+                  >Present a new scramble as soon as a solve is finished</small
+                ></span
+              ><input id="auto-next-solve" type="checkbox" role="switch"
+            /></label>
+            <div class="setting">
+              <span
+                >Keyboard &amp; bindings<small
+                  >Layouts, modes, shortcuts and the default mode</small
+                ></span
+              ><button id="edit-keyboard">Edit keyboard and binding</button>
+            </div>
+            <div class="setting">
+              <span>Split timing<small>Choose a method or create your own checkpoints</small></span
+              ><button id="configure-splits" aria-haspopup="dialog" aria-controls="splits-dialog">
+                Configure splits
+              </button>
+            </div>
+          </div>
+        </section>
+        <section
+          id="settings-motion"
+          class="settings-group"
+          aria-labelledby="settings-motion-title"
+        >
+          <h2 id="settings-motion-title">Animation &amp; sound</h2>
+          <div class="settings-rows">
+            <label class="setting"
+              ><span>Animate turns<small>Animate your turns and rotations</small></span
+              ><input type="checkbox" id="animate" role="switch" checked aria-label="Animate turns"
+            /></label>
+            <label class="setting"
+              ><span>Animate scrambling<small>Show the computer-generated turns</small></span
+              ><input
+                type="checkbox"
+                id="animate-scrambling"
+                role="switch"
+                checked
+                aria-label="Animate scrambling"
+            /></label>
+            <div class="setting range-setting">
+              <label for="animation-speed"
+                >Animation speed<small>Turn, rotation and scramble animation speed</small></label
+              ><span class="range-controls"
+                ><input
+                  id="animation-speed"
+                  type="range"
+                  min="0.25"
+                  max="3"
+                  step="0.25"
+                  value="1"
+                /><output id="animation-speed-value" for="animation-speed">1×</output></span
+              >
+            </div>
+            <label class="setting"
+              ><span>Disable sounds<small>Mute move clicks and suffix tones</small></span
+              ><input type="checkbox" id="disable-sounds" role="switch" aria-label="Disable sounds"
+            /></label>
+          </div>
+        </section>
 
-</header>
-<div class="settings-body">
-<section id="settings-display" class="settings-group" aria-labelledby="settings-display-title"><h2 id="settings-display-title">Display</h2><div class="settings-rows">
-<label class="setting"><span>Statistics instead of splits<small>Current and PB single, ao5, ao12, ao25, ao100, ao300 and ao1000</small></span><input id="show-statistics" type="checkbox" role="switch"></label>
-<label class="setting"><span>Print scrambles in statistics<small>Include scrambles in copied reports and CSV exports</small></span><input id="print-stat-scrambles" type="checkbox" role="switch" checked></label>
-<label class="setting"><span>Face labels<small>Show face names on the puzzle</small></span><input type="checkbox" id="show-labels" role="switch" checked aria-label="Show face labels"></label>
-<label class="setting"><span>Show back sticker projection during inspection</span><input type="checkbox" id="show-inspection-faces" role="switch" aria-label="Show back sticker projection during inspection"></label>
-<fieldset id="inspection-projection-settings" aria-label="Back sticker projection controls" disabled>
-<div class="setting range-setting"><label for="inspection-projection-outward">Outward distance<small>Spread the projected faces farther from the puzzle</small></label><span class="range-controls"><input id="inspection-projection-outward" type="range" min="0" max="200" step="1" value="100"><output id="inspection-projection-outward-value" for="inspection-projection-outward">100%</output></span></div>
-<div class="setting range-setting"><label for="inspection-projection-backward">Backward distance<small>Move the projection farther behind the puzzle</small></label><span class="range-controls"><input id="inspection-projection-backward" type="range" min="0" max="200" step="1" value="65"><output id="inspection-projection-backward-value" for="inspection-projection-backward">65%</output></span></div>
-<div class="setting range-setting"><label for="inspection-projection-opacity">Projection opacity<small>Make the projected stickers more subtle</small></label><span class="range-controls"><input id="inspection-projection-opacity" type="range" min="0" max="100" step="1" value="100"><output id="inspection-projection-opacity-value" for="inspection-projection-opacity">100%</output></span></div>
-</fieldset>
-<div class="setting"><span>Color scheme<small>Choose the colors of each face</small></span><button id="customize-colors" aria-haspopup="dialog" aria-controls="color-scheme-dialog">Customize colors</button></div>
-<label class="setting"><span>Virtual keyboard<small>Live key labels, pressed keys and TPS</small></span><input type="checkbox" id="show-keyboard" role="switch" aria-label="Show keyboard"></label>
-</div></section>
-<section id="settings-controls" class="settings-group" aria-labelledby="settings-controls-title"><h2 id="settings-controls-title">Controls</h2><div class="settings-rows">
-<label class="setting"><span>Pointer controls<small>Choose how mouse and touch input turn the puzzle</small></span><select id="pointer-mode" aria-label="Pointer controls"><option value="swipe">Swipe to turn</option><option value="legacy">Orbit + click</option></select></label>
-<div class="setting"><span>Touch turn bias<small>Favor common turns when swipe directions overlap</small></span><button id="touch-turn-bias" aria-haspopup="dialog" aria-controls="touch-bias-dialog">Touch turn biasness</button></div>
-<label class="setting"><span>Follow the view<small>Keyboard labels adapt when you orbit</small></span><input type="checkbox" id="follow" role="switch" checked aria-label="Follow the view"></label>
-<div class="setting label-angle-setting"><label for="label-switch-angle">Face switch angle<small>Degrees past square-on before U/F switches to F/D</small></label><span class="label-angle-controls"><input type="range" id="label-switch-angle" min="0" max="40" step="1" value="15"><input type="number" id="label-switch-angle-value" min="0" max="40" step="1" value="15" aria-label="Label switch angle in degrees"><span aria-hidden="true">°</span></span></div>
-<label class="setting"><span>Reset mode before and after a solve<small>Return to the default mode for each new solve and after finishing</small></span><input type="checkbox" id="auto-default-mode" role="switch" checked aria-label="Reset keyboard mode before and after a solve"></label>
-<label class="setting"><span>Start next solve right away<small>Present a new scramble as soon as a solve is finished</small></span><input id="auto-next-solve" type="checkbox" role="switch"></label>
-<div class="setting"><span>Keyboard &amp; bindings<small>Layouts, modes, shortcuts and the default mode</small></span><button id="edit-keyboard">Edit keyboard and binding</button></div>
-<div class="setting"><span>Split timing<small>Choose a method or create your own checkpoints</small></span><button id="configure-splits" aria-haspopup="dialog" aria-controls="splits-dialog">Configure splits</button></div>
-</div></section>
-<section id="settings-motion" class="settings-group" aria-labelledby="settings-motion-title"><h2 id="settings-motion-title">Animation &amp; sound</h2><div class="settings-rows">
-<label class="setting"><span>Animate turns<small>Animate your turns and rotations</small></span><input type="checkbox" id="animate" role="switch" checked aria-label="Animate turns"></label>
-<label class="setting"><span>Animate scrambling<small>Show the computer-generated turns</small></span><input type="checkbox" id="animate-scrambling" role="switch" checked aria-label="Animate scrambling"></label>
-<div class="setting range-setting"><label for="animation-speed">Animation speed<small>Turn, rotation and scramble animation speed</small></label><span class="range-controls"><input id="animation-speed" type="range" min="0.25" max="3" step="0.25" value="1"><output id="animation-speed-value" for="animation-speed">1×</output></span></div>
-<label class="setting"><span>Disable sounds<small>Mute move clicks and suffix tones</small></span><input type="checkbox" id="disable-sounds" role="switch" aria-label="Disable sounds"></label>
-</div></section>
+        <section id="settings-data" class="settings-group" aria-labelledby="settings-data-title">
+          <h2 id="settings-data-title">Your data</h2>
+          <div class="settings-rows">
+            <div class="settings-backup">
+              <p>
+                Move your entire setup to another browser or computer. Includes recordings, times,
+                PBs, splits, methods, bindings, colors and puzzle progress.
+              </p>
+              <div class="settings-data-actions">
+                <button id="export-user-data">Export data as JSON</button
+                ><button
+                  id="open-user-data-import"
+                  aria-haspopup="dialog"
+                  aria-controls="user-data-import-dialog"
+                >
+                  Import data as JSON
+                </button>
+              </div>
+              <p id="user-data-message" role="status"></p>
+            </div>
+          </div>
+        </section>
+      </div>
+      <span id="save-status" role="status" hidden></span>
+    </dialog>
+    <dialog id="user-data-import-dialog" aria-labelledby="user-data-import-title">
+      <div class="dialog-heading">
+        <h1 id="user-data-import-title">Import your data</h1>
+        <button id="close-user-data-import" aria-label="Close data import">✕</button>
+      </div>
+      <p class="muted">Restore an FTO backup from another browser or computer.</p>
+      <div id="user-data-drop" class="file-drop">
+        <strong>Drop your backup here</strong><span>or</span
+        ><button id="choose-user-data-file">Choose a file</button
+        ><input id="import-user-data" type="file" accept=".json,application/json" hidden />
+      </div>
+      <p id="user-data-import-message" role="status"></p>
+    </dialog>
+    <dialog id="touch-bias-dialog" aria-labelledby="touch-bias-title">
+      <div class="dialog-heading">
+        <h1 id="touch-bias-title">Touch turn biasness</h1>
+        <button id="close-touch-bias" aria-label="Close touch turn biasness">✕</button>
+      </div>
+      <p class="keyboard-intro">
+        Give common turns more room for error when swipe directions overlap. Set either slider to 0%
+        for directional matching.
+      </p>
+      <section class="settings-section" aria-label="Turn biases">
+        <div class="setting range-setting">
+          <label for="outer-turn-bias"
+            >Outer turn bias<small
+              >Shrink inner-turn swipe ranges on outer pieces. 100% allows only outer turns there;
+              interior pieces stay unchanged.</small
+            ></label
+          ><span class="range-controls"
+            ><input
+              id="outer-turn-bias"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value="60"
+            /><output id="outer-turn-bias-value" for="outer-turn-bias">60%</output></span
+          >
+        </div>
+        <div class="setting range-setting">
+          <label for="u-turn-bias"
+            >CIF U turn bias<small
+              >Shrink F’s swipe range at the shared U/F edge in CIF. 100% allows only U there; lower
+              F stickers stay unchanged.</small
+            ></label
+          ><span class="range-controls"
+            ><input id="u-turn-bias" type="range" min="0" max="100" step="1" value="60" /><output
+              id="u-turn-bias-value"
+              for="u-turn-bias"
+              >60%</output
+            ></span
+          >
+        </div>
+        <div class="setting range-setting">
+          <label for="eif-u-turn-bias"
+            >EIF U turn bias<small
+              >Favor U/U′ over BR and BL on the shared top row in EIF. 100% allows only U turns
+              there; lower rows stay unchanged.</small
+            ></label
+          ><span class="range-controls"
+            ><input
+              id="eif-u-turn-bias"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value="60"
+            /><output id="eif-u-turn-bias-value" for="eif-u-turn-bias">60%</output></span
+          >
+        </div>
+      </section>
+    </dialog>
+    <dialog id="about-dialog" aria-labelledby="about-title">
+      <div class="dialog-heading">
+        <h1 id="about-title">About FTO Simulator</h1>
+        <button id="close-about" aria-label="Close about">✕</button>
+      </div>
+      <p class="about-author">Made by Abid Ibn Ashraf.</p>
+      <div class="about-links">
+        <a
+          href="https://www.worldcubeassociation.org/persons/2024ASHR02"
+          target="_blank"
+          rel="noopener"
+          ><img
+            class="wca-link-icon"
+            src="./wca-logo-themed.svg"
+            width="24"
+            height="24"
+            alt=""
+            aria-hidden="true"
+          />2024ASHR02</a
+        ><a href="https://github.com/Abid-speedcuber" target="_blank" rel="noopener"
+          ><svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.64-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.6 9.6 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"
+            /></svg
+          >GitHub</a
+        >
+      </div>
+      <p>
+        Open source under <a href="./licenses/GPL-3.0.txt" target="_blank" rel="noopener">GPLv3</a>.
+        You may copy, modify and redistribute this project under that license. Distributed
+        derivatives must include their source code and remain under GPLv3.
+      </p>
+      <p>
+        Found an issue? Ping <strong>abid_ibn_ashraf</strong> in the
+        <a href="https://discord.gg/p8mCQYUkaf" target="_blank" rel="noopener"
+          >FTO Fan Club Discord</a
+        >, or
+        <a
+          href="https://github.com/Abid-speedcuber/Virtual-FTO-hub/issues"
+          target="_blank"
+          rel="noopener"
+          >open a GitHub issue</a
+        >.
+      </p>
+      <p class="license-note">
+        <a href="https://github.com/Abid-speedcuber/Virtual-FTO-hub" target="_blank" rel="noopener"
+          >Source code</a
+        >
+      </p>
+    </dialog>
+    <dialog id="color-scheme-dialog" aria-labelledby="color-scheme-title">
+      <div class="dialog-heading">
+        <h1 id="color-scheme-title">Customize color scheme</h1>
+        <button id="close-color-scheme" aria-label="Close color scheme">✕</button>
+      </div>
+      <p class="color-scheme-help">Drag to orbit. Select a face or swatch to edit.</p>
+      <div class="color-scheme-layout">
+        <div class="color-reference-wrap">
+          <div id="color-reference"></div>
+          <button id="reset-color-reference">Reset view</button>
+        </div>
+        <div id="face-color-swatches" class="face-color-swatches"></div>
+      </div>
+      <button id="reset-face-colors">Reset to default colors</button>
+    </dialog>
+    <dialog id="keyboard-dialog" aria-labelledby="keyboard-title">
+      <div class="dialog-heading">
+        <h1 id="keyboard-title">Keyboard &amp; bindings</h1>
+        <button id="close-keyboard" aria-label="Close keyboard settings">✕</button>
+      </div>
+      <label class="setting keyboard-puzzle-setting"
+        >Puzzle<select
+          id="keyboard-preferences-puzzle"
+          aria-label="Keyboard preferences puzzle"
+        ></select
+      ></label>
+      <div class="keyboard-display-grid">
+        <label class="setting"
+          >Geometry<select id="keyboard-layout">
+            <option value="ansi">ANSI (US)</option>
+            <option value="iso">ISO (European)</option>
+            <option value="60">60% (compact)</option>
+          </select></label
+        >
+        <label class="setting"
+          >Number pad<input id="keyboard-numpad" type="checkbox" role="switch"
+        /></label>
+        <label class="setting"
+          >Width <output id="keyboard-width-value"></output
+          ><input type="range" id="keyboard-width" min="220" max="1200" step="20"
+        /></label>
+        <label class="setting"
+          >Opacity <output id="keyboard-opacity-value"></output
+          ><input type="range" id="keyboard-opacity" min="35" max="100"
+        /></label>
+        <label class="setting"
+          >Show TPS<input id="keyboard-tps" type="checkbox" role="switch" checked
+        /></label>
+        <label class="setting"
+          >TPS window<select id="keyboard-window">
+            <option value="1">1 second</option>
+            <option value="3">3 seconds</option>
+            <option value="5">5 seconds</option>
+          </select></label
+        >
+        <button id="keyboard-reset-tps">Reset TPS and turn count</button
+        ><label class="setting"
+          >Sequence timeout (ms)<input
+            id="keyboard-sequence-timeout"
+            type="number"
+            min="200"
+            max="10000"
+            step="100"
+            value="1400"
+        /></label>
+      </div>
+      <button id="customize-bindings" class="primary">Customize bindings</button>
+      <section class="keyboard-files">
+        <div class="catalog-file-actions">
+          <button id="catalog-reset-abid">Use Abid’s default bindings</button
+          ><button id="catalog-reset-cstimer">Use csTimer’s default bindings</button
+          ><button id="catalog-export">Export keyboard</button
+          ><button id="catalog-choose-import">Import keyboard</button>
+        </div>
+      </section>
+      <p id="catalog-message" role="status"></p>
+    </dialog>
+    <dialog id="keyboard-import-dialog" aria-labelledby="keyboard-import-title">
+      <div class="dialog-heading">
+        <h1 id="keyboard-import-title">Import keyboard</h1>
+        <button id="close-keyboard-import" aria-label="Close keyboard import">✕</button>
+      </div>
+      <div id="keyboard-import-drop" class="file-drop">
+        <strong>Drop a keyboard JSON file here</strong><span>or</span
+        ><button id="choose-keyboard-file">Choose a file</button
+        ><input id="catalog-import" type="file" accept=".json,application/json" hidden />
+      </div>
+      <p id="keyboard-import-message" role="status"></p>
+    </dialog>
+    <dialog id="bindings-dialog" aria-labelledby="bindings-title">
+      <header class="editor-header">
+        <div class="dialog-heading">
+          <h1 id="bindings-title">Customize bindings</h1>
+          <button id="close-bindings" aria-label="Close binding editor">✕</button>
+        </div>
+        <div class="editor-selectors">
+          <label>Puzzle<select id="keyboard-puzzle" aria-label="Binding puzzle"></select></label>
+          <div class="mode-select-label">
+            <span>Mode</span>
+            <details id="catalog-mode-picker">
+              <summary id="catalog-mode-choice" aria-label="Choose keyboard mode"></summary>
+              <div id="catalog-mode-options" role="listbox" aria-label="Keyboard modes"></div>
+            </details>
+          </div>
+        </div>
+      </header>
+      <details id="binding-board" class="binding-board" open>
+        <summary>
+          Keyboard view
+          <small
+            >Click a key to assign it. Click a modifier (Shift, or any key bound to a suffix or hold
+            action) to hold it; double-click or right-click it to bind the key itself. Ctrl-click
+            any key to change its type.</small
+          >
+        </summary>
+        <svg
+          id="binding-board-svg"
+          xmlns="http://www.w3.org/2000/svg"
+          role="group"
+          aria-label="Keyboard binding editor"
+        ></svg>
+      </details>
+      <div class="catalog-filters">
+        <select id="catalog-category" aria-label="Action category"></select
+        ><select id="catalog-subgroup" aria-label="Action subgroup">
+          <option value="all">All groups</option></select
+        ><input
+          id="catalog-search"
+          type="search"
+          aria-label="Search actions or keys"
+          placeholder='Find an action, or apply a rotation (e.g. "{U, R}")...'
+        />
+      </div>
+      <div class="keyboard-editor-body">
+        <div id="rotation-panel" hidden>
+          <p id="rotation-status" role="status"></p>
+          <button id="rotation-apply" class="primary" hidden>Apply</button>
+        </div>
+        <table class="action-table">
+          <thead>
+            <tr>
+              <th id="catalog-col1">Action</th>
+              <th id="catalog-col2">Assigned keys</th>
+            </tr>
+          </thead>
+          <tbody id="catalog-rows"></tbody>
+        </table>
+        <p id="catalog-empty" hidden>No matching actions.</p>
+      </div>
+      <footer class="catalog-footer">
+        <span id="catalog-count" aria-live="polite"></span>
+        <p id="bindings-message" role="status"></p>
+      </footer>
+      <div id="mode-context-menu" role="menu" hidden>
+        <button id="mode-context-default" role="menuitem">Make default</button
+        ><button id="mode-context-rename" role="menuitem">Rename</button
+        ><button id="mode-context-duplicate" role="menuitem">Duplicate</button
+        ><button id="mode-context-overwrite-with" role="menuitem" hidden>Overwrite with this</button
+        ><button id="mode-context-overwrite" role="menuitem" hidden>Overwrite</button
+        ><button id="mode-context-delete" role="menuitem">Delete</button>
+      </div>
+      <div id="rotation-toast" role="status" hidden>
+        <span>Rotation applied.</span><button id="rotation-undo">Undo</button>
+      </div>
+    </dialog>
+    <dialog id="mode-name-dialog" aria-labelledby="mode-name-title">
+      <div class="dialog-heading">
+        <h1 id="mode-name-title">New mode</h1>
+        <button id="close-mode-name" aria-label="Close mode name">✕</button>
+      </div>
+      <form id="mode-name-form">
+        <label class="key-trigger-label"
+          >Name<input id="new-mode-name" maxlength="13" required autocomplete="off"
+        /></label>
+        <p id="mode-name-message" role="status"></p>
+        <div class="editor-footer">
+          <button type="submit" id="save-mode-name" class="primary">Create mode</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="bind-key-dialog" aria-labelledby="bind-key-title">
+      <div class="dialog-heading">
+        <h1 id="bind-key-title">Assign key</h1>
+        <button id="close-bind-key" aria-label="Close key assignment">✕</button>
+      </div>
+      <form id="bind-key-form">
+        <button id="bind-key-listen" type="button" class="key-listener">
+          Press a key or chord…</button
+        ><small class="capture-hint">Esc cancels</small
+        ><label class="key-trigger-label"
+          >Key, chord or sequence<input
+            id="bind-key-trigger"
+            placeholder="F, Shift+F, A F…"
+            autocomplete="off"
+            spellcheck="false"
+        /></label>
+        <p id="bind-key-message" role="status"></p>
+        <div class="editor-footer">
+          <button id="bind-key-replace" type="button" hidden>Replace existing key</button
+          ><button id="bind-key-save" type="submit" class="primary">Save key</button>
+        </div>
+      </form>
+    </dialog>
 
-<section id="settings-data" class="settings-group" aria-labelledby="settings-data-title"><h2 id="settings-data-title">Your data</h2><div class="settings-rows"><div class="settings-backup"><p>Move your entire setup to another browser or computer. Includes recordings, times, PBs, splits, methods, bindings, colors and puzzle progress.</p><div class="settings-data-actions"><button id="export-user-data">Export data as JSON</button><button id="open-user-data-import" aria-haspopup="dialog" aria-controls="user-data-import-dialog">Import data as JSON</button></div><p id="user-data-message" role="status"></p></div></div></section>
-</div>
-<span id="save-status" role="status" hidden></span>
-</dialog>
-<dialog id="user-data-import-dialog" aria-labelledby="user-data-import-title"><div class="dialog-heading"><h1 id="user-data-import-title">Import your data</h1><button id="close-user-data-import" aria-label="Close data import">✕</button></div><p class="muted">Restore an FTO backup from another browser or computer.</p><div id="user-data-drop" class="file-drop"><strong>Drop your backup here</strong><span>or</span><button id="choose-user-data-file">Choose a file</button><input id="import-user-data" type="file" accept=".json,application/json" hidden></div><p id="user-data-import-message" role="status"></p></dialog>
-<dialog id="touch-bias-dialog" aria-labelledby="touch-bias-title"><div class="dialog-heading"><h1 id="touch-bias-title">Touch turn biasness</h1><button id="close-touch-bias" aria-label="Close touch turn biasness">✕</button></div><p class="keyboard-intro">Give common turns more room for error when swipe directions overlap. Set either slider to 0% for directional matching.</p><section class="settings-section" aria-label="Turn biases"><div class="setting range-setting"><label for="outer-turn-bias">Outer turn bias<small>Shrink inner-turn swipe ranges on outer pieces. 100% allows only outer turns there; interior pieces stay unchanged.</small></label><span class="range-controls"><input id="outer-turn-bias" type="range" min="0" max="100" step="1" value="60"><output id="outer-turn-bias-value" for="outer-turn-bias">60%</output></span></div>
-<div class="setting range-setting"><label for="u-turn-bias">CIF U turn bias<small>Shrink F’s swipe range at the shared U/F edge in CIF. 100% allows only U there; lower F stickers stay unchanged.</small></label><span class="range-controls"><input id="u-turn-bias" type="range" min="0" max="100" step="1" value="60"><output id="u-turn-bias-value" for="u-turn-bias">60%</output></span></div>
-<div class="setting range-setting"><label for="eif-u-turn-bias">EIF U turn bias<small>Favor U/U′ over BR and BL on the shared top row in EIF. 100% allows only U turns there; lower rows stay unchanged.</small></label><span class="range-controls"><input id="eif-u-turn-bias" type="range" min="0" max="100" step="1" value="60"><output id="eif-u-turn-bias-value" for="eif-u-turn-bias">60%</output></span></div></section></dialog>
-<dialog id="about-dialog" aria-labelledby="about-title">
-<div class="dialog-heading"><h1 id="about-title">About FTO Simulator</h1><button id="close-about" aria-label="Close about">✕</button></div>
-<p class="about-author">Made by Abid Ibn Ashraf.</p><div class="about-links"><a href="https://www.worldcubeassociation.org/persons/2024ASHR02" target="_blank" rel="noopener"><img class="wca-link-icon" src="./wca-logo-themed.svg" width="24" height="24" alt="" aria-hidden="true">2024ASHR02</a><a href="https://github.com/Abid-speedcuber" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.64-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.6 9.6 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>GitHub</a></div>
-<p>Open source under <a href="./licenses/GPL-3.0.txt" target="_blank" rel="noopener">GPLv3</a>. You may copy, modify and redistribute this project under that license. Distributed derivatives must include their source code and remain under GPLv3.</p>
-<p>Found an issue? Ping <strong>abid_ibn_ashraf</strong> in the <a href="https://discord.gg/p8mCQYUkaf" target="_blank" rel="noopener">FTO Fan Club Discord</a>, or <a href="https://github.com/Abid-speedcuber/Virtual-FTO-hub/issues" target="_blank" rel="noopener">open a GitHub issue</a>.</p><p class="license-note"><a href="https://github.com/Abid-speedcuber/Virtual-FTO-hub" target="_blank" rel="noopener">Source code</a></p>
-</dialog>
-<dialog id="color-scheme-dialog" aria-labelledby="color-scheme-title">
-<div class="dialog-heading"><h1 id="color-scheme-title">Customize color scheme</h1><button id="close-color-scheme" aria-label="Close color scheme">✕</button></div>
-<p class="color-scheme-help">Drag to orbit. Select a face or swatch to edit.</p><div class="color-scheme-layout"><div class="color-reference-wrap"><div id="color-reference"></div><button id="reset-color-reference">Reset view</button></div><div id="face-color-swatches" class="face-color-swatches"></div></div>
-<button id="reset-face-colors">Reset to default colors</button>
-</dialog>
-<dialog id="keyboard-dialog" aria-labelledby="keyboard-title"><div class="dialog-heading"><h1 id="keyboard-title">Keyboard &amp; bindings</h1><button id="close-keyboard" aria-label="Close keyboard settings">✕</button></div><label class="setting keyboard-puzzle-setting">Puzzle<select id="keyboard-preferences-puzzle" aria-label="Keyboard preferences puzzle"></select></label><div class="keyboard-display-grid">
-<label class="setting">Geometry<select id="keyboard-layout"><option value="ansi">ANSI (US)</option><option value="iso">ISO (European)</option><option value="60">60% (compact)</option></select></label>
-<label class="setting">Number pad<input id="keyboard-numpad" type="checkbox" role="switch"></label>
-<label class="setting">Width <output id="keyboard-width-value"></output><input type="range" id="keyboard-width" min="220" max="1200" step="20"></label>
-<label class="setting">Opacity <output id="keyboard-opacity-value"></output><input type="range" id="keyboard-opacity" min="35" max="100"></label>
-<label class="setting">Show TPS<input id="keyboard-tps" type="checkbox" role="switch" checked></label>
-<label class="setting">TPS window<select id="keyboard-window"><option value="1">1 second</option><option value="3">3 seconds</option><option value="5">5 seconds</option></select></label>
-<button id="keyboard-reset-tps">Reset TPS and turn count</button><label class="setting">Sequence timeout (ms)<input id="keyboard-sequence-timeout" type="number" min="200" max="10000" step="100" value="1400"></label>
-</div><button id="customize-bindings" class="primary">Customize bindings</button><section class="keyboard-files"><div class="catalog-file-actions"><button id="catalog-reset-abid">Use Abid’s default bindings</button><button id="catalog-reset-cstimer">Use csTimer’s default bindings</button><button id="catalog-export">Export keyboard</button><button id="catalog-choose-import">Import keyboard</button></div></section><p id="catalog-message" role="status"></p></dialog>
-<dialog id="keyboard-import-dialog" aria-labelledby="keyboard-import-title"><div class="dialog-heading"><h1 id="keyboard-import-title">Import keyboard</h1><button id="close-keyboard-import" aria-label="Close keyboard import">✕</button></div><div id="keyboard-import-drop" class="file-drop"><strong>Drop a keyboard JSON file here</strong><span>or</span><button id="choose-keyboard-file">Choose a file</button><input id="catalog-import" type="file" accept=".json,application/json" hidden></div><p id="keyboard-import-message" role="status"></p></dialog>
-<dialog id="bindings-dialog" aria-labelledby="bindings-title"><header class="editor-header"><div class="dialog-heading"><h1 id="bindings-title">Customize bindings</h1><button id="close-bindings" aria-label="Close binding editor">✕</button></div><div class="editor-selectors"><label>Puzzle<select id="keyboard-puzzle" aria-label="Binding puzzle"></select></label><div class="mode-select-label"><span>Mode</span><details id="catalog-mode-picker"><summary id="catalog-mode-choice" aria-label="Choose keyboard mode"></summary><div id="catalog-mode-options" role="listbox" aria-label="Keyboard modes"></div></details></div></div></header>
-<details id="binding-board" class="binding-board" open><summary>Keyboard view <small>Click a key to assign it. Click a modifier (Shift, or any key bound to a suffix or hold action) to hold it; double-click or right-click it to bind the key itself. Ctrl-click any key to change its type.</small></summary><svg id="binding-board-svg" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Keyboard binding editor"></svg></details>
-<div class="catalog-filters"><select id="catalog-category" aria-label="Action category"></select><select id="catalog-subgroup" aria-label="Action subgroup"><option value="all">All groups</option></select><input id="catalog-search" type="search" aria-label="Search actions or keys" placeholder='Find an action, or apply a rotation (e.g. "{U, R}")...'></div><div class="keyboard-editor-body"><div id="rotation-panel" hidden><p id="rotation-status" role="status"></p><button id="rotation-apply" class="primary" hidden>Apply</button></div><table class="action-table"><thead><tr><th id="catalog-col1">Action</th><th id="catalog-col2">Assigned keys</th></tr></thead><tbody id="catalog-rows"></tbody></table><p id="catalog-empty" hidden>No matching actions.</p></div><footer class="catalog-footer"><span id="catalog-count" aria-live="polite"></span><p id="bindings-message" role="status"></p></footer><div id="mode-context-menu" role="menu" hidden><button id="mode-context-default" role="menuitem">Make default</button><button id="mode-context-rename" role="menuitem">Rename</button><button id="mode-context-duplicate" role="menuitem">Duplicate</button><button id="mode-context-overwrite-with" role="menuitem" hidden>Overwrite with this</button><button id="mode-context-overwrite" role="menuitem" hidden>Overwrite</button><button id="mode-context-delete" role="menuitem">Delete</button></div><div id="rotation-toast" role="status" hidden><span>Rotation applied.</span><button id="rotation-undo">Undo</button></div></dialog>
-<dialog id="mode-name-dialog" aria-labelledby="mode-name-title"><div class="dialog-heading"><h1 id="mode-name-title">New mode</h1><button id="close-mode-name" aria-label="Close mode name">✕</button></div><form id="mode-name-form"><label class="key-trigger-label">Name<input id="new-mode-name" maxlength="13" required autocomplete="off"></label><p id="mode-name-message" role="status"></p><div class="editor-footer"><button type="submit" id="save-mode-name" class="primary">Create mode</button></div></form></dialog>
-<dialog id="bind-key-dialog" aria-labelledby="bind-key-title"><div class="dialog-heading"><h1 id="bind-key-title">Assign key</h1><button id="close-bind-key" aria-label="Close key assignment">✕</button></div><form id="bind-key-form"><button id="bind-key-listen" type="button" class="key-listener">Press a key or chord…</button><small class="capture-hint">Esc cancels</small><label class="key-trigger-label">Key, chord or sequence<input id="bind-key-trigger" placeholder="F, Shift+F, A F…" autocomplete="off" spellcheck="false"></label><p id="bind-key-message" role="status"></p><div class="editor-footer"><button id="bind-key-replace" type="button" hidden>Replace existing key</button><button id="bind-key-save" type="submit" class="primary">Save key</button></div></form></dialog>
+    <script type="module" src="/src/main.js"></script>
 
-<script type="module" src="/src/main.js"></script>
-
-<dialog id="assign-action-dialog" aria-labelledby="assign-action-title"><div class="dialog-heading"><h1 id="assign-action-title">Assign action</h1><button id="close-assign-action" aria-label="Close action picker">✕</button></div><p id="assign-action-current" class="phase-help"></p><div class="assign-action-filters"><select id="assign-action-category" aria-label="Action category"></select><input id="assign-action-search" type="search" aria-label="Search actions" placeholder="Find an action…" autocomplete="off"></div><div id="assign-action-list" aria-label="Actions"></div><div class="editor-footer"><button id="assign-action-clear" type="button" hidden>Unassign key</button></div></dialog>
-<dialog id="key-role-dialog" aria-labelledby="key-role-title"><div class="dialog-heading"><h1 id="key-role-title">Change key type</h1><button id="close-key-role" aria-label="Close key type">✕</button></div><form id="key-role-form"><p id="key-role-scope" class="phase-help"></p><label class="key-trigger-label">Key type<select id="key-role-type"><option value="move">Move / rotation key</option><option value="suffix">Suffix key</option><option value="modifier">Held modifier key</option><option value="action">Action / mode key</option></select></label><p class="phase-help">Changing the type leaves this key unassigned. Assign its new action from Keyboard view afterward.</p><div id="key-role-impact"></div><label id="key-role-replacement-label" class="key-trigger-label">Rehome the old suffix / modifier (optional)<button id="key-role-record" type="button" class="key-listener">Record replacement key or chord</button><input id="key-role-replacement" placeholder="No replacement — dependent bindings become unassigned" autocomplete="off" spellcheck="false"><small>Record the new home for the old function, not an action for this key. Esc cancels recording.</small></label><p id="key-role-message" role="status"></p><div class="editor-footer"><button type="submit" id="key-role-save" class="primary">Save key type</button></div></form></dialog>
-<dialog id="statistics-dialog" aria-labelledby="statistics-title"><div class="dialog-heading"><h1 id="statistics-title">Current Round Statistics</h1><button id="close-statistics" aria-label="Close statistics">✕</button></div><section id="statistics-single" hidden><div id="statistics-single-time"></div><p id="statistics-single-date"></p><div class="statistics-scramble-card"><h2>Scramble</h2><p id="statistics-single-scramble"></p></div></section><pre id="statistics-report" role="region" aria-label="Statistics report" tabindex="0"></pre><label id="statistics-comment-label" class="key-trigger-label">Comment<textarea id="statistics-comment" maxlength="2000" rows="2" placeholder="Add a note about this solve…"></textarea></label><div class="statistics-footer"><label class="statistics-print"><input id="statistics-scrambles" type="checkbox" checked><span>Print scrambles</span></label><div class="statistics-actions"><button id="statistics-comment-save">Save comment</button><button id="statistics-csv">Export CSV</button><button id="statistics-copy">Copy</button><button id="statistics-share" class="primary" hidden>Share</button></div></div><p id="statistics-message" role="status"></p></dialog>
-<div id="recording-link-toast" role="status" aria-live="polite" hidden><span id="recording-link-status"></span><button id="close-recording-link-toast" aria-label="Dismiss recording notification">✕</button></div>
-</body>
+    <dialog id="assign-action-dialog" aria-labelledby="assign-action-title">
+      <div class="dialog-heading">
+        <h1 id="assign-action-title">Assign action</h1>
+        <button id="close-assign-action" aria-label="Close action picker">✕</button>
+      </div>
+      <p id="assign-action-current" class="phase-help"></p>
+      <div class="assign-action-filters">
+        <select id="assign-action-category" aria-label="Action category"></select
+        ><input
+          id="assign-action-search"
+          type="search"
+          aria-label="Search actions"
+          placeholder="Find an action…"
+          autocomplete="off"
+        />
+      </div>
+      <div id="assign-action-list" aria-label="Actions"></div>
+      <div class="editor-footer">
+        <button id="assign-action-clear" type="button" hidden>Unassign key</button>
+      </div>
+    </dialog>
+    <dialog id="key-role-dialog" aria-labelledby="key-role-title">
+      <div class="dialog-heading">
+        <h1 id="key-role-title">Change key type</h1>
+        <button id="close-key-role" aria-label="Close key type">✕</button>
+      </div>
+      <form id="key-role-form">
+        <p id="key-role-scope" class="phase-help"></p>
+        <label class="key-trigger-label"
+          >Key type<select id="key-role-type">
+            <option value="move">Move / rotation key</option>
+            <option value="suffix">Suffix key</option>
+            <option value="modifier">Held modifier key</option>
+            <option value="action">Action / mode key</option>
+          </select></label
+        >
+        <p class="phase-help">
+          Changing the type leaves this key unassigned. Assign its new action from Keyboard view
+          afterward.
+        </p>
+        <div id="key-role-impact"></div>
+        <label id="key-role-replacement-label" class="key-trigger-label"
+          >Rehome the old suffix / modifier (optional)<button
+            id="key-role-record"
+            type="button"
+            class="key-listener"
+          >
+            Record replacement key or chord</button
+          ><input
+            id="key-role-replacement"
+            placeholder="No replacement — dependent bindings become unassigned"
+            autocomplete="off"
+            spellcheck="false"
+          /><small
+            >Record the new home for the old function, not an action for this key. Esc cancels
+            recording.</small
+          ></label
+        >
+        <p id="key-role-message" role="status"></p>
+        <div class="editor-footer">
+          <button type="submit" id="key-role-save" class="primary">Save key type</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="statistics-dialog" aria-labelledby="statistics-title">
+      <div class="dialog-heading">
+        <h1 id="statistics-title">Current Round Statistics</h1>
+        <button id="close-statistics" aria-label="Close statistics">✕</button>
+      </div>
+      <section id="statistics-single" hidden>
+        <div id="statistics-single-time"></div>
+        <p id="statistics-single-date"></p>
+        <div class="statistics-scramble-card">
+          <h2>Scramble</h2>
+          <p id="statistics-single-scramble"></p>
+        </div>
+      </section>
+      <pre id="statistics-report" role="region" aria-label="Statistics report" tabindex="0"></pre>
+      <label id="statistics-comment-label" class="key-trigger-label"
+        >Comment<textarea
+          id="statistics-comment"
+          maxlength="2000"
+          rows="2"
+          placeholder="Add a note about this solve…"
+        ></textarea>
+      </label>
+      <div class="statistics-footer">
+        <label class="statistics-print"
+          ><input id="statistics-scrambles" type="checkbox" checked /><span
+            >Print scrambles</span
+          ></label
+        >
+        <div class="statistics-actions">
+          <button id="statistics-comment-save">Save comment</button
+          ><button id="statistics-csv">Export CSV</button><button id="statistics-copy">Copy</button
+          ><button id="statistics-share" class="primary" hidden>Share</button>
+        </div>
+      </div>
+      <p id="statistics-message" role="status"></p>
+    </dialog>
+    <div id="recording-link-toast" role="status" aria-live="polite" hidden>
+      <span id="recording-link-status"></span
+      ><button id="close-recording-link-toast" aria-label="Dismiss recording notification">
+        ✕
+      </button>
+    </div>
+  </body>
 </html>
