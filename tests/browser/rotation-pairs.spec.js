@@ -1,8 +1,9 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
+import { waitForApp, freezeClock, openSettings, withSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
 import { ROTATION_PAIRS } from '../../src/rotation-actions.js';
-import { withSettings } from './helpers.js';
+
 const snapshot = (page) => page.evaluate(() => window.fto.snapshot());
 test.setTimeout(120000);
 test('all 47 pair bindings execute against the current hold and persist after reload', async ({
@@ -30,7 +31,7 @@ test('all 47 pair bindings execute against the current hold and persist after re
     config,
   );
   await page.goto('/');
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   await withSettings(page, () => page.locator('#animate').uncheck());
   const base = await snapshot(page),
     faceOrder = ['U', 'R', 'F', 'BR', 'L', 'B', 'BL', 'D'],
@@ -55,7 +56,7 @@ test('all 47 pair bindings execute against the current hold and persist after re
     }
   expect([...notations].sort()).toEqual(['CIF', 'EIF']);
   await page.reload();
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   expect((await snapshot(page)).keyboard.config.modes[0].bindings).toEqual(
     config.modes[0].bindings,
   );
@@ -64,7 +65,7 @@ test('face-pair searches expose legacy aliases and bindable pairs while retainin
   page,
 }) => {
   await page.goto('/');
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   await openSettings(page);
   await page.locator('#edit-keyboard').click();
   await page.locator('#customize-bindings').click();
@@ -84,7 +85,7 @@ test('face-pair searches expose legacy aliases and bindable pairs while retainin
   await page.locator('#close-keyboard').click();
   await page.locator('#close-settings').click();
   await page.clock.install();
-  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
+  await freezeClock(page);
   const before = await snapshot(page);
   await page.keyboard.press('F8');
   const started = await snapshot(page);
@@ -121,7 +122,7 @@ test('EIF T and T prime put the requested current faces at U and F', async ({ pa
     localStorage.setItem('master-fto-settings-v1', JSON.stringify({ animate: false }));
   }, config);
   await page.goto('/');
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   for (const [key, up, front] of [
     ['F8', 6, 4],
     ['F9', 3, 1],

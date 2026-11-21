@@ -1,21 +1,22 @@
-import { test, expect } from '@playwright/test';
+import { waitForApp, selectSize, withSettings } from './helpers.js';
+import { test, expect } from './fixtures.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
-import { withSettings } from './helpers.js';
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+
+const ready = waitForApp;
 const snap = (page) => page.evaluate(() => window.fto.snapshot());
 test('20x20 Shift shows Slice and turns only the selected sixth layer once', async ({ page }) => {
   await page.goto('/');
   await ready(page);
-  await page.locator('#size').selectOption('20');
+  await selectSize(page, '20');
   await withSettings(page, async () => {
     await page.locator('#show-keyboard').check();
     await page.locator('#animate').uncheck();
   });
   for (const side of ['ShiftLeft', 'ShiftRight'])
-    await expect(page.locator(`[data-code="${side}"] text`)).toHaveText('Slice');
+    await expect(page.locator(`#keyboard-svg [data-code="${side}"] text`)).toHaveText('Slice');
   await page.keyboard.press('Digit6');
   await page.keyboard.down('Shift');
-  await expect(page.locator('[data-code="KeyF"] text')).toHaveText('6U′');
+  await expect(page.locator('#keyboard-svg [data-code="KeyF"] text')).toHaveText('6U′');
   await page.keyboard.press('KeyF');
   await page.keyboard.up('Shift');
   expect((await snap(page)).history.at(-1)).toMatchObject({
@@ -29,7 +30,7 @@ test('20x20 Shift shows Slice and turns only the selected sixth layer once', asy
   expect((await snap(page)).history.at(-1)).toMatchObject({ depth: 1, count: 1 });
   await page.reload();
   await ready(page);
-  await expect(page.locator('[data-code="ShiftLeft"] text')).toHaveText('Slice');
+  await expect(page.locator('#keyboard-svg [data-code="ShiftLeft"] text')).toHaveText('Slice');
 });
 test('existing profiles gain Slice once while generic and side-specific custom Shift actions survive', async ({
   page,
@@ -63,14 +64,14 @@ test('existing profiles gain Slice once while generic and side-specific custom S
   }, profiles);
   await page.goto('/');
   await ready(page);
-  await expect(page.locator('[data-code="ShiftLeft"] text')).toHaveText('Slice');
-  await page.locator('#size').selectOption('19');
-  await expect(page.locator('[data-code="ShiftLeft"] text')).toHaveText('Wide');
-  await expect(page.locator('[data-code="ShiftRight"] text')).toHaveText('Wide');
-  await page.locator('#size').selectOption('18');
-  await expect(page.locator('[data-code="ShiftLeft"] text')).toHaveText('Wide');
-  await expect(page.locator('[data-code="ShiftRight"] text')).toHaveText('Slice');
-  await page.locator('#size').selectOption('20');
+  await expect(page.locator('#keyboard-svg [data-code="ShiftLeft"] text')).toHaveText('Slice');
+  await selectSize(page, '19');
+  await expect(page.locator('#keyboard-svg [data-code="ShiftLeft"] text')).toHaveText('Wide');
+  await expect(page.locator('#keyboard-svg [data-code="ShiftRight"] text')).toHaveText('Wide');
+  await selectSize(page, '18');
+  await expect(page.locator('#keyboard-svg [data-code="ShiftLeft"] text')).toHaveText('Wide');
+  await expect(page.locator('#keyboard-svg [data-code="ShiftRight"] text')).toHaveText('Slice');
+  await selectSize(page, '20');
   await page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('master-fto-keyboard-v2'));
     saved.profiles[20].modes[0].bindings = saved.profiles[20].modes[0].bindings.filter(
@@ -80,5 +81,5 @@ test('existing profiles gain Slice once while generic and side-specific custom S
   });
   await page.reload();
   await ready(page);
-  await expect(page.locator('[data-code="ShiftLeft"] text')).toBeEmpty();
+  await expect(page.locator('#keyboard-svg [data-code="ShiftLeft"] text')).toBeEmpty();
 });

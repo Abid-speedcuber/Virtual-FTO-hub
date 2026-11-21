@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { waitForApp } from './helpers.js';
+import { test, expect } from './fixtures.js';
 import { SolveRecorder } from '../../src/solve-recording.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
 test('recorded touch strokes appear at exact sampled positions and reconstruct when seeking', async ({
@@ -29,7 +30,7 @@ test('recorded touch strokes appear at exact sampled positions and reconstruct w
   now = 1500;
   const data = recorder.finish(1500, true);
   await page.goto('/');
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   await page.locator('#album').click();
   await page.locator('#album-import-recording').click();
   await page.locator('#recording-paste').fill(JSON.stringify(data));
@@ -44,15 +45,13 @@ test('recorded touch strokes appear at exact sampled positions and reconstruct w
   const contacts = page.locator('.replay-pointer-overlay g');
   await seek(210);
   await expect(contacts).toHaveCount(2);
-  const geometry = await page
-    .locator('.replay-pointer-overlay')
-    .evaluate((svg) => ({
-      width: svg.clientWidth,
-      height: svg.clientHeight,
-      path: svg.querySelector('path').getAttribute('d'),
-      x: Number(svg.querySelector('circle').getAttribute('cx')),
-      y: Number(svg.querySelector('circle').getAttribute('cy')),
-    }));
+  const geometry = await page.locator('.replay-pointer-overlay').evaluate((svg) => ({
+    width: svg.clientWidth,
+    height: svg.clientHeight,
+    path: svg.querySelector('path').getAttribute('d'),
+    x: Number(svg.querySelector('circle').getAttribute('cx')),
+    y: Number(svg.querySelector('circle').getAttribute('cy')),
+  }));
   expect(geometry.x).toBeCloseTo(geometry.width * 0.5);
   expect(geometry.y).toBeCloseTo(geometry.height * 0.4);
   expect(geometry.path).toContain(`L${geometry.width * 0.4} ${geometry.height * 0.5}`);

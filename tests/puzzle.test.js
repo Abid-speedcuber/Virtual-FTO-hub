@@ -91,7 +91,7 @@ test('all 48 CIF/EIF holds map labels bijectively and match the camera', () => {
       camera.up.copy(up);
       camera.lookAt(0, 0, 0);
       assert.deepEqual(
-        frameForCamera(camera),
+        frameForCamera(camera, 0),
         expected,
         `${expected.up},${expected.front} at elevation ${elevation}`,
       );

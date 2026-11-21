@@ -1,6 +1,7 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+import { waitForApp, openSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
+const ready = waitForApp;
 const snap = (page) => page.evaluate(() => window.fto.snapshot());
 async function openKeys(page) {
   await page.goto('/');
@@ -35,7 +36,8 @@ test('settings scroll internally; import has a picker, drop zone and useful erro
 test('action-first editor replaces, adds, unassigns and resolves conflicts without changing the live puzzle', async ({
   page,
 }) => {
-  test.setTimeout(60000);
+  // Complete binding-edit workflow across two puzzle sizes; ordinary checks stay shorter.
+  test.setTimeout(90000);
   await openKeys(page);
   await expect(page.locator('#keyboard-puzzle')).toHaveValue('3');
   await page.locator('#catalog-category').selectOption('turns');
@@ -173,7 +175,8 @@ test('chords and sequences remain assignable in the dedicated editor', async ({ 
 test('a backup can be dropped, cancelled safely, and restored from the import modal', async ({
   page,
 }) => {
-  test.setTimeout(60000);
+  // Complete binding-edit workflow across two puzzle sizes; ordinary checks stay shorter.
+  test.setTimeout(90000);
   await page.goto('/');
   await ready(page);
   await openSettings(page);

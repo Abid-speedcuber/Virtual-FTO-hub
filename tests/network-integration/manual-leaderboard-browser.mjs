@@ -1,11 +1,12 @@
+import { browserLaunchOptions } from '../browser-options.js';
 import { chromium } from '@playwright/test';
 import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { SolveRecorder } from '../src/solve-recording.js';
-import { defaultConfig } from '../src/keyboard-engine.js';
-import { HOME_POSITION, DEFAULT_CIF_FRAME, snappedViewRotation } from '../src/orientation.js';
-const root = path.resolve('../ftoers/public'),
+import { SolveRecorder } from '../../src/solve-recording.js';
+import { defaultConfig } from '../../src/keyboard-engine.js';
+import { HOME_POSITION, DEFAULT_CIF_FRAME, snappedViewRotation } from '../../src/orientation.js';
+const root = path.resolve(process.env.FTOERS_PUBLIC_ROOT),
   dist = path.resolve('dist'),
   src = path.resolve('src');
 const user = {
@@ -103,11 +104,7 @@ let notifications = [
     read_at: null,
   },
 ];
-const browser = await chromium.launch({
-    headless: true,
-    executablePath: '/usr/bin/google-chrome',
-    args: ['--no-sandbox', '--enable-unsafe-swiftshader'],
-  }),
+const browser = await chromium.launch(browserLaunchOptions),
   context = await browser.newContext({ viewport: { width: 1360, height: 1000 } }),
   page = await context.newPage(),
   errors = [];

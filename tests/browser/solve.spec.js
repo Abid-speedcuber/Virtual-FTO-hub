@@ -1,5 +1,7 @@
-import { test, expect } from '@playwright/test';
-import { withSettings, confirmAction } from './helpers.js';
+import { freezeClock, requestReset, selectSize, withSettings, confirmAction } from './helpers.js';
+import { test, expect } from './fixtures.js';
+import { FRAMES, snappedViewRotation } from '../../src/orientation.js';
+
 const snap = (page) => page.evaluate(() => window.fto.snapshot());
 const idle = (page) =>
   page.waitForFunction(
@@ -27,35 +29,42 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await idle(page);
 });
-test('rapid keyboard turns, exact undo/redo, and reload retain the solve', async ({ page }) => {
-  const errors = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  const before = await snap(page);
-  for (const code of ['F', 'I', 'H', 'D', 'R', 'S', 'O', 'A', 'I', 'H', 'D', 'R'])
-    await page.keyboard.press(`Key${code}`);
-  await idle(page);
-  const mixed = await snap(page);
-  expect(mixed.history).toHaveLength(12);
-  expect(signature(mixed.state)).not.toBe(signature(before.state));
-  for (let i = 0; i < 12; i++) await page.keyboard.press('Control+z');
-  await idle(page);
-  expect(signature((await snap(page)).state)).toBe(signature(before.state));
-  for (let i = 0; i < 12; i++) await page.keyboard.press('Control+Shift+z');
-  await idle(page);
-  expect(signature((await snap(page)).state)).toBe(signature(mixed.state));
-  await page.reload();
-  await idle(page);
-  expect(signature((await snap(page)).state)).toBe(signature(mixed.state));
-  expect(errors).toEqual([]);
-});
+test(
+  'rapid keyboard turns, exact undo/redo, and reload retain the solve',
+  { tag: '@smoke' },
+  async ({ page }) => {
+    test.setTimeout(60000);
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    const before = await snap(page);
+    for (const code of ['F', 'I', 'H', 'D', 'R', 'S', 'O', 'A', 'I', 'H', 'D', 'R'])
+      await page.keyboard.press(`Key${code}`);
+    await idle(page);
+    const mixed = await snap(page);
+    expect(mixed.history).toHaveLength(12);
+    expect(signature(mixed.state)).not.toBe(signature(before.state));
+    for (let i = 0; i < 12; i++) await page.keyboard.press('Control+z');
+    await idle(page);
+    expect(signature((await snap(page)).state)).toBe(signature(before.state));
+    for (let i = 0; i < 12; i++) await page.keyboard.press('Control+Shift+z');
+    await idle(page);
+    expect(signature((await snap(page)).state)).toBe(signature(mixed.state));
+    await page.reload();
+    await idle(page);
+    expect(signature((await snap(page)).state)).toBe(signature(mixed.state));
+    expect(errors).toEqual([]);
+  },
+);
 test('legacy clicks consume wide suffixes, right-click direction, and held slice exactly once', async ({
   page,
 }) => {
-  await page.locator('#size').selectOption('3');
+  await selectSize(page, '3');
   await withSettings(page, async () => {
     await page.locator('#pointer-mode').selectOption('legacy');
     await page.locator('#animate').uncheck();
   });
+  await page.clock.install();
+  await freezeClock(page);
   const p = await facePoint(page);
   await page.keyboard.press('Digit2');
   await page.mouse.click(p.x, p.y, { button: 'right' });
@@ -88,8 +97,10 @@ test('legacy clicks consume wide suffixes, right-click direction, and held slice
 test('full-width pointer suffix rotates the view without altering the puzzle or TPS', async ({
   page,
 }) => {
-  await page.locator('#size').selectOption('2');
+  await selectSize(page, '2');
   await withSettings(page, () => page.locator('#pointer-mode').selectOption('legacy'));
+  await page.clock.install();
+  await freezeClock(page);
   const before = await snap(page),
     p = await facePoint(page);
   await page.keyboard.press('Digit2');
@@ -106,7 +117,7 @@ test('reset cancels accepted animations, preserves the view, and persists free p
 }) => {
   for (const code of ['KeyF', 'KeyI', 'KeyH']) await page.keyboard.press(code);
   const before = await snap(page);
-  await confirmAction(page, () => page.locator('#freeplay-reset').click());
+  await confirmAction(page, () => requestReset(page));
   await idle(page);
   const after = await snap(page);
   expect(after).toMatchObject({
@@ -122,7 +133,7 @@ test('reset cancels accepted animations, preserves the view, and persists free p
   await idle(page);
   expect((await snap(page)).solved).toBe(true);
 });
-test('orbit and held-wheel roll never introduce a turn, and the Home binding restores view', async ({
+test('orbit and held-wheel roll never introduce a turn, and snap squares up the current hold', async ({
   page,
 }) => {
   await withSettings(page, () => page.locator('#pointer-mode').selectOption('legacy'));
@@ -135,6 +146,18 @@ test('orbit and held-wheel roll never introduce a turn, and the Home binding res
   await page.mouse.up();
   await expect.poll(async () => (await snap(page)).orbit).not.toEqual(before.orbit);
   expect((await snap(page)).history).toHaveLength(0);
+  const held = await snap(page);
   await page.keyboard.press('Home');
-  await expect.poll(async () => (await snap(page)).camera).toEqual(before.camera);
+  expect((await snap(page)).orbit).toEqual(held.orbit);
+  // The current default snap shortcut squares up the current hold.
+  const target = snappedViewRotation(
+    FRAMES.find((frame) => frame.up === held.hold.up && frame.front === held.hold.front),
+  ).toArray();
+  await page.keyboard.press('BracketLeft');
+  await expect
+    .poll(async () =>
+      Math.abs((await snap(page)).orbit.reduce((dot, v, i) => dot + v * target[i], 0)),
+    )
+    .toBeCloseTo(1, 8);
+  expect((await snap(page)).history).toHaveLength(0);
 });

@@ -4,7 +4,7 @@ A local face-turning octahedron simulator with every size from 2×2 to 20×20.
 
 ## Run
 
-Use `npm ci`, then `npm run dev` and open http://127.0.0.1:5173. Node.js 20.19+ or 22.12+ is required. `npm run build` produces a static site in `dist/`.
+Use `npm ci`, then `npm run dev` and open http://127.0.0.1:5173. Node.js 24 or newer is required. `npm run build` produces a static site in `dist/`.
 
 ## Accounts and standalone development
 
@@ -140,3 +140,7 @@ Notification messages address the solver directly (for example, “Your 33.26 Si
 The avatar’s green/gray dot indicates connection state, including detected browser disconnections and leaderboard transport failures. It does not make a paused/offline solve eligible or publish server-side presence. The dot turns gray immediately during a brief interruption; the five-second solve-eligibility grace window still applies separately.
 
 Investigation migration `20261121000004` is local only, pending owner hand testing and explicit deployment approval. Older tabs continue receiving only final decisions, so they cannot mistake an investigation notice for a rejection. The new notification client falls back to the previous endpoint while testing against an older backend.
+
+## Development checks
+
+See [Testing and maintenance](docs/testing.md) for setup, focused checks, offline browser tests, integration coverage and source ownership. CI checks changes without deploying them.

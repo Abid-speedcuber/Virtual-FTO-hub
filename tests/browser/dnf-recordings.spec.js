@@ -1,4 +1,6 @@
-import { test, expect } from '@playwright/test';
+import { waitForApp, requestReset } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 import { SolveRecorder } from '../../src/solve-recording.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
 const U = { normal: [1, 1, 1], layer: 'outer', dir: 1, name: 'U' },
@@ -40,7 +42,7 @@ test('abandoned attempts retain replayable DNF recordings in the recent album an
     );
   }, recorder.serialize());
   await page.goto('/');
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   for (let i = 0; i < 5; i++) {
     await page.keyboard.press('KeyJ');
     await page.waitForFunction(
@@ -55,7 +57,7 @@ test('abandoned attempts retain replayable DNF recordings in the recent album an
       await page.waitForFunction(() => window.fto.snapshot().timer.status === 'ready');
     } else {
       await page.locator('#mobile-pause').click();
-      await page.locator('#mobile-reset').click();
+      await requestReset(page);
       await page.locator('#confirm-accept').click();
       await page.waitForFunction(() => window.fto.snapshot().timer.status === 'idle');
     }
@@ -104,7 +106,7 @@ test('abandoned attempts retain replayable DNF recordings in the recent album an
   });
   expect(archived).toEqual({ dnfs: 5, playable: true, count: 5 });
   await page.reload();
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   await page.locator('#album').click();
   await expect(page.locator('.album-average')).toHaveCount(1);
   await expect(page.locator('.album-entry:not(.album-average)')).toHaveCount(5);

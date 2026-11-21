@@ -1,11 +1,14 @@
-import { test, expect } from '@playwright/test';
-import { confirmAction, withSettings } from './helpers.js';
+import { waitForApp, requestScramble, confirmAction, withSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
+test.use({ realScrambler: true });
+
 const snapshot = (page) => page.evaluate(() => window.fto.snapshot());
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+const ready = waitForApp;
 async function scramble(page) {
   if ((await snapshot(page)).timer.status === 'running')
     await page.locator('#mobile-pause').click();
-  await confirmAction(page, () => page.locator('#mobile-scramble').click());
+  await confirmAction(page, () => requestScramble(page));
   await expect
     .poll(async () => (await snapshot(page)).generatingScramble, { timeout: 20000 })
     .toBe(false);
@@ -82,7 +85,7 @@ test('switching puzzles cancels the wait but retains the background scramble for
   await ready(page);
   const worker = await workerCreated;
   await withSettings(page, () => page.locator('#animate-scrambling').uncheck());
-  await confirmAction(page, () => page.locator('#mobile-scramble').click());
+  await confirmAction(page, () => requestScramble(page));
   expect((await snapshot(page)).generatingScramble).toBe(true);
   await expect(page.locator('#mobile-scramble')).toBeDisabled();
   await page.locator('#puzzles').click();
@@ -123,7 +126,7 @@ test('worker failure keeps the current puzzle and lets the user retry', async ({
   const after = await snapshot(page);
   expect(after.state).toEqual(before.state);
   expect(after.history).toEqual(before.history);
-  await expect(page.locator('#scramble')).toBeEnabled();
+  await expect(page.locator('#mobile-scramble')).toBeEnabled();
 });
 
 test('prepares before the first click and consumes cached scrambles without waiting for the refill', async ({
@@ -140,7 +143,7 @@ test('prepares before the first click and consumes cached scrambles without wait
   await worker.evaluate(() => self.postMessage({ scramble: 'U F' }));
   await expect.poll(async () => (await snapshot(page)).scramblePool.ready).toBe(true);
   await withSettings(page, () => page.locator('#animate-scrambling').uncheck());
-  await confirmAction(page, () => page.locator('#mobile-scramble').click());
+  await confirmAction(page, () => requestScramble(page));
   const first = await snapshot(page);
   expect(first.timer.status).toBe('ready');
   expect(first.generatingScramble).toBe(false);
@@ -149,7 +152,7 @@ test('prepares before the first click and consumes cached scrambles without wait
   expect(first.scramblePool).toEqual({ ready: false, generating: true });
   await worker.evaluate(() => self.postMessage({ scramble: "R L' B" }));
   await expect.poll(async () => (await snapshot(page)).scramblePool.ready).toBe(true);
-  await confirmAction(page, () => page.locator('#mobile-scramble').click());
+  await confirmAction(page, () => requestScramble(page));
   const second = await snapshot(page);
   expect(second.timer.status).toBe('ready');
   expect(second.generatingScramble).toBe(false);

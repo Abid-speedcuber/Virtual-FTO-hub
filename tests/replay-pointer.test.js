@@ -53,7 +53,7 @@ test('reset clears held fingers and legacy samples never invent a missing contac
 });
 test('preserves the gesture that starts the timer and coalesced sample offsets', () => {
   const input = (...args) => {
-    const { at, type, ...data } = pointer(0, ...args);
+    const { at: _at, type: _type, ...data } = pointer(0, ...args);
     return data;
   };
   let now = 1000;

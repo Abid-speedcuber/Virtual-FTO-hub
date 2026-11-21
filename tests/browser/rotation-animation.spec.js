@@ -1,17 +1,24 @@
-import { test, expect } from '@playwright/test';
-import { withSettings } from './helpers.js';
+import {
+  waitForApp,
+  resetKeyboardPreset,
+  freezeClock,
+  selectSize,
+  withSettings,
+} from './helpers.js';
+
+import { test, expect } from './fixtures.js';
+
 import { solvedState, applyMove, signature } from '../../src/puzzle.js';
 const snap = (page) => page.evaluate(() => window.fto.snapshot());
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+const ready = waitForApp;
 const angle = (a, b) =>
   2 * Math.acos(Math.min(1, Math.abs(a.reduce((sum, v, i) => sum + v * b[i], 0))));
-const freeze = async (page) =>
-  page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
+const freeze = async (page) => freezeClock(page);
 async function setup(page, size = 3) {
   await page.clock.install();
   await page.goto('/');
   await ready(page);
-  await page.locator('#size').selectOption(String(size));
+  await selectSize(page, String(size));
   await withSettings(page, () => page.locator('#animate').check());
   await freeze(page);
 }
@@ -48,7 +55,7 @@ test('csTimer 90-degree vertex rotations animate and Animate turns off restores 
   await setup(page);
   await withSettings(page, async () => {
     await page.locator('#edit-keyboard').click();
-    await page.locator('#keyboard-reset-cstimer').click();
+    await resetKeyboardPreset(page, 'cstimer');
     await page.locator('#close-keyboard').click();
   });
   const before = await snap(page);
@@ -100,23 +107,22 @@ test('rotation bursts catch up without a backlog and a following move uses the f
   expect(after.busy).toBe(false);
   expect(after.keyboard.stats.total).toBe(1);
 });
-test('switching size and reloading park the final view, without a stale rotation animation', async ({
-  page,
-}) => {
+test('switching sizes and reloading never leave a stale rotation animation', async ({ page }) => {
   await setup(page);
   await page.keyboard.press('Backquote');
   await page.clock.runFor(48);
   const target = await snap(page);
   expect(target.rotating).toBe(true);
-  await page.locator('#size').selectOption('4');
+  await selectSize(page, '4');
   expect((await snap(page)).rotating).toBe(false);
   const four = await snap(page);
   await page.clock.runFor(300);
   expect((await snap(page)).orbit).toEqual(four.orbit);
-  await page.locator('#size').selectOption('3');
+  await selectSize(page, '3');
   let restored = await snap(page);
   expect(restored.rotating).toBe(false);
-  expect(restored.orbit).toEqual(target.orbit);
+  // Puzzle switches reset the hold to CIF; they must not resume the old tween.
+  expect(angle(restored.viewOrbit, restored.orbit)).toBeLessThan(0.000001);
   await page.keyboard.press('Backquote');
   const nextTarget = (await snap(page)).orbit;
   await page.reload();

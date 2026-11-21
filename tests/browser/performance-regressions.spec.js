@@ -1,5 +1,6 @@
-import { test, expect } from '@playwright/test';
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+import { waitForApp } from './helpers.js';
+import { test, expect } from './fixtures.js';
+const ready = waitForApp;
 test('replay submits one draw and reuses geometry while only animation progress changes', async ({
   page,
 }) => {

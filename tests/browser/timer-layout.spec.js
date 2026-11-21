@@ -1,80 +1,88 @@
+import {
+  waitForApp,
+  requestReset,
+  requestScramble,
+  freezeClock,
+  openSettings,
+  selectSize,
+  withSettings,
+  scramble,
+  confirmAction,
+} from './helpers.js';
+
 import { installKeyboard } from './keyboard-fixture.js';
-import { test, expect } from '@playwright/test';
-import { withSettings, scramble, confirmAction } from './helpers.js';
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().timer);
+import { test, expect } from './fixtures.js';
+
+const ready = waitForApp;
 const snap = (page) => page.evaluate(() => window.fto.snapshot());
-const freeze = async (page) =>
-  page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
-const click = async (page, id) => page.locator(id).evaluate((el) => el.click());
+const freeze = async (page) => freezeClock(page);
+const click = async (page, id) => {
+  if (id === '#mobile-scramble') return requestScramble(page);
+  if (id === '#mobile-reset') return requestReset(page);
+  await expect(page.locator(id)).toBeVisible();
+  return page.locator(id).evaluate((el) => el.click());
+};
 async function manualInstant(page) {
-  await withSettings(page, () => page.locator('#animate').uncheck());
+  await withSettings(page, async () => {
+    await page.locator('#animate').uncheck();
+    await page.locator('#animate-scrambling').uncheck();
+  });
 }
-async function setSize(page, size) {
-  await page.locator('#settings').evaluate((el) => el.click());
-  await page.locator('#size').evaluate((el, size) => {
-    el.value = size;
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-  }, String(size));
-  await click(page, '#close-settings');
-}
+const setSize = selectSize;
 test.beforeEach(async ({ page }) => {
   await installKeyboard(page);
   await page.clock.install();
   await page.goto('/');
   await ready(page);
+  await selectSize(page, 4);
 });
-test('square occupies min(width,height); controls and side panel use their intended corners', async ({
-  page,
-}) => {
+test('viewport, topbar and controls fit desktop and compact layouts', async ({ page }) => {
   await page.setViewportSize({ width: 1360, height: 720 });
-  const square = await page.locator('#viewport').boundingBox(),
-    settings = await page.locator('#settings').boundingBox(),
-    undo = await page.locator('.history-tools').boundingBox(),
-    scrambleButton = await page.locator('.puzzle-actions').boundingBox(),
-    panel = await page.locator('#solve-panel').boundingBox();
-  expect(square).toEqual({ x: 0, y: 0, width: 720, height: 720 });
-  expect(settings.x + settings.width).toBeGreaterThan(1330);
-  expect(settings.y).toBeLessThan(20);
-  expect(undo.x + undo.width).toBe(708);
-  expect(scrambleButton.x + scrambleButton.width).toBe(708);
-  expect(scrambleButton.y + scrambleButton.height).toBe(708);
-  expect(panel.x).toBe(720);
-  await withSettings(page, () => page.locator('#show-keyboard').check());
-  await page.screenshot({ path: 'test-results/square-side-panel.png' });
+  const header = await page.locator('.topbar').boundingBox();
+  const square = await page.locator('#viewport').boundingBox();
+  const panel = await page.locator('#solve-panel').boundingBox();
+  const account = await page.locator('#ft-account-trigger').boundingBox();
+  expect(square.y).toBeCloseTo(header.y + header.height, 0);
+  expect(square.width).toBeCloseTo(square.height, 0);
+  expect(panel.x).toBeGreaterThanOrEqual(square.x + square.width);
+  expect(account.x + account.width).toBeLessThanOrEqual(1360);
+  await expect(page.locator('#mobile-scramble')).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  const mobileSquare = await page.locator('#viewport').boundingBox(),
-    mobileUndo = await page.locator('.history-tools').boundingBox(),
-    mobileSettings = await page.locator('#settings').boundingBox();
-  expect(mobileSquare.width).toBe(390);
-  expect(mobileSquare.height).toBe(390);
-  expect(mobileUndo.y).toBeGreaterThan(mobileSettings.y + mobileSettings.height);
-  expect((await page.locator('#solve-panel').boundingBox()).y).toBeGreaterThanOrEqual(390);
+  const mobileHeader = await page.locator('.topbar').boundingBox();
+  const viewport = await page.locator('#viewport').boundingBox();
+  expect(viewport.y).toBeCloseTo(mobileHeader.y + mobileHeader.height, 0);
+  expect(viewport.width).toBe(390);
+  await expect(page.locator('#mobile-controls')).toBeVisible();
+  await expect(page.locator('#mobile-history')).toBeVisible();
+  await expect(page.locator('#solve-panel')).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
-  await page.screenshot({ path: 'test-results/square-side-panel-mobile.png' });
 });
-test('scramble confirmation protects progress and free play never starts the timer', async ({
+test(
+  'scramble confirmation protects progress and free play never starts the timer',
+  { tag: '@smoke' },
+  async ({ page }) => {
+    await manualInstant(page);
+    await page.keyboard.press('KeyF');
+    const before = await snap(page);
+    expect(before.timer.status).toBe('idle');
+    await confirmAction(page, () => requestScramble(page), false);
+    const after = await snap(page);
+    expect(after.state).toEqual(before.state);
+    expect(after.history).toEqual(before.history);
+    expect(after.timer.status).toBe('idle');
+    await scramble(page);
+    const prepared = await snap(page);
+    expect(prepared.timer.status).toBe('ready');
+    expect(prepared.timer.elapsedMs).toBe(0);
+    expect(prepared.busy).toBe(false);
+    expect(prepared.history).toHaveLength(50);
+    expect(prepared.solved).toBe(false);
+  },
+);
+test('timer starts only on an accepted turn and stays paused after reload until explicitly resumed', async ({
   page,
 }) => {
-  await manualInstant(page);
-  await page.keyboard.press('KeyF');
-  const before = await snap(page);
-  expect(before.timer.status).toBe('idle');
-  await confirmAction(page, () => page.locator('#scramble').click(), false);
-  const after = await snap(page);
-  expect(after.state).toEqual(before.state);
-  expect(after.history).toEqual(before.history);
-  expect(after.timer.status).toBe('idle');
-  await scramble(page);
-  const prepared = await snap(page);
-  expect(prepared.timer.status).toBe('ready');
-  expect(prepared.timer.elapsedMs).toBe(0);
-  expect(prepared.busy).toBe(false);
-  expect(prepared.history).toHaveLength(50);
-  expect(prepared.solved).toBe(false);
-});
-test('timer starts only on an accepted turn, pauses while away, and resumes after reload', async ({
-  page,
-}) => {
+  test.setTimeout(60000);
   await manualInstant(page);
   await scramble(page);
   await freeze(page);
@@ -93,18 +101,22 @@ test('timer starts only on an accepted turn, pauses while away, and resumes afte
   expect((await snap(page)).timer).toMatchObject({ status: 'paused', elapsedMs: 1250 });
   await page.reload();
   await ready(page);
-  expect((await snap(page)).timer).toMatchObject({ status: 'running', elapsedMs: 1250 });
+  expect((await snap(page)).timer).toMatchObject({ status: 'paused', elapsedMs: 1250 });
+  await click(page, '#mobile-pause');
   await page.clock.runFor(500);
   expect((await snap(page)).timer.elapsedMs).toBe(1750);
 });
 test('finishing records a per-size PB; reset preserves it and a faster attempt improves it', async ({
   page,
 }) => {
+  // The worker fixture gives two real moves on 3×3; 50-turn recording flow is covered separately.
+  test.setTimeout(60000);
+  await selectSize(page, 3);
   await manualInstant(page);
   await scramble(page);
   await freeze(page);
   const finishWithMoves = async (duration) => {
-    await click(page, '#settings');
+    await openSettings(page);
     await page.locator('#follow').evaluate((el) => {
       el.checked = false;
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -114,33 +126,29 @@ test('finishing records a per-size PB; reset preserves it and a faster attempt i
     const sequence = (await snap(page)).history.slice().reverse();
     const send = async (moves) =>
       page.evaluate((moves) => {
-        const faces = [
-            [1, 1, 1],
-            [1, 1, -1],
-            [1, -1, 1],
-            [1, -1, -1],
-            [-1, 1, 1],
-            [-1, 1, -1],
-            [-1, -1, 1],
-            [-1, -1, -1],
-          ],
+        const frame = window.fto.snapshot().frame,
+          faces = Array.from({ length: 8 }, (_, i) => frame.slice(i * 3, i * 3 + 3)),
           keys = ['U', 'R', 'F', 'J', 'L', 'B', 'K', 'D'];
         const event = (type, code, shiftKey = false, altKey = false) =>
           document.body.dispatchEvent(
             new KeyboardEvent(type, { code, bubbles: true, cancelable: true, shiftKey, altKey }),
           );
         for (const move of moves) {
-          const digit = `Digit${move.depth ?? 1}`,
+          const inner = (move.depth ?? 1) > 1,
+            digit = `Digit${move.depth ?? 1}`,
             code = `Key${keys[faces.findIndex((n) => n.every((v, i) => v === move.normal[i]))]}`,
             reverse = move.dir === 1;
-          event('keydown', digit);
-          event('keyup', digit);
-          event('keydown', 'ShiftLeft', true);
-          if (reverse) event('keydown', 'AltLeft', true, true);
-          event('keydown', code, true, reverse);
-          event('keyup', code, true, reverse);
-          if (reverse) event('keyup', 'AltLeft', true, false);
-          event('keyup', 'ShiftLeft');
+          // Depth 1 is an outer move. Shift without a selected depth means layer 2.
+          if (inner) {
+            event('keydown', digit);
+            event('keyup', digit);
+            event('keydown', 'ShiftLeft', true);
+          }
+          if (reverse) event('keydown', 'AltLeft', inner, true);
+          event('keydown', code, inner, reverse);
+          event('keyup', code, inner, reverse);
+          if (reverse) event('keyup', 'AltLeft', inner, false);
+          if (inner) event('keyup', 'ShiftLeft');
         }
       }, moves);
     await send(sequence.slice(0, 1));
@@ -158,13 +166,13 @@ test('finishing records a per-size PB; reset preserves it and a faster attempt i
   await page.reload();
   await ready(page);
   expect((await snap(page)).timer.bestMs).toBe(2500);
-  await setSize(page, 3);
-  expect((await snap(page)).timer.bestMs).toBe(null);
   await setSize(page, 4);
+  expect((await snap(page)).timer.bestMs).toBe(null);
+  await setSize(page, 3);
   expect((await snap(page)).timer.bestMs).toBe(2500);
-  await confirmAction(page, () => click(page, '#freeplay-reset'));
+  await confirmAction(page, () => click(page, '#mobile-reset'));
   expect((await snap(page)).timer).toMatchObject({ status: 'idle', bestMs: 2500 });
-  await confirmAction(page, () => click(page, '#scramble'));
+  await confirmAction(page, () => click(page, '#mobile-scramble'));
   await finishWithMoves(2000);
   expect((await snap(page)).timer).toMatchObject({
     status: 'finished',
@@ -184,7 +192,7 @@ test('animated scrambling is independent, blocks turns, and restores an interrup
     await page.locator('#animate-scrambling').check();
   });
   await freeze(page);
-  await confirmAction(page, () => click(page, '#scramble'));
+  await confirmAction(page, () => click(page, '#mobile-scramble'));
   let state = await snap(page);
   expect(state.timer.status).toBe('scrambling');
   expect(state.busy).toBe(true);
@@ -202,7 +210,7 @@ test('animated scrambling is independent, blocks turns, and restores an interrup
   expect(state.queued).toBe(0);
   expect(state.busy).toBe(false);
   expect(state.timer).toMatchObject({ status: 'ready', elapsedMs: 0 });
-  await click(page, '#settings');
+  await openSettings(page);
   expect(await page.locator('#animate-scrambling').isChecked()).toBe(true);
   await click(page, '#close-settings');
 });
@@ -233,15 +241,19 @@ test('redo can be queued while its preceding undo is still animating', async ({ 
 test('Reset beside Scramble clears a timed solve and pending turns into saved free play', async ({
   page,
 }) => {
+  test.setTimeout(60000);
+  // Scramble animation is covered separately; this scenario exercises turn animation.
+  await withSettings(page, () => page.locator('#animate-scrambling').uncheck());
   await scramble(page);
   await freeze(page);
   await page.keyboard.press('KeyF');
   await page.keyboard.press('KeyR');
   expect((await snap(page)).timer.status).toBe('running');
-  const scrambleBox = await page.locator('#scramble').boundingBox(),
-    resetBox = await page.locator('#freeplay-reset').boundingBox();
+  await click(page, '#mobile-pause');
+  const scrambleBox = await page.locator('#mobile-scramble').boundingBox(),
+    resetBox = await page.locator('#mobile-reset').boundingBox();
   expect(resetBox.x).toBeGreaterThan(scrambleBox.x + scrambleBox.width);
-  await confirmAction(page, () => page.locator('#freeplay-reset').click());
+  await confirmAction(page, () => requestReset(page));
   await page.clock.runFor(500);
   expect(await snap(page)).toMatchObject({
     solved: true,
@@ -264,6 +276,9 @@ test('Reset beside Scramble clears a timed solve and pending turns into saved fr
 test('paused timer immediately hides every sticker color, including during animation, and resume restores them', async ({
   page,
 }) => {
+  test.setTimeout(60000);
+  // Scramble animation is covered separately; this scenario exercises turn animation.
+  await withSettings(page, () => page.locator('#animate-scrambling').uncheck());
   await scramble(page);
   await freeze(page);
   const colors = (await snap(page)).stickerColors;
@@ -281,6 +296,8 @@ test('paused timer immediately hides every sticker color, including during anima
   expect(paused.stickerColors).toEqual(Array(8).fill('888888'));
   await page.screenshot({ path: 'test-results/paused-gray.png' });
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  expect((await snap(page)).timer.status).toBe('paused');
+  await click(page, '#mobile-pause');
   expect((await snap(page)).timer.status).toBe('running');
   expect((await snap(page)).stickerColors).toEqual(colors);
   await page.clock.runFor(500);

@@ -1,4 +1,6 @@
-import { test, expect } from '@playwright/test';
+import { waitForApp, freezeClock } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 import { SolveRecorder } from '../../src/solve-recording.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
 test('replay flashes move notation above the keyboard and uses compact icon controls', async ({
@@ -46,7 +48,7 @@ test('replay flashes move notation above the keyboard and uses compact icon cont
     );
   });
   await page.goto('/');
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   await page.locator('#album').click();
   await page.locator('#album-import-recording').click();
   await page.locator('#recording-paste').fill(JSON.stringify(data));
@@ -63,7 +65,7 @@ test('replay flashes move notation above the keyboard and uses compact icon cont
       el.dispatchEvent(new Event('input', { bubbles: true }));
     }, intro + at);
   await page.clock.install();
-  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
+  await freezeClock(page);
   await seek(125);
   await expect(page.locator('#replay-move-flash')).toHaveText('U′');
   await expect(page.locator('#replay-move-flash')).toHaveAttribute('data-active', 'true');
@@ -143,7 +145,7 @@ test('undo plays a quieter, muffled typewriter keypress, and undo remains functi
     );
   });
   await page.goto('/');
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   const recording = await page.evaluate(async () => {
     const { PuzzleSounds } = await import('/src/sounds.js');
     const sound = new PuzzleSounds();

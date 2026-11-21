@@ -1,6 +1,7 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+import { waitForApp, openSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
+const ready = waitForApp;
 for (const width of [1280, 390, 320])
   test(`settings are aligned and navigable at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 850 });

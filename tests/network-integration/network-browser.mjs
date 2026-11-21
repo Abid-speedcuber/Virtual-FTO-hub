@@ -1,9 +1,10 @@
+import { browserLaunchOptions } from '../browser-options.js';
 // Offline browser integration: fulfill local assets without a listening socket.
 import { chromium } from '@playwright/test';
 import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-const root = path.resolve('../ftoers/public'),
+const root = path.resolve(process.env.FTOERS_PUBLIC_ROOT),
   dist = path.resolve('dist');
 const types = {
   '.html': 'text/html',
@@ -16,11 +17,7 @@ const types = {
   '.webmanifest': 'application/manifest+json',
   '.mp3': 'audio/mpeg',
 };
-const browser = await chromium.launch({
-  headless: true,
-  executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
-  args: ['--no-sandbox', '--disable-dev-shm-usage'],
-});
+const browser = await chromium.launch(browserLaunchOptions);
 await mkdir('/tmp/ftoers-qa', { recursive: true });
 try {
   const context = await browser.newContext({ viewport: { width: 1280, height: 1080 } });
@@ -91,8 +88,8 @@ try {
   await simulator.locator('.ft-dialog[open]').waitFor();
   await simulator.getByRole('button', { name: 'Close account' }).click();
   // Use an actual local recording to exercise the production sharing controls.
-  const { SolveRecorder } = await import('../src/solve-recording.js');
-  const { defaultConfig } = await import('../src/keyboard-engine.js');
+  const { SolveRecorder } = await import('../../src/solve-recording.js');
+  const { defaultConfig } = await import('../../src/keyboard-engine.js');
   let now = 0;
   const recorder = new SolveRecorder({}, () => now),
     U = { normal: [1, 1, 1], layer: 'outer', dir: 1, name: 'U' };

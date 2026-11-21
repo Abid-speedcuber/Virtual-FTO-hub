@@ -1,7 +1,8 @@
+import { browserLaunchOptions } from './browser-options.js';
 // Explicit live smoke test. Creates one disposable Auth user, deletes it in finally.
 // Never include FTOERS_SMOKE_SERVICE_KEY in a browser bundle or public config.
 import { chromium } from '@playwright/test';
-import { createClient } from '../../ftoers/node_modules/@supabase/supabase-js/dist/index.mjs';
+import { createClient } from '../public/shared/supabase.js';
 import { backendConfig } from '../public/shared/config.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
@@ -20,12 +21,9 @@ const { data, error } = await admin.auth.admin.createUser({ email, password, ema
 if (error) throw error;
 const uid = data.user.id;
 let browser;
+let failure;
 try {
-  browser = await chromium.launch({
-    headless: true,
-    executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
-    args: ['--no-sandbox', '--enable-unsafe-swiftshader'],
-  });
+  browser = await chromium.launch(browserLaunchOptions);
   const context = await browser.newContext({ viewport: { width: 1280, height: 1000 } }),
     home = await context.newPage();
   const base = process.env.FTOERS_SMOKE_BASE_URL || 'http://127.0.0.1:8080';
@@ -69,16 +67,14 @@ try {
   } catch {
     console.log(
       'Form state',
-      await simulator
-        .locator('.ft-dialog form')
-        .evaluate((f) =>
-          [...f.elements].map((e) => ({
-            name: e.name,
-            type: e.type,
-            disabled: e.disabled,
-            valid: e.validity?.valid,
-          })),
-        ),
+      await simulator.locator('.ft-dialog form').evaluate((f) =>
+        [...f.elements].map((e) => ({
+          name: e.name,
+          type: e.type,
+          disabled: e.disabled,
+          valid: e.validity?.valid,
+        })),
+      ),
     );
     throw Error(
       'Username sign-in failed: ' +
@@ -129,9 +125,23 @@ try {
     'PASS concurrent short-link deduplication, anonymous playback, undo DNF and admin access restriction',
   );
   await context.close();
+} catch (error) {
+  failure = error;
 } finally {
-  await browser?.close();
-  const deleted = await admin.auth.admin.deleteUser(uid);
-  if (deleted.error) throw deleted.error;
-  console.log('Disposable Auth user and related recording data removed.');
+  const cleanup = await Promise.allSettled([
+    browser?.close(),
+    admin.auth.admin.deleteUser(uid).then((result) => {
+      if (result.error) throw result.error;
+    }),
+  ]);
+  const errors = cleanup
+    .filter((result) => result.status === 'rejected')
+    .map((result) => result.reason);
+  if (errors.length)
+    failure = new AggregateError(
+      [...(failure ? [failure] : []), ...errors],
+      'Live test or cleanup failed',
+    );
+  else console.log('Disposable Auth user and related recording data removed.');
 }
+if (failure) throw failure;

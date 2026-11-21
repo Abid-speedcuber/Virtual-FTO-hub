@@ -85,7 +85,7 @@ export async function decodeRecording(payload) {
     );
   } catch (error) {
     if (error.message === 'Recording is too large') throw error;
-    throw Error('Invalid or damaged recording link');
+    throw Error('Invalid or damaged recording link', { cause: error });
   }
 }
 export async function recordingLink(data) {
@@ -110,7 +110,9 @@ export async function parseRecordingText(text) {
   let cloud;
   try {
     cloud = new URLSearchParams(new URL(trimmed).hash.slice(1));
-  } catch {}
+  } catch {
+    // A pasted recording can be raw JSON or a payload rather than a URL.
+  }
   if (cloud?.has('short') || cloud?.has('rank')) {
     const { getCloudRecording } = await import('./network.js');
     const data = validateRecording(
@@ -125,7 +127,9 @@ export async function parseRecordingText(text) {
   let payload;
   try {
     payload = recordingPayload(trimmed);
-  } catch {}
+  } catch {
+    // A pasted recording can be raw JSON or a payload rather than a URL.
+  }
   if (!payload) throw Error('Paste an FTO recording link or recording JSON');
   return decodeRecording(payload);
 }

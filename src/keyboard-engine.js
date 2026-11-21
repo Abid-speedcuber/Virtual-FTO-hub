@@ -114,9 +114,9 @@ const strokeMatches = (stroke, pressed, code, logicalModifiers, allowedModifiers
   );
   if (unmatched.length || [...strokeModifiers].some((modifier) => !activeModifiers.has(modifier)))
     return false;
-  const currentCodeMatches =
-    intersects(stroke, [code]) ||
-    (MODIFIERS.includes(modifierOf(code)) && strokeModifiers.size > 0);
+  // A new modifier must belong to this trigger. Otherwise Alt after Shift
+  // can reactivate Shift's binding merely because Shift is already held.
+  const currentCodeMatches = intersects(stroke, [code]);
   return (
     currentCodeMatches &&
     stroke.every(
@@ -802,14 +802,18 @@ export class KeyboardEngine {
     return allowed;
   }
   // Custom non-modifier keys can serve as modifiers, e.g. hold A, then F.
-  find(code, sequence = this.sequence, pressed = this.pressed) {
+  find(
+    code,
+    sequence = this.sequence,
+    pressed = this.pressed,
+    logicalModifiers = this.logicalModifiers,
+  ) {
     const bindings = this.compiled.get(this.mode.id),
       candidates = [];
     for (const binding of bindings) {
       const steps = binding.steps,
         last = steps.at(-1);
-      if (!strokeMatches(last, pressed, code, this.logicalModifiers, this.modifierContext()))
-        continue;
+      if (!strokeMatches(last, pressed, code, logicalModifiers, this.modifierContext())) continue;
       const preceding = steps.slice(0, -1);
       if (
         preceding.length > sequence.length ||
@@ -992,9 +996,16 @@ export class KeyboardEngine {
     }
     return actionLabel(action);
   }
+  labelBinding(code) {
+    // Legends describe pressing this key next. Real event flags must still
+    // govern input dispatch, but a hypothetical Shift needs Shift in its preview.
+    const modifiers = this.logicalModifiers === null ? null : new Set(this.logicalModifiers);
+    const modifier = modifierOf(code);
+    if (modifiers && MODIFIERS.includes(modifier)) modifiers.add(modifier);
+    return this.find(code, this.sequence, this.labelPressed(code), modifiers);
+  }
   label(code, context) {
-    const pressed = this.labelPressed(code);
-    const binding = this.find(code, this.sequence, pressed);
+    const binding = this.labelBinding(code);
     if (binding) {
       if (binding.action.type === 'command' && binding.action.command === 'pause')
         return context.canPause ? (context.manualPaused ? 'Resume' : 'Pause') : '';
@@ -1018,8 +1029,7 @@ export class KeyboardEngine {
     return partial?.steps.length > 1 ? `${this.actionText(partial.action)} …` : '';
   }
   keyState(code, context) {
-    const pressed = this.labelPressed(code);
-    const binding = this.find(code, this.sequence, pressed);
+    const binding = this.labelBinding(code);
     const active = this.activeSuffixes,
       heldSuffix = active.find((p) => p.code === code);
     const depth =

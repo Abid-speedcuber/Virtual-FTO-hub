@@ -209,7 +209,7 @@ test('undo PBs show the invalid result without sending a submission', async () =
     getProfile: () => ({ id: 'u' }),
     online: () => true,
     status: (m) => messages.push(m),
-    rpc: async (name, args) => {
+    rpc: async (name, _args) => {
       calls.push(name);
       return name === 'begin_attempt' ? 'ticket' : { dnf: true, invalid_pb: true, candidates: [] };
     },
@@ -284,7 +284,7 @@ test('timer-only legacy averages never expose a submit action', async () => {
     getProfile: () => ({ id: 'u' }),
     online: () => true,
     onCandidates: (rows) => snapshots.push(rows),
-    rpc: async (name, args) => {
+    rpc: async (name, _args) => {
       calls.push(name);
       if (name === 'begin_attempt') return 'ticket';
       if (name === 'record_online_attempt')
@@ -551,7 +551,7 @@ test('an outage that expires while a finished result is waiting never uploads it
 });
 test('lost start responses retry the same request ID instead of creating extra attempts', async () => {
   let tries = 0;
-  const s = graceSetup(async (name, args) => {
+  const s = graceSetup(async (name, _args) => {
     if (name === 'begin_attempt' && ++tries === 1) throw TypeError('Failed to fetch');
     return name === 'begin_attempt' ? 'ticket' : { candidates: [] };
   });
@@ -565,7 +565,7 @@ test('lost start responses retry the same request ID instead of creating extra a
 });
 test('lost finish responses retry identical evidence without duplicating the solve', async () => {
   let tries = 0;
-  const s = graceSetup(async (name, args) => {
+  const s = graceSetup(async (name, _args) => {
     if (name === 'record_online_attempt' && ++tries === 1) throw TypeError('Failed to fetch');
     return name === 'begin_attempt' ? 'ticket' : { candidates: [] };
   });

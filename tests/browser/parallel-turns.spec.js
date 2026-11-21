@@ -1,10 +1,16 @@
-import { test, expect } from '@playwright/test';
-import { withSettings } from './helpers.js';
+import { selectSize, waitForApp, freezeClock, withSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
+
 import { FACES, solvedState, applyMove, signature } from '../../src/puzzle.js';
 const snap = (page) => page.evaluate(() => window.fto.snapshot());
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+const ready = waitForApp;
+let frameNormals;
 const move = (face, dir, depth = 1, count = 1) => ({
-  normal: FACES.find((f) => f.name === face).normal,
+  normal: frameNormals.slice(
+    FACES.findIndex((f) => f.name === face) * 3,
+    FACES.findIndex((f) => f.name === face) * 3 + 3,
+  ),
   layer: 'slice',
   depth,
   count,
@@ -15,12 +21,14 @@ test.beforeEach(async ({ page }) => {
   await page.clock.install();
   await page.goto('/');
   await ready(page);
+  await selectSize(page, 4);
+  frameNormals = (await snap(page)).frame;
   await withSettings(page, async () => {
     await page.locator('#animate').check();
     await page.locator('#follow').uncheck();
     await page.locator('#disable-sounds').check();
   });
-  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
+  await freezeClock(page);
 });
 
 test('nonparallel requests snap earlier turns and give the newest turn its full normal animation', async ({
@@ -93,7 +101,8 @@ test('the earlier parallel turn completes independently; undo and reload retain 
   await page.keyboard.press('KeyF');
   await page.clock.runFor(40);
   await page.keyboard.press('KeyF');
-  await page.clock.runFor(112);
+  // Completion is observed on a frame, up to 16ms after the 145ms turn ends.
+  await page.clock.runFor(128);
   let current = await snap(page);
   expect(current.history).toHaveLength(1);
   expect(current.animating).toHaveLength(1);

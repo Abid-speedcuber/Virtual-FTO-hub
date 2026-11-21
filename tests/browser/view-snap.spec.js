@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { waitForApp } from './helpers.js';
+import { test, expect } from './fixtures.js';
 import * as THREE from 'three';
 import { FRAMES, snappedViewRotation } from '../../src/orientation.js';
 const snapshot = (page) => page.evaluate(() => window.fto.snapshot());
@@ -21,7 +22,7 @@ for (const notation of ['CIF', 'EIF'])
       { rotation: tilted },
     );
     await page.goto('/');
-    await page.waitForFunction(() => window.fto?.snapshot().ready);
+    await waitForApp(page);
     const before = await snapshot(page);
     expect(before.hold.notation).toBe(notation);
     await page.keyboard.press('Home');
@@ -39,7 +40,7 @@ for (const notation of ['CIF', 'EIF'])
     expect(after.keyboard.mode).toEqual(before.keyboard.mode);
     expect(Math.hypot(...after.camera)).toBeCloseTo(11, 8);
     await page.reload();
-    await page.waitForFunction(() => window.fto?.snapshot().ready);
+    await waitForApp(page);
     expect(
       new THREE.Quaternion().fromArray((await snapshot(page)).orbit).angleTo(ideal),
     ).toBeLessThan(1e-7);

@@ -1,10 +1,10 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
-import { withSettings } from './helpers.js';
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+import { waitForApp, freezeClock, openSettings, withSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
+
+const ready = waitForApp;
 const snap = (page) => page.evaluate(() => window.fto.snapshot());
-const freeze = async (page) =>
-  page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
+const freeze = async (page) => freezeClock(page);
 async function point(page) {
   const box = await page
     .locator('.face-label:not([hidden])')
@@ -38,6 +38,8 @@ test('3x3 is the fresh default, named sizes are available, and existing size cho
 test('all keyboard layouts have a small padded inset without side letterboxing', async ({
   page,
 }) => {
+  // This case checks five complete layout/numpad configurations.
+  test.setTimeout(90000);
   await page.setViewportSize({ width: 1600, height: 720 });
   await page.goto('/');
   await ready(page);

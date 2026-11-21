@@ -1,11 +1,12 @@
-import { openSettings } from './helpers.js';
+import { waitForApp, requestReset, openSettings } from './helpers.js';
+
 import { writeFile } from 'node:fs/promises';
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.js';
 import * as THREE from 'three';
 import { SolveRecorder } from '../../src/solve-recording.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
 const U = { normal: [1, 1, 1], layer: 'outer', dir: 1, name: 'U' };
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+const ready = waitForApp;
 async function seed(page, { size = 3, rotation, enabled = true } = {}) {
   await page.addInitScript(
     ({ size, rotation, enabled, U }) => {
@@ -45,7 +46,7 @@ test('rear stickers appear in the puzzle canvas and orbit with it, with no atlas
   const before = await page.evaluate(() => window.fto.snapshot());
   expect(before.inspectionProjection.visible).toBe(true);
   expect(before.inspectionProjection.faces.length).toBeGreaterThan(0);
-  expect(before.inspectionProjection.faces.every((face) => face.opacity === 1)).toBe(true);
+  expect(before.inspectionProjection.faces.every((face) => face.opacity === 0.6)).toBe(true);
   await page
     .locator('#viewport')
     .screenshot({ path: 'test-results/inspection-projection-desktop.png' });
@@ -116,7 +117,7 @@ test('projection preference persists, replay hides it, and exiting replay restor
   expect((await page.evaluate(() => window.fto.snapshot())).inspectionProjection.visible).toBe(
     true,
   );
-  await page.locator('#mobile-reset').click();
+  await requestReset(page);
   await page.locator('#confirm-accept').click();
   await expect
     .poll(
@@ -282,7 +283,7 @@ test('projection defaults off and all sliders enable, update appearance, and per
   await expect(opacity).toBeDisabled();
   await expect(outward).toHaveValue('100');
   await expect(backward).toHaveValue('65');
-  await expect(opacity).toHaveValue('100');
+  await expect(opacity).toHaveValue('60');
   await toggle.check();
   await expect(outward).toBeEnabled();
   await expect(backward).toBeEnabled();

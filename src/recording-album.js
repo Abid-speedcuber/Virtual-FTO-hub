@@ -1,7 +1,7 @@
 import { AVERAGE_FORMAT, validateAverage, averageID, makeAverage } from './recording-average.js';
 import { encodeRecording, decodeRecording, recordingID } from './recording-codec.js';
 export const ALBUM_FORMAT = 'fto-recording-album-v1';
-const metadata = ({ payload, ...entry }) => entry;
+const metadata = ({ payload: _payload, ...entry }) => entry;
 export function newlyBestAverages(times, averageWindow) {
   return [5, 12].filter((count) => {
     const current = averageWindow(times, count);

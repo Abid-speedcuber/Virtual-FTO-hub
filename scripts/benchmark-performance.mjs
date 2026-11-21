@@ -33,7 +33,9 @@ try {
         ready = true;
         break;
       }
-    } catch {}
+    } catch {
+      // Connection refusal is expected while the benchmark server starts.
+    }
     await new Promise((r) => setTimeout(r, 100));
   }
   if (!ready) throw Error('Benchmark server did not start: ' + logs);

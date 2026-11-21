@@ -1,5 +1,6 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
+import { waitForApp, openSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
 const snapshot = (page) => page.evaluate(() => window.fto.snapshot());
 async function setup(page) {
@@ -18,7 +19,7 @@ async function setup(page) {
     );
   }, config);
   await page.goto('/');
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   await page.keyboard.press('KeyF');
   await openSettings(page);
   await page.locator('#edit-keyboard').click();

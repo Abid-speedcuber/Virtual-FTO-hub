@@ -1,9 +1,10 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
+import { waitForApp, openSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 test('every All filter renders the complete list without page limits', async ({ page }) => {
   test.setTimeout(60000);
   await page.goto('/');
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   await openSettings(page);
   await page.locator('#edit-keyboard').click();
   await page.locator('#customize-bindings').click();

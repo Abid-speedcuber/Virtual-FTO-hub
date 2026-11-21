@@ -1,10 +1,11 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
+import { waitForApp, requestScramble, openSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 import * as THREE from 'three';
 import { SolveRecorder, validateRecording, recordingFrame } from '../../src/solve-recording.js';
 import { formatTime } from '../../src/solve-timer.js';
 import { isSolved, signature } from '../../src/puzzle.js';
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+const ready = waitForApp;
 const snapshot = (page) => page.evaluate(() => window.fto.snapshot());
 const U = { normal: [1, 1, 1], layer: 'slice', depth: 1, count: 1, dir: 1, name: 'U' },
   R = { normal: [1, 1, -1], layer: 'slice', depth: 1, count: 1, dir: 1, name: 'R' };
@@ -58,9 +59,7 @@ async function records(page) {
   });
 }
 
-test('fresh wide screens show the keyboard and have no split section, prompt or extra column', async ({
-  page,
-}) => {
+test('fresh wide screens show the keyboard and statistics with splits hidden', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   await page.goto('/');
   await ready(page);
@@ -72,7 +71,7 @@ test('fresh wide screens show the keyboard and have no split section, prompt or 
     await page
       .locator('.time-columns')
       .evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length),
-  ).toBe(1);
+  ).toBe(2);
   await openSettings(page);
   await expect(page.locator('#show-keyboard')).toBeChecked();
   await page.locator('#show-keyboard').uncheck();
@@ -117,13 +116,11 @@ for (const size of [2, 3, 4])
     await page.locator('#close-share').click();
     await page.locator('#album').click();
     await page.locator('#album-import-recording').click();
-    await page
-      .locator('#recording-import')
-      .setInputFiles({
-        name: 'shared.ftoreplay.json',
-        mimeType: 'application/json',
-        buffer: Buffer.from(JSON.stringify(data)),
-      });
+    await page.locator('#recording-import').setInputFiles({
+      name: 'shared.ftoreplay.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(data)),
+    });
     await expect(page.locator('#home-replay-view canvas')).toBeVisible();
     const duration = (await snapshot(page)).replay.duration;
     await page.locator('#home-replay-progress').evaluate((el, value) => {
@@ -143,6 +140,7 @@ test('checkpoint editor uses an orbitable 3D puzzle, selects full pieces and kee
   await page.goto('/');
   await ready(page);
   await openSettings(page);
+  await page.locator('#show-statistics').uncheck();
   await page.locator('#configure-splits').click();
   await page.locator('#split-method').selectOption('custom');
   await page.locator('#method-name').fill('Test method');
@@ -202,7 +200,7 @@ test('a newly scrambled solve is recorded automatically through the real scrambl
   await page.locator('#animate-scrambling').uncheck();
   await page.locator('#follow').uncheck();
   await page.locator('#close-settings').click();
-  await page.locator('#mobile-scramble').click();
+  await requestScramble(page);
   await page.locator('#confirm-accept').click();
   await expect.poll(async () => (await snapshot(page)).timer.status).toBe('ready');
   const scrambled = await snapshot(page);
@@ -210,10 +208,11 @@ test('a newly scrambled solve is recorded automatically through the real scrambl
   const keys = {
     U: ['KeyJ', 'KeyF'],
     R: ['KeyI', 'KeyK'],
-    F: ['KeyH', 'KeyG'],
-    BR: ['KeyO', 'KeyL'],
-    L: ['KeyD', 'KeyE'],
-    B: ['KeyU', 'KeyR'],
+    // History names are permanent geometric IDs; keys use CIF notation.
+    BR: ['KeyH', 'KeyG'],
+    B: ['KeyO', 'KeyL'],
+    F: ['KeyD', 'KeyE'],
+    L: ['KeyU', 'KeyR'],
     BL: ['KeyS', 'KeyW'],
     D: ['KeyA', 'Semicolon'],
   };

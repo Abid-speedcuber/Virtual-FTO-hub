@@ -28,8 +28,9 @@ export function regressionKeyboard() {
     ['Escape', 'cancel'],
   ])
     add(trigger, { type: 'command', command });
-  config.modes = [{ id: 'default', name: 'Reg Keys', bindings }];
+  config.modes = [{ id: 'default', name: 'CIF', bindings }];
   config.activeMode = 'default';
+  config.defaultMode = 'default';
   return config;
 }
 export async function installKeyboard(page, config = regressionKeyboard()) {

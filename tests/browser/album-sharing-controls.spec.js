@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { waitForApp } from './helpers.js';
+import { test, expect } from './fixtures.js';
 import { SolveRecorder } from '../../src/solve-recording.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
 const U = { normal: [1, 1, 1], layer: 'slice', depth: 1, count: 1, dir: 1, name: 'U' },
@@ -54,7 +55,7 @@ async function setup(page) {
   await ready(page);
   return { last, pb };
 }
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+const ready = waitForApp;
 async function confirmDelete(page, accept) {
   await expect(page.locator('#confirm-dialog')).toBeVisible();
   await page.locator(accept ? '#confirm-accept' : '#confirm-cancel').click();

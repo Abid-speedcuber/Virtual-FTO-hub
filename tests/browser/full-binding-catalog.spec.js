@@ -1,8 +1,9 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
+import { waitForApp, openSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 async function open(page) {
   await page.goto('/');
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   await openSettings(page);
   await page.locator('#edit-keyboard').click();
   await page.locator('#customize-bindings').click();

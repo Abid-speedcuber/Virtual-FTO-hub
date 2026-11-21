@@ -1,5 +1,6 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
+import { waitForApp, openSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 import { SolveRecorder } from '../../src/solve-recording.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
 import { recordingLink } from '../../src/recording-codec.js';
@@ -22,7 +23,7 @@ async function setup(page) {
     }),
   );
   await page.goto('/');
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
 }
 async function importer(page) {
   await page.locator('#album').click();
@@ -109,28 +110,30 @@ test('file picker and dropping files validate recordings and open playback', asy
   expect((await page.evaluate(() => window.fto.snapshot())).timer.times).toHaveLength(0);
 });
 
-test('embedded recording links use a toast and never open the manual import dialog', async ({
-  page,
-}) => {
-  const link = await recordingLink(recording());
-  await page.addInitScript(() => {
-    window.openedRecordingDialogs = [];
-    window.recordingToastMessages = [];
-    const show = HTMLDialogElement.prototype.showModal;
-    HTMLDialogElement.prototype.showModal = function () {
-      window.openedRecordingDialogs.push(this.id);
-      return show.call(this);
-    };
-    new MutationObserver(() => {
-      const text = document.getElementById('recording-link-status')?.textContent;
-      if (text && !window.recordingToastMessages.includes(text))
-        window.recordingToastMessages.push(text);
-    }).observe(document, { subtree: true, childList: true, characterData: true });
-  });
-  await page.goto('/' + new URL(link).hash);
-  await page.waitForFunction(() => window.fto?.snapshot().replay);
-  await expect(page.locator('#paste-dialog')).toBeHidden();
-  expect(await page.evaluate(() => window.openedRecordingDialogs)).not.toContain('paste-dialog');
-  expect(await page.evaluate(() => window.recordingToastMessages)).toContain('Importing link…');
-  await expect(page.locator('#recording-link-status')).toHaveText('Recording loaded');
-});
+test(
+  'embedded recording links use a toast and never open the manual import dialog',
+  { tag: '@smoke' },
+  async ({ page }) => {
+    const link = await recordingLink(recording());
+    await page.addInitScript(() => {
+      window.openedRecordingDialogs = [];
+      window.recordingToastMessages = [];
+      const show = HTMLDialogElement.prototype.showModal;
+      HTMLDialogElement.prototype.showModal = function () {
+        window.openedRecordingDialogs.push(this.id);
+        return show.call(this);
+      };
+      new MutationObserver(() => {
+        const text = document.getElementById('recording-link-status')?.textContent;
+        if (text && !window.recordingToastMessages.includes(text))
+          window.recordingToastMessages.push(text);
+      }).observe(document, { subtree: true, childList: true, characterData: true });
+    });
+    await page.goto('/' + new URL(link).hash);
+    await page.waitForFunction(() => window.fto?.snapshot().replay);
+    await expect(page.locator('#paste-dialog')).toBeHidden();
+    expect(await page.evaluate(() => window.openedRecordingDialogs)).not.toContain('paste-dialog');
+    expect(await page.evaluate(() => window.recordingToastMessages)).toContain('Importing link…');
+    await expect(page.locator('#recording-link-status')).toHaveText('Recording loaded');
+  },
+);

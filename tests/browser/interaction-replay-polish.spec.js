@@ -1,8 +1,9 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
+import { waitForApp, freezeClock, openSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 import { SolveRecorder } from '../../src/solve-recording.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready),
+const ready = (page) => waitForApp(page),
   snapshot = (page) => page.evaluate(() => window.fto.snapshot());
 const move = { normal: [1, 1, 1], layer: 'slice', depth: 1, count: 1, dir: 1, name: 'U' },
   view = { rotation: [0, 0, 0, 1], radius: 10 };
@@ -61,7 +62,7 @@ for (const status of ['idle', 'finished'])
     test.setTimeout(60000);
     await preferences(page, status);
     await page.clock.install();
-    await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
+    await freezeClock(page);
     await page.keyboard.press('Escape');
     await page.clock.runFor(80);
     await page.keyboard.press('Escape');

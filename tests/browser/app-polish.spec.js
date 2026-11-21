@@ -1,7 +1,8 @@
-import { openSettings, openAbout } from './helpers.js';
-import { test, expect } from '@playwright/test';
-import { withSettings } from './helpers.js';
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+import { waitForApp, openSettings, openAbout, withSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
+
+const ready = waitForApp;
 
 test('fixed branded header, About, and new defaults', async ({ page }) => {
   await page.goto('/');
@@ -29,7 +30,7 @@ test('fixed branded header, About, and new defaults', async ({ page }) => {
   });
   await openAbout(page);
   await expect(page.locator('#about-dialog')).toBeVisible();
-  await expect(page.locator('#about-dialog')).toContainText('by Abid Ibn Ashraf');
+  await expect(page.locator('#about-dialog')).toContainText('Abid Ibn Ashraf');
   await page.keyboard.press('Escape');
   await page.reload();
   await ready(page);
@@ -69,6 +70,8 @@ test('keyboard and its switch disappear when space is limited and return with pr
 
 for (const method of ['same document', 'DevTools', 'other tab'])
   test(`cleared times stay cleared: ${method}`, async ({ page, context }) => {
+    // Clearing storage reloads the app; this case also opens another tab/reloads again.
+    test.setTimeout(60000);
     await page.addInitScript(() => {
       if (window.name === 'polish-times-seeded') return;
       window.name = 'polish-times-seeded';

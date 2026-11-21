@@ -1,10 +1,10 @@
+import { browserLaunchOptions } from './browser-options.js';
 import { chromium } from '@playwright/test';
 import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-const root = path.resolve('../ftoers/public'),
-  dist = path.resolve('dist'),
-  out = '/tmp/ftoers-dialogs';
+const dist = path.resolve('dist'),
+  out = path.resolve('test-results/account-dialogs');
 const user = {
   id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   email: 'solver@example.com',
@@ -39,11 +39,7 @@ const types = {
   '.mp3': 'audio/mpeg',
   '.webmanifest': 'application/manifest+json',
 };
-const browser = await chromium.launch({
-  headless: true,
-  executablePath: '/usr/bin/google-chrome',
-  args: ['--no-sandbox', '--enable-unsafe-swiftshader'],
-});
+const browser = await chromium.launch(browserLaunchOptions);
 await mkdir(out, { recursive: true });
 async function setup(base, recovery = false, failVerify = true) {
   const context = await browser.newContext({ viewport: { width: 1200, height: 900 } }),
@@ -116,10 +112,14 @@ async function setup(base, recovery = false, failVerify = true) {
       });
       return;
     }
-    let file = url.pathname.startsWith('/virtual/')
-      ? path.join(dist, url.pathname.slice(9))
-      : path.join(root, url.pathname);
-    if (url.pathname.endsWith('/')) file = path.join(file, 'index.html');
+    let file =
+      url.pathname === '/'
+        ? path.resolve('tests/fixtures/account-home.html')
+        : path.join(
+            dist,
+            url.pathname.startsWith('/virtual/') ? url.pathname.slice(9) : url.pathname.slice(1),
+          );
+    if (url.pathname === '/virtual/') file = path.join(dist, 'index.html');
     try {
       await route.fulfill({
         body: await readFile(file),

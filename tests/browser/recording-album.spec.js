@@ -1,12 +1,13 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
+import { waitForApp, openSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 import { readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { SolveRecorder } from '../../src/solve-recording.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
 import { encodeRecording } from '../../src/recording-codec.js';
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready),
+const ready = (page) => waitForApp(page),
   snap = (page) => page.evaluate(() => window.fto.snapshot());
 const U = { normal: [1, 1, 1], layer: 'slice', depth: 1, count: 1, dir: 1, name: 'U' },
   R = { normal: [1, 1, -1], layer: 'slice', depth: 1, count: 1, dir: 1, name: 'R' },
@@ -32,39 +33,45 @@ function recording(ms = 800) {
   recorder.finish(ms, true);
   return recorder.last;
 }
-async function seed(page, data = recording()) {
-  await page.addInitScript((data) => {
-    if (window.name.startsWith('album-seeded')) return;
-    window.name = 'album-seeded';
-    localStorage.setItem(
-      'master-fto-v1',
-      JSON.stringify({
-        size: 3,
-        solves: {
-          3: {
-            history: [],
-            redo: [],
-            undoFloor: 0,
-            recordings: { last: data, pbIsLast: true },
-            view: { rotation: [0, 0, 0, 1], radius: 10 },
-            timer: {
-              status: 'finished',
-              elapsedMs: data.solveMs,
-              lastMs: data.solveMs,
-              bestMs: data.solveMs,
-              bestAt: data.completedAt,
-              completed: 1,
-              times: [{ ms: data.solveMs, at: data.completedAt }],
+async function seed(page, data = recording(), { personalBest = true } = {}) {
+  await page.addInitScript(
+    ({ data, personalBest }) => {
+      if (window.name.startsWith('album-seeded')) return;
+      window.name = 'album-seeded';
+      localStorage.setItem(
+        'master-fto-v1',
+        JSON.stringify({
+          size: 3,
+          solves: {
+            3: {
+              history: [],
+              redo: [],
+              undoFloor: 0,
+              recordings: { last: data, pbIsLast: personalBest },
+              view: { rotation: [0, 0, 0, 1], radius: 10 },
+              timer: {
+                status: 'finished',
+                elapsedMs: data.solveMs,
+                lastMs: data.solveMs,
+                bestMs: personalBest ? data.solveMs : data.solveMs / 2,
+                bestAt: data.completedAt,
+                completed: personalBest ? 1 : 2,
+                times: [
+                  ...(personalBest ? [] : [{ ms: data.solveMs / 2, at: data.completedAt }]),
+                  { ms: data.solveMs, at: data.completedAt },
+                ],
+              },
             },
           },
-        },
-      }),
-    );
-    localStorage.setItem(
-      'master-fto-settings-v1',
-      JSON.stringify({ animate: false, follow: false }),
-    );
-  }, data);
+        }),
+      );
+      localStorage.setItem(
+        'master-fto-settings-v1',
+        JSON.stringify({ animate: false, follow: false }),
+      );
+    },
+    { data, personalBest },
+  );
 }
 async function range(page, value) {
   await page.locator('#home-replay-progress').evaluate((el, value) => {
@@ -119,7 +126,7 @@ test('intro displays the full scramble through the pauses and slow reorientation
 
 test('sharing offers link, text, JSON and album; copied links open on a fresh browser without changing its PBs', async ({
   page,
-  browser,
+  createContext,
   context,
 }) => {
   test.setTimeout(90000);
@@ -158,7 +165,7 @@ test('sharing offers link, text, JSON and album; copied links open on a fresh br
   await expect(page.locator('.album-pb')).toHaveText('[PB]');
   await expect(page.locator('.album-entry time')).toHaveAttribute('datetime', data.completedAt);
   await page.locator('#album-dialog').screenshot({ path: 'test-results/recording-album.png' });
-  const otherContext = await browser.newContext(),
+  const otherContext = await createContext(),
     other = await otherContext.newPage();
   await other.route('**/worker.js*', (route) =>
     route.fulfill({
@@ -178,7 +185,7 @@ test('sharing offers link, text, JSON and album; copied links open on a fresh br
 
 test('historical PBs remain in the album after a new PB and the complete album moves in user backups', async ({
   page,
-  browser,
+  createContext,
 }) => {
   test.setTimeout(90000);
   const old = recording(60000);
@@ -232,11 +239,12 @@ test('historical PBs remain in the album after a new PB and the complete album m
     backup = JSON.parse(buffer);
   expect(backup.album.entries).toHaveLength(2);
   expect(backup.album.entries.every((e) => e.pb)).toBe(true);
-  const fresh = await browser.newContext(),
+  const fresh = await createContext(),
     other = await fresh.newPage();
   await other.goto('/');
   await ready(other);
-  await other.locator('#settings').click();
+  await openSettings(other);
+  await other.locator('#open-user-data-import').click();
   await other
     .locator('#import-user-data')
     .setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer });
@@ -257,13 +265,12 @@ test('manual saves keep non-PB recordings and can be watched from the album afte
 }) => {
   test.setTimeout(60000);
   const data = recording(1200);
+  // Existing local non-PB recordings are manually saved from home Share.
+  // Imported replay playback is covered separately and remains read-only.
+  await seed(page, data, { personalBest: false });
   await page.goto('/');
   await ready(page);
-  await page.locator('#album').click();
-  await page.locator('#album-import-recording').click();
-  await page.locator('#recording-paste').fill(JSON.stringify(data));
-  await page.locator('#recording-paste-load').click();
-  await expect(page.locator('#home-replay-view canvas')).toBeVisible();
+  const before = (await snap(page)).timer.times;
   await page.locator('#share-current').click();
   await expect(page.locator('#share-album')).toBeEnabled();
   await page.locator('#share-album').click();
@@ -278,7 +285,7 @@ test('manual saves keep non-PB recordings and can be watched from the album afte
     .getByRole('button', { name: /^Play / })
     .click();
   await expect(page.locator('#home-replay-view canvas')).toBeVisible();
-  expect((await snap(page)).timer.times).toHaveLength(0);
+  expect((await snap(page)).timer.times).toEqual(before);
 });
 
 test('invalid replay links report an error without replacing user data', async ({ page }) => {
@@ -330,6 +337,8 @@ test('the production build opens compressed links when mounted at /virtual/', as
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   try {
+    // This test owns a second local server; external backend calls remain blocked.
+    await page.route(`http://127.0.0.1:${server.address().port}/**`, (route) => route.continue());
     await page.route('**/worker-*.js', (route) =>
       route.fulfill({
         contentType: 'text/javascript',
@@ -343,6 +352,7 @@ test('the production build opens compressed links when mounted at /virtual/', as
     await expect(page.locator('#home-replay-view canvas')).toBeVisible();
     await expect(page.locator('#home-replay-progress')).toBeVisible();
   } finally {
+    server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   }
 });

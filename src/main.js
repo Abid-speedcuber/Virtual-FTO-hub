@@ -1,3 +1,4 @@
+import { renderTimeHistory } from './time-history-ui.js';
 import { LeaderboardRecovery } from './leaderboard-recovery.js';
 import { SolveReview } from './solve-review.js';
 import { network, currentSolver, initNetwork, networkRPC, accountIsAdmin } from './network.js';
@@ -585,7 +586,9 @@ function detectClearedSolve() {
       location.reload();
       return true;
     }
-  } catch {}
+  } catch {
+    // Storage access may be denied; save() reports that state separately.
+  }
   return false;
 }
 window.addEventListener('storage', (event) => {
@@ -628,54 +631,14 @@ function renderTimes() {
   const key = `${size}:${session.times.length}:${session.completed}`;
   if (key === timesKey) return;
   timesKey = key;
-  $('history-title').textContent = `${size} × ${size} FTO history`;
-  $('history-count').textContent = String(session.times.length);
-  $('history-empty').hidden = session.times.length > 0;
-  $('times-count').textContent = String(session.times.length);
-  $('times-empty').hidden = session.times.length > 0;
-  const averages = session.times.map((_, i) =>
-    [5, 12].map((count) => averageWindow(session.times, count, i + 1)),
-  );
-  for (const id of ['solve-times', 'history-times']) {
-    const list = $(id);
-    list.replaceChildren();
-    list.start = session.completed;
-    session.times.toReversed().forEach((entry, i) => {
-      const item = document.createElement('li'),
-        number = document.createElement('span'),
-        time = document.createElement('time');
-      number.className = 'solve-number';
-      number.textContent = String(session.completed - i);
-      const button = document.createElement('button');
-      button.className = 'stat-link';
-      button.textContent = resultText(entry);
-      button.setAttribute('aria-label', `Solve ${session.times.length - i}: ${resultText(entry)}`);
-      button.onclick = () => statisticsUI.openSingle(session.times.length - 1 - i);
-      time.append(button);
-      if (entry.at) {
-        time.dateTime = entry.at;
-        time.title = new Date(entry.at).toLocaleString();
-      }
-      item.append(number, time);
-      for (const [j, count] of [5, 12].entries()) {
-        const cell = document.createElement('span'),
-          average = averages[session.times.length - 1 - i][j],
-          link = document.createElement('button');
-        cell.className = 'time-average';
-        link.className = 'stat-link';
-        link.textContent = formatTime(average?.value ?? null);
-        link.disabled = !average;
-        link.setAttribute('aria-label', `ao${count} ending at solve ${session.completed - i}`);
-        link.onclick = () =>
-          statisticsUI.open(average, `ao${count} · Solve ${session.completed - i}`);
-        cell.append(link);
-        item.append(cell);
-      }
-      list.append(item);
-    });
-    list.scrollTop = 0;
-  }
+  renderTimeHistory({
+    size,
+    session,
+    openSingle: (index) => statisticsUI.openSingle(index),
+    openAverage: (window, title) => statisticsUI.open(window, title),
+  });
 }
+
 function renderMobileControls(status) {
   const compact = document.documentElement.classList.contains('compact-ui'),
     layout = compact ? 'compact' : 'desktop';
@@ -1196,7 +1159,7 @@ async function startScramble({ skipConfirmation = false } = {}) {
       do {
         moves = scrambleMoves(Math.max(50, size * 10), Math.random, size);
       } while (isSolved(moves.reduce(applyMove, solvedState(size))));
-  } catch (error) {
+  } catch {
     if (scrambleRequest !== request) return;
     scrambleRequest = null;
     $('scramble-error').hidden = false;

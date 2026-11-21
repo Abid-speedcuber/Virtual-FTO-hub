@@ -1,6 +1,7 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+import { waitForApp, requestReset, requestScramble, freezeClock, openSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
+const ready = waitForApp;
 const snap = (page) => page.evaluate(() => window.fto.snapshot());
 const buttons = (page) =>
   page
@@ -15,31 +16,35 @@ async function choose(page, size) {
   await page.locator(`#puzzle-choices [data-size="${size}"]`).click();
 }
 
-test('topbar puzzle icon opens a modal and preserves per-size progress', async ({ page }) => {
-  await page.goto('/');
-  await ready(page);
-  await expect(page.locator('#size,.size-picker')).toHaveCount(0);
-  expect(
-    await page.locator('.topbar-actions button').evaluateAll((els) => els.map((el) => el.id)),
-  ).toEqual(['album', 'puzzles', 'settings', 'about']);
-  await page.locator('#puzzles').click();
-  await expect(page.locator('#puzzle-dialog')).toBeVisible();
-  await expect(page.locator('#puzzle-choices button')).toHaveCount(19);
-  await expect(page.locator('[data-size="3"]')).toHaveAttribute('aria-pressed', 'true');
-  await page.locator('[data-size="4"]').click();
-  await expect(page.locator('#puzzle-dialog')).toBeHidden();
-  expect((await snap(page)).size).toBe(4);
-  await page.keyboard.press('KeyF');
-  await page.waitForFunction(() => !window.fto.snapshot().busy);
-  await choose(page, 3);
-  expect((await snap(page)).history).toHaveLength(0);
-  await choose(page, 4);
-  expect((await snap(page)).history).toHaveLength(1);
-  await page.locator('#puzzles').screenshot({ path: 'test-results/puzzle-icon.png' });
-  await page.locator('#puzzles').click();
-  await page.locator('#puzzle-dialog').screenshot({ path: 'test-results/puzzle-selector.png' });
-  await page.keyboard.press('Escape');
-});
+test(
+  'topbar puzzle icon opens a modal and preserves per-size progress',
+  { tag: '@smoke' },
+  async ({ page }) => {
+    await page.goto('/');
+    await ready(page);
+    await expect(page.locator('#size,.size-picker')).toHaveCount(0);
+    expect(
+      await page.locator('.topbar-actions button').evaluateAll((els) => els.map((el) => el.id)),
+    ).toEqual(['puzzles', 'leaderboard', 'album', 'notifications', 'ft-account-trigger']);
+    await page.locator('#puzzles').click();
+    await expect(page.locator('#puzzle-dialog')).toBeVisible();
+    await expect(page.locator('#puzzle-choices button')).toHaveCount(19);
+    await expect(page.locator('[data-size="3"]')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('[data-size="4"]').click();
+    await expect(page.locator('#puzzle-dialog')).toBeHidden();
+    expect((await snap(page)).size).toBe(4);
+    await page.keyboard.press('KeyF');
+    await page.waitForFunction(() => !window.fto.snapshot().busy);
+    await choose(page, 3);
+    expect((await snap(page)).history).toHaveLength(0);
+    await choose(page, 4);
+    expect((await snap(page)).history).toHaveLength(1);
+    await page.locator('#puzzles').screenshot({ path: 'test-results/puzzle-icon.png' });
+    await page.locator('#puzzles').click();
+    await page.locator('#puzzle-dialog').screenshot({ path: 'test-results/puzzle-selector.png' });
+    await page.keyboard.press('Escape');
+  },
+);
 
 test('mobile bar follows freeplay, running, and paused states; buttons control the solve', async ({
   page,
@@ -56,8 +61,8 @@ test('mobile bar follows freeplay, running, and paused states; buttons control t
   await page.locator('#animate').uncheck();
   await page.locator('#animate-scrambling').uncheck();
   await page.locator('#close-settings').click();
-  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
-  await page.locator('#mobile-scramble').click();
+  await freezeClock(page);
+  await requestScramble(page);
   await page.locator('#confirm-accept').click();
   await expect.poll(async () => (await snap(page)).timer.status).toBe('ready');
   await page.keyboard.press('KeyF');
@@ -79,7 +84,7 @@ test('mobile bar follows freeplay, running, and paused states; buttons control t
   await page.locator('#mobile-pause').click();
   expect((await snap(page)).timer.status).toBe('running');
   await page.locator('#mobile-pause').click();
-  await page.locator('#mobile-reset').click();
+  await requestReset(page);
   await page.locator('#confirm-accept').click();
   await expect.poll(async () => (await snap(page)).timer.status).toBe('idle');
   expect(await buttons(page)).toEqual(['Reset', 'Scramble', 'History']);
@@ -206,7 +211,7 @@ test('finished mobile solves keep their time visible until reset to free play', 
   await ready(page);
   await expect(page.locator('#mobile-timer')).toHaveText('12.34');
   await expect(page.locator('#mobile-timer')).toBeVisible();
-  await page.locator('#mobile-reset').click();
+  await requestReset(page);
   await expect(page.locator('#mobile-controls')).toHaveAttribute('data-status', 'idle');
   await expect(page.locator('#mobile-timer')).toBeHidden();
 });

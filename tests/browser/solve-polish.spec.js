@@ -1,7 +1,8 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
+import { waitForApp, requestScramble, openSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+const ready = waitForApp;
 const snap = (page) => page.evaluate(() => window.fto.snapshot());
 async function seed(
   page,
@@ -62,14 +63,15 @@ test('all gray pauses wait for a resume key after focus, dialogs, and reload', a
     window.dispatchEvent(new Event('focus'));
   });
   expect((await snap(page)).timer.status).toBe('paused');
-  await expect(page.locator('#pause-message')).toBeVisible();
+  await expect(page.locator('#mobile-pause')).toBeVisible();
+  await expect(page.locator('#mobile-pause')).toHaveAttribute('aria-label', 'Resume');
   await openSettings(page);
   await page.locator('#close-settings').click();
   expect((await snap(page)).timer.status).toBe('paused');
   await page.keyboard.press('KeyI');
   expect((await snap(page)).history).toHaveLength(1);
   expect((await snap(page)).timer.status).toBe('running');
-  await page.locator('#scramble').click();
+  await requestScramble(page);
   await page.locator('#confirm-cancel').click();
   expect((await snap(page)).timer.status).toBe('paused');
   await page.reload();
@@ -94,7 +96,7 @@ for (const options of [
     const finished = await snap(page);
     expect(finished.timer.status).toBe('finished');
     expect(finished.keyboard.baseMode).toBe(options.expected);
-    await page.locator('#scramble').click();
+    await requestScramble(page);
     await expect(page.locator('#confirm-title')).toHaveText('Start a new timed solve?');
     await expect(page.locator('#confirm-message')).toContainText('Saved times are kept');
     await expect(page.locator('#confirm-message')).not.toContainText('replaces the current solve');
@@ -111,12 +113,15 @@ for (const options of [
 test('move and rotation pickers contain 4x4 direction grids and save the chosen action', async ({
   page,
 }) => {
+  // Two binding edits, a mode-default change, and persisted settings after reload.
+  test.setTimeout(60000);
   await page.goto('/');
   await ready(page);
   await openSettings(page);
   await expect(page.locator('#auto-default-mode')).toBeChecked();
   await expect(page.locator('#pointer-mode option[value="legacy"]')).toHaveText('Orbit + click');
   await page.locator('#edit-keyboard').click();
+  await page.locator('#customize-bindings').click();
   await page.locator('#catalog-category').selectOption('turns');
   await page.locator('tr[data-action="move:R:-1:outer:1:false"] .add-key').click();
   await page.locator('#bind-key-trigger').fill('X');
@@ -125,12 +130,16 @@ test('move and rotation pickers contain 4x4 direction grids and save the chosen 
     (await snap(page)).keyboard.config.modes[0].bindings.find((b) => b.trigger === 'X').action,
   ).toMatchObject({ type: 'move', face: 'R', dir: -1 });
   await page.locator('#catalog-category').selectOption('rotations');
-  await page.locator('tr[data-action="rotate:D:-1"] .add-key').click();
+  await page.locator('tr[data-action="rotate:R:-1:"] .add-key').click();
   await page.locator('#bind-key-trigger').fill('N');
   await page.locator('#bind-key-save').click();
   expect(
     (await snap(page)).keyboard.config.modes[0].bindings.find((b) => b.trigger === 'N').action,
-  ).toMatchObject({ type: 'rotate', face: 'D', dir: -1 });
+  ).toMatchObject({ type: 'rotate', face: 'R', dir: -1 });
+  await page.locator('#catalog-mode-choice').click();
+  await page.getByRole('button', { name: 'Options for EIF-R', exact: true }).click();
+  await page.locator('#mode-context-default').click();
+  await page.locator('#close-bindings').click();
   await page.locator('#close-keyboard').click();
   await page.locator('#auto-default-mode').uncheck();
   await page.locator('#close-settings').click();
@@ -139,5 +148,7 @@ test('move and rotation pickers contain 4x4 direction grids and save the chosen 
   await openSettings(page);
   await expect(page.locator('#auto-default-mode')).not.toBeChecked();
   await page.locator('#edit-keyboard').click();
-  await expect(page.locator('#keyboard-default-mode')).toHaveValue('eif-r');
+  await page.locator('#customize-bindings').click();
+  await page.locator('#catalog-mode-choice').click();
+  await expect(page.getByRole('option', { name: 'EIF-R (Default)', exact: true })).toBeVisible();
 });

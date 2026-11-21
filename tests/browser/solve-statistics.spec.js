@@ -1,9 +1,10 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
+import { waitForApp, requestReset, openSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
 test.setTimeout(90000);
 const snap = (page) => page.evaluate(() => window.fto.snapshot());
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+const ready = waitForApp;
 async function seed(page, { timer = { status: 'ready' }, preferences = {}, keyboard } = {}) {
   await page.route('**/worker.js*', (route) =>
     route.fulfill({
@@ -81,10 +82,10 @@ test('confirmed reset records DNF, while cancelling reset retains the attempt', 
   await seed(page);
   await page.keyboard.press('KeyJ');
   await page.locator('#mobile-pause').click();
-  await page.locator('#mobile-reset').click();
+  await requestReset(page);
   await page.locator('#confirm-cancel').click();
   expect((await snap(page)).timer.times).toHaveLength(0);
-  await page.locator('#mobile-reset').click();
+  await requestReset(page);
   await page.locator('#confirm-accept').click();
   await page.waitForFunction(() => window.fto.snapshot().timer.status === 'idle');
   const state = await snap(page);

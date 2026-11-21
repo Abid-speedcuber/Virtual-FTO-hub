@@ -1,7 +1,15 @@
-import { test, expect } from '@playwright/test';
+import {
+  waitForApp,
+  requestReset,
+  requestScramble,
+  freezeClock,
+  confirmAction,
+} from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 import { SolveRecorder } from '../../src/solve-recording.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
-import { confirmAction } from './helpers.js';
+
 const U = { normal: [1, 1, 1], layer: 'outer', dir: 1, name: 'U' },
   view = { rotation: [0, 0, 0, 1], radius: 10 };
 async function setup(page) {
@@ -108,7 +116,7 @@ async function setup(page) {
     { user, token, exp, recordings: recorder.serialize(), U },
   );
   await page.goto('/');
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   await expect(page.locator('#ft-account-trigger')).toHaveAttribute('data-signed-in', 'true');
   await expect(page.locator('#online-pb-list')).toContainText('40.33');
   return calls;
@@ -124,7 +132,7 @@ test('reloaded inspection records the new solve and pages through independent su
 }) => {
   const calls = await setup(page);
   await page.reload();
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   await expect(page.locator('#ft-account-trigger')).toHaveAttribute('data-signed-in', 'true');
   await page.keyboard.press('KeyF');
   await page.waitForFunction(() => window.fto.snapshot().timer.status === 'finished');
@@ -172,10 +180,10 @@ test('triple Escape and reset during inspection add hidden DNFs; abandonment aft
       window.fto.snapshot().timer.status === 'ready' && !window.fto.snapshot().generatingScramble,
   );
   expect(await page.evaluate(() => window.fto.snapshot().timer.times.length)).toBe(0);
-  await confirmAction(page, () => page.locator('#mobile-reset').click());
+  await confirmAction(page, () => requestReset(page));
   await expect.poll(() => calls.filter((c) => c.name === 'skip_online_scramble').length).toBe(2);
   expect(await page.evaluate(() => window.fto.snapshot().timer.times.length)).toBe(0);
-  await confirmAction(page, () => page.locator('#mobile-scramble').click());
+  await confirmAction(page, () => requestScramble(page));
   await page.waitForFunction(
     () =>
       window.fto.snapshot().timer.status === 'ready' && !window.fto.snapshot().generatingScramble,
@@ -228,7 +236,7 @@ for (const duration of [400, 5000])
       const { network } = await import('/src/network.js');
       await network.queue;
     });
-    await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 1000));
+    await freezeClock(page, 1000);
     const before = await page.evaluate(() => window.fto.snapshot().timer.elapsedMs);
     await context.setOffline(true);
     await page.waitForFunction(() => navigator.onLine === false);

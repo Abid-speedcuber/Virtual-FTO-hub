@@ -1,10 +1,12 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
+import { waitForApp, freezeClock, openSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 import { phaseProfile } from '../../src/solve-phases.js';
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+const ready = waitForApp;
 const snap = (page) => page.evaluate(() => window.fto.snapshot());
 async function configure(page) {
   await openSettings(page);
+  await page.locator('#show-statistics').uncheck();
   await page.locator('#configure-splits').click();
 }
 async function choose(page, size) {
@@ -30,7 +32,8 @@ test('desktop island unifies controls, always includes undo/redo, and the timer 
     await page
       .locator('.time-columns')
       .evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length),
-  ).toBe(1);
+  ).toBe(2);
+  await expect(page.locator('#statistics-panel')).toBeVisible();
   await openSettings(page);
   await page.locator('#show-keyboard').check();
   await page.locator('#close-settings').click();
@@ -154,7 +157,7 @@ test('automatic tracking groups unobserved boundaries instead of assigning a zer
   await page.clock.install();
   await page.goto('/');
   await ready(page);
-  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
+  await freezeClock(page);
   await page.keyboard.press('KeyJ');
   await page.clock.runFor(1000);
   await page.keyboard.press('KeyJ');
@@ -199,7 +202,7 @@ test('Nautilus recognizes the last-layer state separately from its last triple',
   await page.clock.install();
   await page.goto('/');
   await ready(page);
-  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
+  await freezeClock(page);
   expect((await snap(page)).splits.groups[0]).toMatchObject({
     start: 0,
     end: 2,

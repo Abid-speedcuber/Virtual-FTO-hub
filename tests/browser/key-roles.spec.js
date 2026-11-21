@@ -1,5 +1,6 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
+import { waitForApp, freezeClock, openSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
 test.setTimeout(90000);
 const snapshot = (page) => page.evaluate(() => window.fto.snapshot());
@@ -22,7 +23,7 @@ async function open(page) {
       );
   }, config);
   await page.goto('/');
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   await openSettings(page);
   await page.locator('#animate').uncheck();
   await page.locator('#edit-keyboard').click();
@@ -62,7 +63,7 @@ test('changing a suffix previews dependent keys and removes only the old combina
   await page.keyboard.press('Digit2');
   expect((await snapshot(page)).history).toHaveLength(0);
   await page.reload();
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   expect((await snapshot(page)).keyboard.config.modes[0].keyRoles.Digit2).toBe('move');
 });
 test('replacement relocates the suffix and its chords, rejecting occupied keys', async ({
@@ -83,7 +84,7 @@ test('replacement relocates the suffix and its chords, rejecting occupied keys',
   expect(bindings.some((b) => b.trigger === 'Ctrl+F8' && b.action.type === 'depth')).toBe(true);
   await close(page);
   await page.clock.install();
-  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
+  await freezeClock(page);
   await page.keyboard.press('Control+F8');
   await page.keyboard.press('KeyF');
   expect((await snapshot(page)).history.at(-1).count).toBe(2);

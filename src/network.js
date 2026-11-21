@@ -124,7 +124,7 @@ export class OnlineAttempts {
         if (!this.connection.check()) throw error;
         await this.sleep(250);
         if (!this.online() && !(await this.connection.wait()))
-          throw Error('Connection lost for five seconds');
+          throw Error('Connection lost for five seconds', { cause: error });
       }
     }
   }
@@ -287,7 +287,7 @@ export class OnlineAttempts {
         'Skipped scramble counts as DNF in leaderboard averages. Your local times are unchanged.',
       );
     });
-    this.queue = task.catch((error) => {
+    this.queue = task.catch((_error) => {
       this.sequence = this.id();
       if (owner === this.getProfile()?.id)
         this.status(

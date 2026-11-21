@@ -10,7 +10,7 @@ import {
   detectBuiltin,
   ROTATIONS,
 } from '../src/solve-phases.js';
-import { solvedState, applyMove, selected, inverse, FACES } from '../src/puzzle.js';
+import { solvedState, applyMove, selected, FACES } from '../src/puzzle.js';
 import { SolveTimer } from '../src/solve-timer.js';
 const same = (a, b) => a.every((v, i) => v === b[i]);
 const identity = ROTATIONS.findIndex((r) => same(r.p, [0, 1, 2]) && same(r.s, [1, 1, 1]));

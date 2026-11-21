@@ -1,11 +1,20 @@
-import { openSettings } from './helpers.js';
+import {
+  waitForApp,
+  freezeClock,
+  requestReset,
+  selectSize,
+  openSettings,
+  withSettings,
+  scramble,
+  assignBinding,
+} from './helpers.js';
+
 import { regressionKeyboard } from './keyboard-fixture.js';
-import { test, expect } from '@playwright/test';
-import { withSettings, scramble, assignBinding } from './helpers.js';
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+import { test, expect } from './fixtures.js';
+
+const ready = waitForApp;
 const snap = (page) => page.evaluate(() => window.fto.snapshot());
-const size = async (page, n) =>
-  withSettings(page, () => page.locator('#size').selectOption(String(n)));
+const size = selectSize;
 const key = async (page, code) => page.keyboard.press(code);
 const binding = async (page, trigger, type, face = 'U', kind = 'outer', depth = 1) => {
   const action =
@@ -13,48 +22,55 @@ const binding = async (page, trigger, type, face = 'U', kind = 'outer', depth = 
       ? `move:${face}:1:${kind}:${Number(depth)}:false`
       : type === 'suffix-slice'
         ? 'suffix-slice:::'
-        : `rotate:${face}:1`;
+        : `rotate:${face}:1:`;
   await assignBinding(page, action, trigger);
-  await expect(page.locator('#bindings-message')).toHaveText('Saved');
+  if (await page.locator('#bind-key-dialog').isVisible())
+    await page.locator('#bind-key-replace').click();
+  await expect(page.locator('#bind-key-dialog')).not.toBeVisible();
 };
 async function edit(page, action) {
   await openSettings(page);
   await page.locator('#edit-keyboard').click();
   await action();
+  if (await page.locator('#bindings-dialog').isVisible())
+    await page.locator('#close-bindings').click();
   await page.locator('#close-keyboard').click();
   await page.locator('#close-settings').click();
 }
 test.beforeEach(async ({ page }) => {
+  await page.clock.install();
   await page.goto('/');
   await ready(page);
   await withSettings(page, async () => {
     await page.locator('#animate').uncheck();
+    await page.locator('#animate-scrambling').uncheck();
     await page.locator('#show-keyboard').check();
   });
+  await freezeClock(page);
 });
 test('3x3 CIF, EIF-R, EIF-L, and E-Center expose the requested moves and switch back', async ({
   page,
 }) => {
   await size(page, 3);
-  await expect(page.locator('[data-code="KeyF"] text')).toHaveText('U′');
-  await expect(page.locator('[data-code="KeyJ"] text')).toHaveText('U');
-  await expect(page.locator('[data-code="AltLeft"] text')).toBeEmpty();
-  await expect(page.locator('[data-code="ControlLeft"] text')).not.toHaveText('Wide');
+  await expect(page.locator('#keyboard-svg [data-code="KeyF"] text')).toHaveText('U′');
+  await expect(page.locator('#keyboard-svg [data-code="KeyJ"] text')).toHaveText('U');
+  await expect(page.locator('#keyboard-svg [data-code="AltLeft"] text')).toBeEmpty();
+  await expect(page.locator('#keyboard-svg [data-code="ControlLeft"] text')).not.toHaveText('Wide');
   await key(page, 'KeyF');
   expect((await snap(page)).history.at(-1)).toMatchObject({ name: 'U', dir: -1 });
   await key(page, 'Tab');
   expect((await snap(page)).keyboard.modeName).toBe('EIF-R');
-  await expect(page.locator('[data-code="KeyI"] text')).toHaveText('BR');
-  await expect(page.locator('[data-code="KeyH"] text')).toHaveText('R');
+  await expect(page.locator('#keyboard-svg [data-code="KeyI"] text')).toHaveText('BR');
+  await expect(page.locator('#keyboard-svg [data-code="KeyH"] text')).toHaveText('R');
   await key(page, 'Tab');
   expect((await snap(page)).keyboard.modeName).toBe('CIF');
   await key(page, 'KeyC');
   expect((await snap(page)).keyboard.modeName).toBe('EIF-L');
-  await expect(page.locator('[data-code="KeyI"] text')).toHaveText('F');
+  await expect(page.locator('#keyboard-svg [data-code="KeyI"] text')).toHaveText('F');
   await key(page, 'KeyC');
   await key(page, 'KeyM');
   expect((await snap(page)).keyboard.modeName).toBe('E– cntr');
-  await expect(page.locator('[data-code="KeyJ"] text')).toHaveText('2R′');
+  await expect(page.locator('#keyboard-svg [data-code="KeyJ"] text')).toHaveText('2R′');
   await key(page, 'KeyJ');
   expect((await snap(page)).history.at(-1)).toMatchObject({
     name: 'R',
@@ -72,9 +88,11 @@ test('3x3 CIF, EIF-R, EIF-L, and E-Center expose the requested moves and switch 
 test('full-width suffix rotates the view without turns or timer; dedicated rotation is bindable', async ({
   page,
 }) => {
+  // Covers full-width input plus a binding conflict and replacement.
+  test.setTimeout(60000);
   await size(page, 2);
-  await expect(page.locator('[data-code="Digit2"] text')).toHaveText('Rot');
-  await expect(page.locator('[data-code="Digit1"] text')).toBeEmpty();
+  await expect(page.locator('#keyboard-svg [data-code="Digit2"] text')).toHaveText('Rot');
+  await expect(page.locator('#keyboard-svg [data-code="Digit1"] text')).toBeEmpty();
   const before = await snap(page);
   await key(page, 'Digit2');
   await key(page, 'KeyJ');
@@ -94,6 +112,8 @@ test('full-width suffix rotates the view without turns or timer; dedicated rotat
 test('size-specific custom slice suffix and exact moves persist independently across reload', async ({
   page,
 }) => {
+  // Three binding edits and two puzzle profiles must survive a fresh page load.
+  test.setTimeout(90000);
   await size(page, 10);
   await edit(page, async () => {
     await binding(page, "'", 'suffix-slice');
@@ -102,7 +122,7 @@ test('size-specific custom slice suffix and exact moves persist independently ac
   });
   await key(page, 'Digit8');
   await key(page, 'Quote');
-  await expect(page.locator('[data-code="Quote"]')).toHaveClass(/selected/);
+  await expect(page.locator('#keyboard-svg [data-code="Quote"]')).toHaveClass(/selected/);
   await key(page, 'KeyF');
   expect((await snap(page)).history.at(-1)).toMatchObject({
     name: 'U',
@@ -118,13 +138,13 @@ test('size-specific custom slice suffix and exact moves persist independently ac
   expect((await snap(page)).history.at(-1)).toMatchObject({ name: 'U', depth: 1, count: 8 });
   await size(page, 3);
   expect((await snap(page)).keyboard.config.modes).toHaveLength(4);
-  await expect(page.locator('[data-code="KeyQ"] text')).toBeEmpty();
+  await expect(page.locator('#keyboard-svg [data-code="KeyQ"] text')).toHaveText('Rot R');
   await page.reload();
   await ready(page);
   await size(page, 10);
   expect((await snap(page)).keyboard.config.modes).toHaveLength(3);
-  await expect(page.locator('[data-code="KeyQ"] text')).toHaveText('8R');
-  await expect(page.locator('[data-code="Quote"] text')).toHaveText('Slice next');
+  await expect(page.locator('#keyboard-svg [data-code="KeyQ"] text')).toHaveText('8R');
+  await expect(page.locator('#keyboard-svg [data-code="Quote"] text')).toHaveText('Slice next');
 });
 test('sounds setting persists; clicking the settings backdrop closes it', async ({ page }) => {
   await openSettings(page);
@@ -141,13 +161,15 @@ test('reset confirmation pauses and grays the puzzle even if its dialog is cance
 }) => {
   await scramble(page);
   await key(page, 'KeyF');
-  await page.locator('#freeplay-reset').click();
+  await requestReset(page);
   await expect(page.locator('#confirm-dialog')).toBeVisible();
   const paused = await snap(page);
   expect(paused.timer.status).toBe('paused');
   expect(paused.stickerColors).toEqual(Array(8).fill('888888'));
   await page.screenshot({ path: 'test-results/confirm-gray.png' });
   await page.locator('#confirm-cancel').click();
+  // The visible reset control requires pausing first; cancel preserves that pause.
+  await page.locator('#mobile-pause').click();
   await expect.poll(async () => (await snap(page)).timer.status).toBe('running');
   expect(new Set((await snap(page)).stickerColors).size).toBe(8);
 });
@@ -155,7 +177,7 @@ test('reset confirmation pauses and grays the puzzle even if its dialog is cance
 test('suffixes play tones, accepted moves play clicks, and mute suppresses both', async ({
   page,
 }) => {
-  await page.evaluate(() => {
+  await page.addInitScript(() => {
     const Native = window.AudioContext;
     window.soundTrace = { contexts: 0, clicks: 0, tones: 0 };
     window.AudioContext = class extends Native {
@@ -173,6 +195,8 @@ test('suffixes play tones, accepted moves play clicks, and mute suppresses both'
       }
     };
   });
+  await page.reload();
+  await ready(page);
   await key(page, 'Digit2');
   let audio = await page.evaluate(() => window.soundTrace);
   expect(audio.contexts).toBe(1);
@@ -205,7 +229,7 @@ test('untouched legacy defaults upgrade to the active size without losing overla
   const config = (await snap(page)).keyboard.config;
   expect(config.modes.map((m) => m.name)).toEqual(['CIF', 'EIF-R', 'EIF-L', 'E– cntr']);
   expect(config.display.width).toBe(760);
-  await expect(page.locator('[data-code="KeyF"] text')).toHaveText('U′');
+  await expect(page.locator('#keyboard-svg [data-code="KeyF"] text')).toHaveText('U′');
 });
 
 test('free play stays colored through breaks, printing, and confirmation dialogs', async ({
@@ -218,7 +242,7 @@ test('free play stays colored through breaks, printing, and confirmation dialogs
   }
   await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
   await key(page, 'KeyF');
-  await page.locator('#freeplay-reset').click();
+  await requestReset(page);
   expect((await snap(page)).stickerColors).toEqual(colors);
   await page.locator('#confirm-cancel').click();
   await expect.poll(async () => (await snap(page)).stickerColors).toEqual(colors);

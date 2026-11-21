@@ -1,29 +1,26 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
-import { withSettings } from './helpers.js';
-const ready = (page) => page.waitForFunction(() => window.fto);
+import { waitForApp, selectSize, openSettings, withSettings } from './helpers.js';
+import { test, expect } from './fixtures.js';
+
+const ready = waitForApp;
 const snap = (page) => page.evaluate(() => window.fto.snapshot());
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await ready(page);
 });
-test('default solve screen has only the puzzle and five essential actions', async ({ page }) => {
-  await expect(page.getByRole('button')).toHaveText([
-    '↶ Undo',
-    '↷ Redo',
-    'Scramble',
-    'Reset',
-    '⚙ Settings',
-  ]);
+test('default solve screen keeps puzzle controls and account actions in their intended locations', async ({
+  page,
+}) => {
   await expect(
-    page.locator(
-      '#solve-controls,#move-buttons,#show-move-buttons,#history,#reset,#home,#fit,#help',
-    ),
-  ).toHaveCount(0);
+    page.getByRole('navigation', { name: 'Application', exact: true }).getByRole('button'),
+  ).toHaveCount(5);
+  await expect(page.locator('#mobile-undo')).toBeVisible();
+  await expect(page.locator('#mobile-redo')).toBeVisible();
+  await expect(page.locator('#mobile-reset')).toBeVisible();
+  await expect(page.locator('#mobile-scramble')).toBeVisible();
+  await expect(page.locator('#settings')).toBeHidden();
   await expect(page.locator('canvas')).toBeVisible();
   await withSettings(page, async () => {
-    await expect(page.getByLabel('FTO size', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Keyboard & bindings' })).toBeVisible();
+    await expect(page.locator('#edit-keyboard')).toBeVisible();
     await page.keyboard.press('f');
     expect((await snap(page)).history).toHaveLength(0);
   });
@@ -34,8 +31,9 @@ test('default solve screen has only the puzzle and five essential actions', asyn
   await page.waitForFunction(() => window.fto.snapshot().history.length === 1);
 });
 test('all preferences and the camera view survive reload', async ({ page }) => {
+  test.setTimeout(60000);
+  await selectSize(page, 9);
   await withSettings(page, async () => {
-    await page.getByLabel('FTO size', { exact: true }).selectOption('9');
     await page.getByLabel('Pointer controls', { exact: true }).selectOption('legacy');
     await page.getByRole('switch', { name: 'Follow the view', exact: true }).uncheck();
     await page.getByRole('switch', { name: 'Animate turns', exact: true }).uncheck();

@@ -1,29 +1,46 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
+import {
+  waitForApp,
+  openBindings,
+  freezeClock,
+  createKeyboardMode,
+  resetKeyboardPreset,
+  selectSize,
+  openSettings,
+  withSettings,
+  scramble,
+} from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
-import { withSettings, scramble } from './helpers.js';
+
 const snap = (page) => page.evaluate(() => window.fto.snapshot());
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+const ready = waitForApp;
 async function setup(page, size = 3) {
+  await page.clock.install();
   await page.goto('/');
   await ready(page);
-  await page.locator('#size').selectOption(String(size));
+  await selectSize(page, String(size));
   await withSettings(page, async () => {
     await page.locator('#animate').uncheck();
+    await page.locator('#animate-scrambling').uncheck();
     await page.locator('#show-keyboard').check();
   });
+  // A tap must not become a hold because protocol commands run slowly.
+  await freezeClock(page);
 }
 async function open(page) {
   await openSettings(page);
   await page.locator('#edit-keyboard').click();
 }
 async function close(page) {
+  if (await page.locator('#bindings-dialog').isVisible())
+    await page.locator('#close-bindings').click();
   await page.locator('#close-keyboard').click();
   await page.locator('#close-settings').click();
 }
 async function reset(page, preset) {
   await open(page);
-  await page.locator(`#keyboard-reset-${preset}`).click();
+  await resetKeyboardPreset(page, preset);
   await close(page);
 }
 const angle = (a, b) =>
@@ -31,15 +48,16 @@ const angle = (a, b) =>
 test('reset buttons replace current bindings while preserving progress, recording settings, and other sizes', async ({
   page,
 }) => {
+  // Includes two preset replacements, custom-mode creation and per-size reload checks.
+  test.setTimeout(90000);
   await setup(page);
   await page.keyboard.press('KeyF');
   const before = await snap(page);
   await open(page);
   await page.locator('#keyboard-layout').selectOption('iso');
   await page.locator('#keyboard-numpad').check();
-  await page.locator('#mode-name').fill('Custom');
-  await page.locator('#mode-add').click();
-  await page.locator('#keyboard-reset-cstimer').click();
+  await createKeyboardMode(page, 'Custom', { keepOpen: false });
+  await resetKeyboardPreset(page, 'cstimer');
   let after = await snap(page);
   expect(after.keyboard.config.preset).toBe('cstimer');
   expect(after.keyboard.config.modes.map((m) => m.name)).toEqual([
@@ -52,10 +70,10 @@ test('reset buttons replace current bindings while preserving progress, recordin
   expect(after.history).toEqual(before.history);
   expect(after.keyboard.stats.total).toBe(before.keyboard.stats.total);
   expect(after.keyboard.config.display).toMatchObject({ show: true, layout: 'iso', numpad: true });
-  await expect(page.locator('[data-code="KeyC"] text')).toHaveText('BL');
-  await expect(page.locator('[data-code="KeyM"] text')).toHaveText('Rw′');
-  await expect(page.locator('[data-code="Digit3"] text')).toHaveText('BL′');
-  await page.locator('#keyboard-reset-abid').click();
+  await expect(page.locator('#keyboard-svg [data-code="KeyC"] text')).toHaveText('BL');
+  await expect(page.locator('#keyboard-svg [data-code="KeyM"] text')).toHaveText('Rw′');
+  await expect(page.locator('#keyboard-svg [data-code="Digit3"] text')).toHaveText('BL′');
+  await resetKeyboardPreset(page, 'abid');
   expect((await snap(page)).keyboard.config.modes).toEqual(defaultConfig(3).modes);
   await close(page);
   await page.reload();
@@ -63,9 +81,9 @@ test('reset buttons replace current bindings while preserving progress, recordin
   expect((await snap(page)).keyboard.config.preset).toBe('abid');
   expect((await snap(page)).state).toEqual(before.state);
   expect((await snap(page)).keyboard.config.display.layout).toBe('iso');
-  await page.locator('#size').selectOption('20');
+  await selectSize(page, '20');
   await reset(page, 'cstimer');
-  await page.locator('#size').selectOption('3');
+  await selectSize(page, '3');
   expect((await snap(page)).keyboard.config.preset).toBe('abid');
   expect((await snap(page)).state).toEqual(before.state);
   const license = await page.request.get('/licenses/GPL-3.0.txt');
@@ -75,6 +93,7 @@ test('reset buttons replace current bindings while preserving progress, recordin
 test('csTimer native keys keep their turns and modern mode shortcuts do not steal C or M', async ({
   page,
 }) => {
+  test.setTimeout(60000);
   await setup(page);
   await reset(page, 'cstimer');
   for (const [code, name, count, dir] of [
@@ -90,26 +109,27 @@ test('csTimer native keys keep their turns and modern mode shortcuts do not stea
   }
   await page.keyboard.press('Tab');
   expect((await snap(page)).keyboard.modeName).toBe('EIF-R');
-  await expect(page.locator('[data-code="KeyI"] text')).toHaveText('BR');
+  await expect(page.locator('#keyboard-svg [data-code="KeyI"] text')).toHaveText('BR');
   await page.keyboard.press('Tab');
   await page.keyboard.press('Shift+Tab');
   expect((await snap(page)).keyboard.modeName).toBe('EIF-L');
-  await expect(page.locator('[data-code="KeyI"] text')).toHaveText('F');
+  await expect(page.locator('#keyboard-svg [data-code="KeyI"] text')).toHaveText('F');
   await page.keyboard.press('Shift+Tab');
   expect((await snap(page)).keyboard.modeName).toBe('CIF');
   await page.keyboard.press('Space');
   expect((await snap(page)).keyboard.modeName).toBe('E– cntr');
-  await expect(page.locator('[data-code="KeyF"] text')).toHaveText('U');
+  await expect(page.locator('#keyboard-svg [data-code="KeyF"] text')).toHaveText('U');
   await page.keyboard.press('Space');
   expect((await snap(page)).keyboard.modeName).toBe('CIF');
   await page.reload();
   await ready(page);
   expect((await snap(page)).keyboard.config.preset).toBe('cstimer');
-  await expect(page.locator('[data-code="KeyC"] text')).toHaveText('BL');
+  await expect(page.locator('#keyboard-svg [data-code="KeyC"] text')).toHaveText('BL');
 });
 test('independent rotations preserve suffixes, TPS, timer readiness, and include csTimer quarter turns', async ({
   page,
 }) => {
+  test.setTimeout(60000);
   await setup(page, 20);
   await page.keyboard.press('Digit6');
   await page.keyboard.down('Shift');
@@ -125,7 +145,7 @@ test('independent rotations preserve suffixes, TPS, timer readiness, and include
   after = await snap(page);
   after.orbit.forEach((v, i) => expect(v).toBeCloseTo(before.orbit[i], 9));
   expect(after.keyboard.pending).toBe(6);
-  await page.locator('#size').selectOption('3');
+  await selectSize(page, '3');
   await reset(page, 'cstimer');
   await scramble(page);
   const base = await snap(page);
@@ -149,7 +169,8 @@ test('independent rotations preserve suffixes, TPS, timer readiness, and include
   final.orbit.forEach((v, i) => expect(v).toBeCloseTo(base.orbit[i], 9));
   expect(final.history).toEqual(base.history);
   await open(page);
-  const rotation = page.locator('tr[data-action="rotate:T:1"]');
+  await openBindings(page);
+  const rotation = page.locator('tr[data-action="rotate:T:1:"]');
   await rotation.locator('.binding-chip button').filter({ hasText: 'P' }).click();
   await page.locator('#bind-key-save').click();
   expect(

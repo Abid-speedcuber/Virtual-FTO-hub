@@ -202,7 +202,9 @@ export class SolveRecorder {
         }
         this.nextId = this.attempt.events.reduce((n, e) => Math.max(n, e.id ?? 0), 0);
       }
-    } catch {}
+    } catch {
+      // Invalid legacy recorder state must not prevent the simulator from opening.
+    }
   }
   arm({ size, scramble, view, keyboard, colors, previousBest = null }) {
     this.attempt = [2, 3, 4].includes(size)

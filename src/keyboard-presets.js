@@ -41,7 +41,7 @@ function nativeAction(notation) {
     vertex = notation.startsWith('T');
   return {
     type: rotation ? 'rotate' : 'move',
-    face: vertex ? 'U' : notation.replace(/[\[\]'w]/g, ''),
+    face: vertex ? 'U' : notation.replace(/[[\]'w]/g, ''),
     dir: notation.includes("'") ? -1 : 1,
     kind: notation.includes('w') ? 'wide' : 'outer',
     depth: notation.includes('w') ? 2 : 1,

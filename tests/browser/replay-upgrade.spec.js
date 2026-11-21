@@ -1,11 +1,12 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
+import { waitForApp, freezeClock, openSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 import { readFile } from 'node:fs/promises';
 import { SolveRecorder } from '../../src/solve-recording.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
 import { namedMethod } from '../../src/split-methods.js';
 const snap = (page) => page.evaluate(() => window.fto.snapshot()),
-  ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+  ready = (page) => waitForApp(page);
 const U = { normal: [1, 1, 1], layer: 'slice', depth: 1, count: 1, dir: 1, name: 'U' },
   view = { rotation: [0, 0, 0, 1], radius: 10 };
 function recording() {
@@ -210,7 +211,7 @@ test('named methods are peers of presets and the final phase has its own name wi
 
 test('full user backup restores bindings, named methods, PB recordings, times and preferences on a fresh browser', async ({
   page,
-  browser,
+  createContext,
 }) => {
   test.setTimeout(90000);
   await seedFinished(page);
@@ -223,11 +224,12 @@ test('full user backup restores bindings, named methods, PB recordings, times an
     buffer = await readFile(await file.path());
   const backup = JSON.parse(buffer.toString());
   expect(backup.entries['master-fto-future']).toBe('{"retained":true}');
-  const context = await browser.newContext(),
+  const context = await createContext(),
     other = await context.newPage();
   await other.goto('/');
   await ready(other);
-  await other.locator('#settings').click();
+  await openSettings(other);
+  await other.locator('#open-user-data-import').click();
   await other
     .locator('#import-user-data')
     .setInputFiles({ name: 'my-fto-backup.json', mimeType: 'application/json', buffer });
@@ -420,7 +422,7 @@ test('a live solve recording omits a long manual pause', async ({ page }) => {
   await page.goto('/');
   await ready(page);
   await page.clock.install();
-  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
+  await freezeClock(page);
   await page.keyboard.press('KeyK');
   expect((await snap(page)).timer.status).toBe('running');
   await page.clock.runFor(100);

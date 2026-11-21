@@ -1,5 +1,6 @@
-import { openSettings } from './helpers.js';
-import { test, expect } from '@playwright/test';
+import { waitForApp, openSettings } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
 for (const [platform, label] of [
   ['Windows', 'Win'],
   ['macOS', 'Cmd'],
@@ -16,7 +17,7 @@ for (const [platform, label] of [
       });
     }, platform);
     await page.goto('/');
-    await page.waitForFunction(() => window.fto?.snapshot().ready);
+    await waitForApp(page);
     await openSettings(page);
     await page.locator('#animate').uncheck();
     await page.locator('#close-settings').click();

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ROTATIONS, PhaseTracker, phaseProfile } from '../src/solve-phases.js';
-import { FACES, solvedState, applyMove, normalOf } from '../src/puzzle.js';
+import { FACES, solvedState, applyMove } from '../src/puzzle.js';
 import { pieceGroups } from '../src/puzzle-viewer.js';
 const rotate = (p, r) => r.p.map((axis, i) => p[axis] * r.s[i]);
 const palette = (r) =>

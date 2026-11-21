@@ -8,15 +8,32 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node --test tests/*.test.js",
+    "test": "npm run test:unit",
     "test:browser": "playwright test",
-    "benchmark": "node scripts/benchmark-performance.mjs"
+    "benchmark": "node scripts/benchmark-performance.mjs",
+    "test:unit": "node --test --test-concurrency=2 tests/*.test.js",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "check": "npm run format:check && npm run lint && npm run test:unit && npm run build",
+    "test:built": "node scripts/run-built-tests.mjs",
+    "test:integration": "npm run build && npm run test:built",
+    "test:network": "npm run build && node scripts/run-network-tests.mjs",
+    "test:live": "node tests/live-network.mjs",
+    "test:browser:smoke": "playwright test --grep @smoke"
   },
   "dependencies": {
     "three": "^0.180.0"
   },
   "devDependencies": {
-    "vite": "^7.1.7",
-    "@playwright/test": "^1.56.1"
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "^1.56.1",
+    "eslint": "10.15.0",
+    "globals": "17.14.0",
+    "prettier": "3.10.1",
+    "vite": "^7.1.7"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

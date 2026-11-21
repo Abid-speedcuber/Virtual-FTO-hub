@@ -546,7 +546,9 @@ export class RecordingUI {
       let packageData;
       try {
         packageData = JSON.parse(text);
-      } catch {}
+      } catch {
+        // Non-JSON input is handled by the recording link/payload parser below.
+      }
       if (packageData?.format === AVERAGE_FORMAT) {
         const group = await this.album.importGroup(packageData, {
           shouldSave: () => version === this.importVersion && $('paste-dialog').open,

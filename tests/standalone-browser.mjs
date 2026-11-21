@@ -1,3 +1,4 @@
+import { browserLaunchOptions } from './browser-options.js';
 // Serve only this repo's build: intentionally no parent FTOers routes/files.
 import { chromium } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
@@ -12,11 +13,7 @@ const dist = resolve('dist'),
     '.png': 'image/png',
     '.mp3': 'audio/mpeg',
   };
-const browser = await chromium.launch({
-  headless: true,
-  executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
-  args: ['--no-sandbox', '--enable-unsafe-swiftshader'],
-});
+const browser = await chromium.launch(browserLaunchOptions);
 try {
   for (const base of ['/', '/virtual/']) {
     const context = await browser.newContext(),

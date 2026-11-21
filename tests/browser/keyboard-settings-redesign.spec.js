@@ -1,6 +1,7 @@
-import { openSettings, openAbout } from './helpers.js';
-import { test, expect } from '@playwright/test';
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+import { waitForApp, openSettings, openAbout } from './helpers.js';
+
+import { test, expect } from './fixtures.js';
+const ready = waitForApp;
 async function settings(page) {
   await page.goto('/');
   await ready(page);
@@ -105,7 +106,10 @@ test('puzzle choices use white-top green-front CIF, toolbar order and updated Ab
   await ready(page);
   expect(
     await page.locator('.topbar-actions>button').evaluateAll((els) => els.map((el) => el.id)),
-  ).toEqual(['puzzles', 'album', 'settings', 'about']);
+  ).toEqual(['puzzles', 'leaderboard', 'album', 'notifications']);
+  await expect(
+    page.locator('.topbar-actions > #network-account:last-child #ft-account-trigger'),
+  ).toBeVisible();
   await expect(page.locator('.puzzle-button-name')).toBeVisible();
   await expect(page.locator('.puzzle-button-name')).toContainText('3');
   await page.locator('#puzzles').click();

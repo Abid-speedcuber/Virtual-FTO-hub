@@ -1,7 +1,7 @@
 // Builds the Vite app into BUILD_OUT_DIR (set by update-subwebsites.sh).
 import { spawnSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = dirname(fileURLToPath(import.meta.url));

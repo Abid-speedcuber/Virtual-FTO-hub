@@ -1,19 +1,16 @@
+import { waitForApp, freezeClock, selectSize, withSettings, scramble } from './helpers.js';
+
 import { installKeyboard } from './keyboard-fixture.js';
-import { test, expect } from '@playwright/test';
-import { withSettings, scramble } from './helpers.js';
+import { test, expect } from './fixtures.js';
+
 import { solvedState, applyMove, signature } from '../../src/puzzle.js';
 test.beforeEach(async ({ page }) => {
   await installKeyboard(page);
 });
-const ready = (page) => page.waitForFunction(() => window.fto?.snapshot().ready);
+const ready = waitForApp;
 const snap = (page) => page.evaluate(() => window.fto.snapshot());
-const freeze = async (page) =>
-  page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 100));
-const setSize = async (page, size) =>
-  page.locator('#size').evaluate((el, size) => {
-    el.value = String(size);
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-  }, size);
+const freeze = async (page) => freezeClock(page);
+const setSize = selectSize;
 test('nothing paints before the puzzle renders, including while the main script is delayed', async ({
   page,
 }) => {
@@ -34,15 +31,15 @@ test('nothing paints before the puzzle renders, including while the main script 
     await route.continue();
   });
   await page.goto('/', { waitUntil: 'commit' });
-  await page.locator('#settings').waitFor({ state: 'attached' });
-  await expect(page.locator('#settings')).toBeHidden();
-  await expect(page.locator('#scramble')).toBeHidden();
+  await page.locator('#puzzles').waitFor({ state: 'attached' });
+  await expect(page.locator('#puzzles')).toBeHidden();
+  await expect(page.locator('#mobile-scramble')).toBeHidden();
   await expect(page.locator('#timer-value')).toBeHidden();
   expect(await page.evaluate(() => getComputedStyle(document.body).visibility)).toBe('hidden');
   await page.screenshot({ path: 'test-results/blank-before-scene.png' });
   release();
   await ready(page);
-  await expect(page.locator('#settings')).toBeVisible();
+  await expect(page.locator('#puzzles')).toBeVisible();
   expect(await page.evaluate(() => window.sceneDraws)).toBeGreaterThan(0);
   await page.screenshot({ path: 'test-results/first-complete-frame.png' });
 });
@@ -52,6 +49,7 @@ test('a burst snaps nonparallel turns and leaves only the newest normal-speed an
   await page.clock.install();
   await page.goto('/');
   await ready(page);
+  await selectSize(page, 4);
   await freeze(page);
   const initial = await snap(page);
   await page.keyboard.press('KeyF');
@@ -96,13 +94,16 @@ test('a burst snaps nonparallel turns and leaves only the newest normal-speed an
 test('undo stops at the generated scramble, including rapid excess undo and reload', async ({
   page,
 }) => {
+  // Includes a complete animated scramble and persistence across page/size changes.
+  test.setTimeout(60000);
   await page.goto('/');
   await ready(page);
+  await selectSize(page, 4);
   await withSettings(page, () => page.locator('#animate').uncheck());
   await scramble(page);
   const base = await snap(page);
   expect(base.undoFloor).toBe(50);
-  await expect(page.locator('#undo')).toBeDisabled();
+  await expect(page.locator('#mobile-undo')).toBeDisabled();
   await page.keyboard.press('Control+z');
   expect(signature((await snap(page)).state)).toBe(signature(base.state));
   expect((await snap(page)).timer.status).toBe('ready');
@@ -116,7 +117,7 @@ test('undo stops at the generated scramble, including rapid excess undo and relo
   expect(signature(restored.state)).toBe(signature(base.state));
   expect(restored.history).toHaveLength(50);
   expect(restored.redo).toHaveLength(2);
-  await expect(page.locator('#undo')).toBeDisabled();
+  await expect(page.locator('#mobile-undo')).toBeDisabled();
   await page.reload();
   await ready(page);
   await page.keyboard.press('Control+z');
@@ -124,11 +125,19 @@ test('undo stops at the generated scramble, including rapid excess undo and relo
   await page.keyboard.press('Control+Shift+z');
   expect(signature((await snap(page)).state)).toBe(signature(first.state));
 });
-test('switching sizes parks state, redo, view, and timer, even across reload', async ({ page }) => {
+test('switching sizes preserves state, redo and timer, and resets the view across reload', async ({
+  page,
+}) => {
+  // Includes a complete animated scramble and persistence across page/size changes.
+  test.setTimeout(60000);
   await page.clock.install();
   await page.goto('/');
   await ready(page);
-  await withSettings(page, () => page.locator('#animate').uncheck());
+  await selectSize(page, 4);
+  await withSettings(page, async () => {
+    await page.locator('#animate').uncheck();
+    await page.locator('#animate-scrambling').uncheck();
+  });
   await scramble(page);
   await freeze(page);
   await page.keyboard.press('KeyF');
@@ -154,7 +163,8 @@ test('switching sizes parks state, redo, view, and timer, even across reload', a
   expect(restored.redo).toEqual(four.redo);
   expect(restored.undoFloor).toBe(50);
   expect(restored.timer.elapsedMs).toBe(four.timer.elapsedMs);
-  restored.camera.forEach((v, i) => expect(v).toBeCloseTo(four.camera[i], 9));
+  // Size selection resets the camera to the shared CIF home view.
+  restored.camera.forEach((v, i) => expect(v).toBeCloseTo(seven.camera[i], 9));
   await setSize(page, 7);
   expect(signature((await snap(page)).state)).toBe(signature(seven.state));
 });
@@ -162,6 +172,7 @@ test('switching away mid-animation preserves all accepted pending turns', async 
   await page.clock.install();
   await page.goto('/');
   await ready(page);
+  await selectSize(page, 4);
   await freeze(page);
   const initial = await snap(page);
   for (const code of ['KeyF', 'KeyR', 'KeyU']) await page.keyboard.press(code);
@@ -186,12 +197,20 @@ test('legacy timed saves gain a scramble boundary without losing player progress
 }) => {
   await page.goto('/');
   await ready(page);
+  await selectSize(page, 4);
   await withSettings(page, () => page.locator('#animate').uncheck());
   await scramble(page);
   const base = await snap(page);
   await page.keyboard.press('KeyF');
   await page.keyboard.press('KeyR');
   const progressed = await snap(page);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => JSON.parse(localStorage.getItem('master-fto-v1')).solves[4].history.length,
+      ),
+    )
+    .toBe(progressed.history.length);
   const legacy = await page.evaluate(() => JSON.parse(localStorage.getItem('master-fto-v1')));
   delete legacy.solves[4].undoFloor;
   await page.addInitScript((data) => {

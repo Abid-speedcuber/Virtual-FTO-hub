@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { waitForApp } from './helpers.js';
+import { test, expect } from './fixtures.js';
 import { SolveRecorder } from '../../src/solve-recording.js';
 import { defaultConfig } from '../../src/keyboard-engine.js';
 function replay(username) {
@@ -130,7 +131,7 @@ async function setup(page, { legacyNotifications = false } = {}) {
     { user, token, exp },
   );
   await page.goto('/');
-  await page.waitForFunction(() => window.fto?.snapshot().ready);
+  await waitForApp(page);
   await expect(page.locator('#ft-account-trigger')).toHaveAttribute('data-signed-in', 'true');
   return calls;
 }

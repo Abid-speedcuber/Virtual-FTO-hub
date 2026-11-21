@@ -1,10 +1,11 @@
+import { browserLaunchOptions } from '../browser-options.js';
 import { chromium } from '@playwright/test';
 import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { SolveRecorder } from '../src/solve-recording.js';
-import { defaultConfig } from '../src/keyboard-engine.js';
-const root = path.resolve('../ftoers/public'),
+import { SolveRecorder } from '../../src/solve-recording.js';
+import { defaultConfig } from '../../src/keyboard-engine.js';
+const root = path.resolve(process.env.FTOERS_PUBLIC_ROOT),
   src = path.resolve('src'),
   dist = path.resolve('dist');
 const user = {
@@ -46,11 +47,7 @@ const evidence = Array.from({ length: 5 }, (_, i) => ({
   dnf: false,
   recording: fixture(i),
 }));
-const browser = await chromium.launch({
-  headless: true,
-  executablePath: '/usr/bin/google-chrome',
-  args: ['--no-sandbox', '--enable-unsafe-swiftshader'],
-});
+const browser = await chromium.launch(browserLaunchOptions);
 const mime = {
   '.html': 'text/html',
   '.js': 'text/javascript',
@@ -305,12 +302,14 @@ try {
     await badPage.getByRole('button', { name: 'Approve & next', exact: true }).isDisabled(),
     true,
   );
+  await badPage.locator('#solve-review-panel [data-note]').fill('Recording evidence is missing.');
   await badPage.getByRole('button', { name: 'Reject & next', exact: true }).click();
   await badPage
     .locator('#solve-review-panel [data-message]')
     .filter({ hasText: 'No pending' })
     .waitFor();
   assert.equal(broken.decisions[0].approve, false);
+  assert.equal(broken.decisions[0].note, 'Recording evidence is missing.');
   await broken.context.close();
   console.log(
     'Polish browser checks passed: avatar menus, site palettes, simulator-only review/replay, defaults, rolling retention, overlapping PBs, and backup restore.',

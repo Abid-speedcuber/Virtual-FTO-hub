@@ -33,7 +33,7 @@ function config(bindings) {
   };
 }
 test('selected depths and held slice actions resolve 8 wide, slice 8, and 18 wide', () => {
-  const e = new KeyboardEngine(defaultConfig(3));
+  const e = new KeyboardEngine(defaultConfig(20));
   tap(e, 'Digit8');
   assert.equal(e.pending, 8);
   let a = tap(e, 'KeyF').action;
@@ -128,7 +128,7 @@ test('duplicate triggers rejected within one mode, same action and cross-mode re
   );
 });
 test('repeat, blur/cancel and unknown OS modifiers do not create extra moves or stuck keys', () => {
-  const e = new KeyboardEngine();
+  const e = new KeyboardEngine(defaultConfig(20));
   assert.equal(e.keyDown('KeyF').action.type, 'move');
   assert.equal(e.keyDown('KeyF', { repeat: true }).action, undefined);
   e.keyUp('KeyF');
@@ -309,7 +309,7 @@ test('a held action can also lead a tapped sequence without producing a turn', (
 });
 
 test('modifier flags repair a missed release before the next move, without delaying depth input', () => {
-  const e = new KeyboardEngine();
+  const e = new KeyboardEngine(defaultConfig(20));
   e.keyDown('ShiftLeft');
   tap(e, 'Digit8');
   assert.equal(e.pending, 18);
@@ -343,9 +343,9 @@ test('modifier synchronization preserves other held sides and virtual-pointer ch
 });
 
 test('suffix waits through unbound input, then clears on one accepted turn', () => {
-  const e = new KeyboardEngine();
+  const e = new KeyboardEngine(defaultConfig(20));
   tap(e, 'Digit6');
-  tap(e, 'KeyQ');
+  tap(e, 'KeyX');
   assert.equal(e.pending, 6);
   assert.ok(e.keyState('Digit6', ctx).selected);
   assert.ok(e.keyState('KeyF', ctx).affected);
@@ -358,7 +358,7 @@ test('suffix waits through unbound input, then clears on one accepted turn', () 
   assert.equal(e.keyState('KeyF', ctx).affected, false);
 });
 test('selected shifted suffix keeps its label and glow after releasing Shift', () => {
-  const e = new KeyboardEngine();
+  const e = new KeyboardEngine(defaultConfig(20));
   e.keyDown('ShiftLeft');
   tap(e, 'Digit8');
   e.keyUp('ShiftLeft');
@@ -370,7 +370,7 @@ test('selected shifted suffix keeps its label and glow after releasing Shift', (
   assert.equal(e.pending, null);
 });
 test('out-of-range suffix bindings are blank and do not select or replace a valid depth', () => {
-  const e = new KeyboardEngine(),
+  const e = new KeyboardEngine(defaultConfig(20)),
     small = { ...ctx, size: 7 };
   tap(e, 'Digit6');
   assert.equal(e.label('Digit8', small), '');
@@ -434,9 +434,9 @@ test('3x3 defaults contain all requested CIF moves and clockwise/counterclockwis
   assert.equal(get('e-center', 'M').mode, 'cif');
   assert.equal(get('cif', 'Space').depth, 2);
   assert.equal(get('cif', '2').depth, 2);
-  assert.equal(get('cif', '1').depth, 11);
-  assert.equal(get('cif', '0').depth, 10);
-  assert.equal(get('cif', 'Shift+1').depth, 11);
+  assert.equal(get('cif', '1'), undefined);
+  assert.equal(get('cif', '0'), undefined);
+  assert.equal(get('cif', 'Shift+1'), undefined);
   assert.equal(get('cif', 'Ctrl'), undefined);
   assert.equal(get('cif', 'Alt'), undefined);
   assert.equal(get('cif', "'"), undefined);
@@ -470,7 +470,7 @@ test('full width is a cube rotation; slice suffix stacks in either order and cle
     { id: 'slice-suffix', trigger: "'", action: { type: 'suffix-slice' } },
     {
       id: 'rotation',
-      trigger: 'Q',
+      trigger: 'X',
       action: { type: 'rotate', face: 'R', dir: -1, kind: 'outer', depth: 1 },
     },
   );
@@ -485,7 +485,7 @@ test('full width is a cube rotation; slice suffix stacks in either order and cle
     ['Quote', 'Digit2'],
   ]) {
     for (const code of codes) tap(e, code);
-    tap(e, 'KeyQ');
+    tap(e, 'KeyX');
     const move = e.resolve(tap(e, 'KeyF').action, context);
     assert.equal(move.depth, 2);
     assert.equal(move.count, 1);
@@ -496,7 +496,7 @@ test('full width is a cube rotation; slice suffix stacks in either order and cle
     assert.equal(e.slicePending, false);
     assert.equal(e.pending, null);
   }
-  assert.equal(e.resolve(tap(e, 'KeyQ').action, context).rotation, true);
+  assert.equal(e.resolve(tap(e, 'KeyX').action, context).rotation, true);
   assert.equal(new KeyboardEngine(defaultConfig(2)).label('Digit2', { size: 2 }), 'Rot');
 });
 
@@ -505,7 +505,7 @@ test('mode labels name their destinations and unbound shortcut modifiers stay bl
   assert.equal(e.label('Tab', ctx), 'EIF-R');
   assert.equal(e.label('KeyC', ctx), 'EIF-L');
   assert.equal(e.label('KeyM', ctx), 'E– cntr');
-  for (const code of ['ControlLeft', 'ControlRight', 'MetaLeft', 'AltLeft', 'KeyZ'])
+  for (const code of ['ControlLeft', 'ControlRight', 'MetaLeft', 'AltLeft', 'KeyX'])
     assert.equal(e.label(code, ctx), '');
   assert.equal(e.label('ShiftLeft', ctx), 'Slice');
   tap(e, 'Tab');

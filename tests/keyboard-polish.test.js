@@ -94,7 +94,7 @@ test('saved center defaults upgrade once and missing undo bindings are added wit
   assert.deepEqual(config, upgraded);
 });
 test('a quick suffix tap leaves Slice and move legends unchanged until release, then affects one move', () => {
-  const engine = new KeyboardEngine();
+  const engine = new KeyboardEngine(defaultConfig(20));
   engine.keyDown('Digit6', { now: 0 });
   assert.equal(engine.pending, null);
   assert.equal(engine.keyState('Digit6', context).selected, false);
@@ -109,7 +109,7 @@ test('a quick suffix tap leaves Slice and move legends unchanged until release, 
   assert.equal(engine.resolve(move, context).count, 1);
 });
 test('a held depth stays active through repeated turns and does not leave a suffix after release', () => {
-  const engine = new KeyboardEngine();
+  const engine = new KeyboardEngine(defaultConfig(20));
   engine.keyDown('Digit6', { now: 0 });
   engine.activateSuffixes(SUFFIX_HOLD_MS);
   for (let n = 0; n < 3; n++) {
@@ -121,7 +121,7 @@ test('a held depth stays active through repeated turns and does not leave a suff
   assert.equal(engine.resolve(move, context).count, 1);
 });
 test('a rapid suffix-plus-move chord activates immediately and stays held for later moves', () => {
-  const engine = new KeyboardEngine();
+  const engine = new KeyboardEngine(defaultConfig(20));
   engine.keyDown('Digit6', { now: 0 });
   for (const [code, now] of [
     ['KeyF', 20],
@@ -137,7 +137,7 @@ test('a rapid suffix-plus-move chord activates immediately and stays held for la
   assert.equal(engine.resolve(move, context).count, 1);
 });
 test('slice suffix is both a one-shot tap and a repeatable held modifier, including with depth', () => {
-  const config = defaultConfig();
+  const config = defaultConfig(20);
   config.modes[0].bindings.push({
     id: 'slice',
     trigger: 'Quote',
@@ -162,7 +162,7 @@ test('slice suffix is both a one-shot tap and a repeatable held modifier, includ
   assert.equal(engine.resolve(move, context).depth, 1);
 });
 test('two held suffixes stack across moves and releasing slice restores the held wide depth', () => {
-  const config = defaultConfig();
+  const config = defaultConfig(20);
   config.modes[0].bindings.push({
     id: 'slice',
     trigger: 'Quote',
@@ -185,7 +185,7 @@ test('two held suffixes stack across moves and releasing slice restores the held
   assert.equal(engine.slicePending, false);
 });
 test('shifted depth remains held when Shift is released, and missed modifier releases cancel taps', () => {
-  const engine = new KeyboardEngine();
+  const engine = new KeyboardEngine(defaultConfig(20));
   engine.keyDown('ShiftLeft', { now: 0 });
   engine.keyDown('Digit8', { now: 10 });
   engine.keyUp('ShiftLeft', { now: 20 });
@@ -193,7 +193,7 @@ test('shifted depth remains held when Shift is released, and missed modifier rel
   assert.equal(engine.resolve(move, context).count, 18);
   engine.keyUp('Digit8', { now: 230 });
   assert.equal(engine.pending, null);
-  const config = defaultConfig();
+  const config = defaultConfig(20);
   config.modes[0].bindings.push({
     id: 'alt-slice',
     trigger: 'Alt',
@@ -203,6 +203,8 @@ test('shifted depth remains held when Shift is released, and missed modifier rel
   engine.keyDown('AltLeft', { now: 0 });
   engine.syncModifiers({ code: 'KeyF', altKey: false });
   assert.equal(engine.slicePending, false);
+  // Real KeyboardUI refreshes authoritative modifier flags before each key-down.
+  engine.syncModifiers({ code: 'AltLeft', altKey: true });
   engine.keyDown('AltLeft', { now: 0 });
   const action = engine.keyDown('KeyF', { now: 20 }).action;
   assert.equal(engine.resolve(action, context).depth, 2);
@@ -211,10 +213,53 @@ test('shifted depth remains held when Shift is released, and missed modifier rel
   assert.equal(engine.slicePending, false);
 });
 test('blur/cancel discards an undecided suffix instead of turning it into a tap', () => {
-  const engine = new KeyboardEngine();
+  const engine = new KeyboardEngine(defaultConfig(20));
   engine.keyDown('Digit6', { now: 0 });
   engine.clear();
   engine.keyUp('Digit6', { now: 30 });
   assert.equal(engine.pending, null);
   assert.equal(engine.suffixPresses.length, 0);
+});
+
+test('physical modifier flags do not erase hypothetical Shift legends or authorize real chords', () => {
+  const engine = new KeyboardEngine(defaultConfig(4));
+  engine.syncModifiers({
+    code: 'Digit2',
+    shiftKey: false,
+    ctrlKey: false,
+    altKey: false,
+    metaKey: false,
+  });
+  engine.keyDown('Digit2', { now: 0, size: 4 });
+  assert.equal(engine.keyState('ShiftLeft', { size: 4 }).label, 'Slice');
+  assert.equal(engine.keyState('ShiftRight', { size: 4 }).label, 'Slice');
+  assert.equal(engine.logicalModifiers.has('Shift'), false);
+  engine.keyUp('Digit2', { now: 20 });
+  const action = engine.keyDown('KeyF', { now: 30, size: 4 }).action;
+  assert.equal(engine.resolve(action, { size: 4 }).count, 2);
+  assert.equal(engine.resolve(action, { size: 4 }).depth, 1);
+});
+
+test('pressing a second modifier selects its own hold instead of repeating the first', () => {
+  const config = defaultConfig(4);
+  config.modes[0].bindings.push({
+    id: 'reverse-hold-regression',
+    trigger: 'Alt',
+    action: { type: 'hold-reverse' },
+  });
+  const engine = new KeyboardEngine(config);
+  const down = (code, shiftKey, altKey) => {
+    engine.syncModifiers({ code, shiftKey, altKey, ctrlKey: false, metaKey: false });
+    return engine.keyDown(code, { now: 0, size: 4 });
+  };
+  assert.equal(down('ShiftLeft', true, false).action.type, 'hold-slice');
+  assert.equal(down('AltLeft', true, true).action.type, 'hold-reverse');
+  const action = down('KeyF', true, true).action;
+  assert.deepEqual(
+    {
+      depth: engine.resolve(action, { size: 4 }).depth,
+      dir: engine.resolve(action, { size: 4 }).dir,
+    },
+    { depth: 2, dir: 1 },
+  );
 });
