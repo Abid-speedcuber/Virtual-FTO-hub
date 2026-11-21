@@ -30,6 +30,7 @@ export function validateRecording(data,{incomplete=false}={}){
  }
  if(data.solver!=null&&(data.size!==3||typeof data.solver.username!=='string'||!/^[A-Za-z0-9_]{3,24}$/.test(data.solver.username)))throw Error('Invalid solver username');
  if(data.dnf!==undefined&&typeof data.dnf!=='boolean')throw Error('Invalid DNF flag');
+ if(data.usedPause!==undefined&&typeof data.usedPause!=='boolean')throw Error('Invalid pause flag');
  if(data.usedUndo!==undefined&&typeof data.usedUndo!=='boolean')throw Error('Invalid undo flag');
  if(data.complete&&data.duration<previous)throw Error('Invalid recording duration');
  return data;
@@ -91,6 +92,7 @@ export class SolveRecorder{
    delete this.attempt.waitingKeys;delete this.attempt.waitingPointers;
   }
   if(type==='pause'){
+   this.attempt.usedPause=true;
    if(this.attempt.pausedAt===null||this.attempt.pausedAt===undefined){const at=this.time();this.attempt.pausedAt=this.clock();this.attempt.events.push({at,type:'reset-input'});this.lastView='';}
    return;
   }
@@ -165,6 +167,7 @@ export function withoutPauses(original){
  const data=clone(original),events=[];let pausedAt=null,removed=0,resumeView=null;
  for(const e of data.events){
   if(e.type==='pause'){
+   data.usedPause=true;
    if(pausedAt===null){pausedAt=e.at;events.push({at:Math.max(0,e.at-removed),type:'reset-input'});}continue;
   }
   if(e.type==='resume'){

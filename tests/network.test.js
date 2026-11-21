@@ -65,3 +65,71 @@ test('timer-only legacy averages never expose a submit action',async()=>{
  const calls=[],snapshots=[];const network=new OnlineAttempts({getProfile:()=>({id:'u'}),online:()=>true,onCandidates:rows=>snapshots.push(rows),rpc:async(name,args)=>{calls.push(name);if(name==='begin_attempt')return 'ticket';if(name==='record_online_attempt')return {candidates:[{id:'legacy',metric:'ao5',ms:1000},{id:'complete',metric:'single',ms:1200,evidence_complete:true}]};if(name==='my_leaderboard_candidates')return [{id:'legacy',metric:'ao12',ms:1000,evidence_complete:false}];}});
  network.arm(3);network.start();await network.finish(replay);assert.deepEqual(snapshots.at(-1).map(row=>row.id),['complete']);await network.submit('legacy');assert.equal(calls.includes('submit_leaderboard'),false);await network.loadCandidates();assert.deepEqual(snapshots.at(-1),[]);
 });
+
+test('skipped inspections add one hidden online DNF and preserve request ordering',async()=>{
+ const s=setup();s.network.arm(3);s.network.start();const first=s.network.finish(replay);
+ s.network.arm(3);const skipped=s.network.skip();s.network.arm(3);s.network.start();const last=s.network.finish(replay);
+ await Promise.all([first,skipped,last]);assert.deepEqual(s.calls.map(c=>c.name),['begin_attempt','record_online_attempt','skip_online_scramble','begin_attempt','record_online_attempt']);
+ assert.equal(s.calls[0].args.session,s.calls[2].args.session);assert.equal(s.calls[2].args.session,s.calls[3].args.session);
+ await s.network.skip();assert.equal(s.calls.length,5,'Reset then rescramble does not count the same skip twice');
+});
+test('only a signed-in online 3x3 inspection creates a hidden DNF',async()=>{
+ for(const mode of ['offline','anonymous','other-size','started']){const s=setup();if(mode==='offline')s.setOnline(false);if(mode==='anonymous')s.setProfile(null);s.network.arm(mode==='other-size'?4:3);if(mode==='started'){s.network.start();await s.network.queue;}const before=s.calls.length;await s.network.skip();assert.equal(s.calls.length,before,mode);}
+});
+test('failed skip reporting breaks averages instead of silently ignoring the skipped scramble',async()=>{
+ let n=0;const messages=[];const network=new OnlineAttempts({getProfile:()=>({id:'u'}),online:()=>true,id:()=>String(++n),status:m=>messages.push(m),rpc:async()=>{throw Error('Disconnected');}});
+ const sequence=network.sequence;network.arm(3);await network.skip();assert.notEqual(network.sequence,sequence);assert.match(messages.at(-1),/new sequence/);
+});
+test('new eligible solves replace stale candidates even when deliberately slower than pending',async()=>{
+ let result={id:'old',metric:'single',ms:40330,evidence_complete:true,pending_ms:32980};const rows=[];
+ const network=new OnlineAttempts({getProfile:()=>({id:'u'}),online:()=>true,onCandidates:r=>rows.push(r),rpc:async name=>name==='begin_attempt'?'ticket':name==='my_leaderboard_candidates'?[result]:{candidates:[result]}});
+ await network.loadCandidates();result={...result,id:'new',ms:32750};network.arm(3);network.start();await network.finish({...replay,solveMs:32750});assert.equal(rows.at(-1)[0].ms,32750);
+ result={...result,id:'proud',ms:40000};network.arm(3);network.start();await network.finish({...replay,solveMs:40000});assert.equal(rows.at(-1)[0].ms,40000);
+});
+test('missing online tickets explain ineligibility instead of silently leaving an old result',async()=>{
+ const s=setup();await s.network.finish(replay);assert.match(s.messages.at(-1),/no online start record/);assert.equal(s.calls.length,0);
+});
+test('a solve queued behind a failed skip uses the new sequence, never the gap before the skip',async()=>{
+ let failSkip,next=0;const calls=[];const network=new OnlineAttempts({getProfile:()=>({id:'u'}),online:()=>true,id:()=>String(++next),rpc:async(name,args)=>{calls.push({name,args});if(name==='skip_online_scramble')return new Promise((resolve,reject)=>{failSkip=reject;});return name==='begin_attempt'?'ticket':{candidates:[]};}});
+ const before=network.sequence;network.arm(3);const skip=network.skip();for(let i=0;i<10&&!failSkip;i++)await Promise.resolve();assert.equal(typeof failSkip,'function');network.arm(3);network.start();const finish=network.finish(replay);failSkip(Error('Network failed'));await Promise.all([skip,finish]);assert.notEqual(calls.find(c=>c.name==='begin_attempt').args.session,before);
+});
+
+function graceSetup(rpcOverride){
+ let time=0,next=0,online=true;const tasks=new Map(),calls=[],messages=[];
+ const advance=ms=>{time+=ms;for(const [id,t] of [...tasks])if(t.at<=time&&tasks.delete(id))t.fn();};
+ const network=new OnlineAttempts({getProfile:()=>({id:'u',username:'Tester'}),online:()=>online,now:()=>time,schedule:(fn,delay)=>{const id=++next;tasks.set(id,{fn,at:time+delay});return id;},cancel:id=>tasks.delete(id),sleep:async ms=>advance(ms),status:m=>messages.push(m),rpc:async(name,args)=>{calls.push({name,args:structuredClone(args)});if(rpcOverride)return rpcOverride(name,args,calls);return name==='begin_attempt'?'ticket':{candidates:[],dnf:!args.replay};}});
+ return {network,calls,messages,advance,setOnline:v=>online=v};
+}
+test('pausing is permanent leaderboard evidence even after resuming',async()=>{
+ const s=graceSetup();s.network.arm(3);s.network.start();s.network.markPause();await s.network.finish(replay);assert.equal(s.calls.at(-1).args.replay.usedPause,true);assert.match(s.messages.at(-1),/Paused solves count as DNF/);
+});
+test('inspection and post-solve pauses cannot invalidate an unrelated result',async()=>{
+ const s=graceSetup();s.network.arm(3);s.network.markPause();s.network.start();await s.network.finish(replay);s.network.markPause();assert.equal(s.calls.at(-1).args.replay.usedPause,false);
+});
+test('400ms disconnects preserve eligibility and the same average sequence',async()=>{
+ const s=graceSetup();s.network.arm(3);s.network.start();await s.network.queue;const sequence=s.network.sequence;s.setOnline(false);s.network.offline();s.advance(400);s.setOnline(true);s.network.onlineAgain();await s.network.finish(replay);assert.equal(s.network.sequence,sequence);assert.ok(s.calls.at(-1).args.replay);
+});
+test('finishing during a short disconnect waits for reconnection and uploads the original result',async()=>{
+ const s=graceSetup();s.network.arm(3);s.network.start();await s.network.queue;s.setOnline(false);s.network.offline();const finish=s.network.finish(replay);await Promise.resolve();assert.equal(s.calls.length,1);s.advance(400);s.setOnline(true);s.network.onlineAgain();await finish;assert.equal(s.calls.at(-1).args.replay.solveMs,1000);
+});
+test('five-second disconnections invalidate the solve and break average continuity',async()=>{
+ const s=graceSetup();s.network.arm(3);s.network.start();await s.network.queue;const sequence=s.network.sequence;s.setOnline(false);s.network.offline();s.advance(5000);assert.notEqual(s.network.sequence,sequence);s.setOnline(true);s.network.onlineAgain();await s.network.finish(replay);assert.equal(s.calls.at(-1).args.replay,null);
+});
+test('an outage that expires while a finished result is waiting never uploads it as valid',async()=>{
+ const s=graceSetup();s.network.arm(3);s.network.start();await s.network.queue;s.setOnline(false);s.network.offline();const finish=s.network.finish(replay);await Promise.resolve();await Promise.resolve();s.advance(5000);await finish;s.setOnline(true);s.network.onlineAgain();assert.equal(s.calls.length,1);
+});
+test('lost start responses retry the same request ID instead of creating extra attempts',async()=>{
+ let tries=0;const s=graceSetup(async(name,args)=>{if(name==='begin_attempt'&&++tries===1)throw TypeError('Failed to fetch');return name==='begin_attempt'?'ticket':{candidates:[]};});s.network.arm(3);s.network.start();await s.network.finish(replay);const begin=s.calls.filter(c=>c.name==='begin_attempt');assert.equal(begin.length,2);assert.equal(begin[0].args.request_id,begin[1].args.request_id);assert.equal(begin[1].args.start_delay_ms,250);
+});
+test('lost finish responses retry identical evidence without duplicating the solve',async()=>{
+ let tries=0;const s=graceSetup(async(name,args)=>{if(name==='record_online_attempt'&&++tries===1)throw TypeError('Failed to fetch');return name==='begin_attempt'?'ticket':{candidates:[]};});s.network.arm(3);s.network.start();await s.network.finish(replay);const finish=s.calls.filter(c=>c.name==='record_online_attempt');assert.equal(finish.length,2);assert.deepEqual(finish[0].args,finish[1].args);
+});
+test('an in-flight request settles at the grace deadline even if the transport never responds',async()=>{
+ let began;const s=graceSetup(async name=>{if(name==='begin_attempt'){began=true;return new Promise(()=>{});}return {candidates:[]};});s.network.arm(3);s.network.start();for(let i=0;i<20&&!began;i++)await Promise.resolve();assert.ok(began);s.setOnline(false);s.network.offline();s.advance(5000);await s.network.finish(replay);assert.equal(s.calls.length,1);
+});
+test('starting the next solve during a known short interruption waits for its online ticket',async()=>{
+ const s=graceSetup();s.network.arm(3);s.network.start();await s.network.finish(replay);s.setOnline(false);s.network.offline();s.network.arm(3);s.network.start();s.advance(400);s.setOnline(true);s.network.onlineAgain();await s.network.finish(replay);assert.equal(s.calls.filter(c=>c.name==='record_online_attempt').length,2);assert.ok(s.calls.at(-1).args.replay);
+});
+test('skipping a scramble during the grace period still records its hidden DNF',async()=>{
+ const s=graceSetup();s.network.arm(3);s.setOnline(false);s.network.offline();const skipped=s.network.skip();for(let i=0;i<6;i++)await Promise.resolve();s.advance(400);s.setOnline(true);s.network.onlineAgain();await skipped;assert.equal(s.calls.at(-1).name,'skip_online_scramble');
+});

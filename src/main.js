@@ -1,3 +1,4 @@
+import {LeaderboardRecovery} from './leaderboard-recovery.js';
 import {SolveReview} from './solve-review.js';
 import {network,currentSolver,initNetwork,networkRPC,accountIsAdmin} from './network.js';
 import {rotationPairForMove} from './rotation-actions.js';
@@ -77,6 +78,8 @@ let recorder=new SolveRecorder(solves[size]?.recordings,()=>Date.now(),{elapsedM
 let session=new SolveTimer(solves[size]?.timer);manualPaused=session.status==='paused';
 queue=structuredClone(solves[size]?.pending??[]);
 if(session.status==='scrambling'&&!queue.length)session.reset();
+// A restored inspection has not started yet and can obtain a fresh online ticket.
+if(session.status==='ready')network.arm(size);
 const settingsKey='master-fto-settings-v1';
 let preferences={},settingsOK=true,settingsTimer;
 try{const value=JSON.parse(localStorage.getItem(settingsKey)||'{}');if(value&&typeof value==='object')preferences=value;}catch{settingsOK=false;}
@@ -263,7 +266,7 @@ function renderTimer(){
  document.querySelector('.timer-panel').dataset.status=status;renderTimes();keyboard?.render();phaseUI?.render(phaseTracker,session.elapsed(),status);statisticsUI?.render(timesKey);
 }
 function pauseSession(){
- if(session.pause())recorder.event('pause');if(session.status==='paused'){manualPaused=true;keyboard?.clear({selection:true});controls.cancelAll();}
+ if(session.pause()){network.markPause();recorder.event('pause');}if(session.status==='paused'){manualPaused=true;keyboard?.clear({selection:true});controls.cancelAll();}
  save();update();draw();
 }
 function resumeSession(){
@@ -289,7 +292,10 @@ function layoutSolveSpace(){
  const width=document.documentElement.clientWidth,height=window.innerHeight-document.querySelector('.topbar').getBoundingClientRect().height,side=Math.min(width,height);
  const keyboardFits=width>=900&&width-side>=360;
  document.documentElement.classList.toggle('keyboard-unavailable',!keyboardFits);
- document.documentElement.classList.toggle('compact-ui',width<900||width-side<280);
+ const compact=width<900||width-side<280;
+ document.documentElement.classList.toggle('compact-ui',compact);
+ const notices=$('online-pb-notices'),host=$(compact?'history-dialog':'solve-panel'),anchor=$(compact?'history-recordings':'keyboard-overlay');
+ if(notices.parentElement!==host)host.insertBefore(notices,anchor);
  document.querySelector('.solve-layout').classList.toggle('panel-below',width-side<280);
  renderMobileControls(session.status);syncInspection();
 }
@@ -407,6 +413,7 @@ async function confirmPaused(message,label,title='Replace this solve?'){
 }
 $('undo').onclick=()=>enqueue({type:'undo'});$('redo').onclick=()=>enqueue({type:'redo'});
 function abandonAttempt(){
+ if(session.status==='ready'){network.skip();return false;}
  if(!session.scrambleText)session.scrambleText=scrambleText(history.slice(0,undoFloor));
  if(!session.dnf())return false;
  const recording=recorder.finish(session.lastMs,false,phaseTracker.serialize(),{dnf:true});
@@ -493,6 +500,7 @@ function selectSize(nextSize){
  history=saved.history??[];redo=saved.redo??[];undoFloor=saved.undoFloor??0;solveEnd=saved.solveEnd??null;session=new SolveTimer(saved.timer);recorder=new SolveRecorder(saved.recordings,()=>Date.now(),{elapsedMs:saved.timer?.elapsedMs});phaseTracker=new PhaseTracker(size,profileForSave(saved),saved.splits);manualPaused=session.status==='paused';queue=saved.pending??[];
  controls.rotation.copy(defaultCifRotation());controls.radius=HOME_POSITION.length();controls.update();
  if(session.status==='scrambling'&&!queue.length)session.reset();
+ if(session.status==='ready')network.arm(size);
  state=history.reduce(applyMove,solvedState(size));frame=currentFrame();build();renderSize();resumeSession();save();saveSettings();update();pump();draw();
 }
 function renderPointerMode(){
@@ -515,10 +523,12 @@ for(const key of ['outward','backward','opacity']){
 $('show-labels').onchange=()=>{$('labels').hidden=!$('show-labels').checked;requestDraw();saveSettings();};
 document.addEventListener('ftoers-settings',()=>{homeReplay?.stop();controls.cancelAll();$('settings-dialog').showModal();pauseSession();});
 $('close-settings').onclick=()=>$('settings-dialog').close();
-for(const [button,dialog,close] of [['leaderboard','leaderboard-dialog','close-leaderboard'],['puzzles','puzzle-dialog','close-puzzles'],['mobile-history','history-dialog','close-history'],['touch-turn-bias','touch-bias-dialog','close-touch-bias']]){
+for(const [button,dialog,close] of [['leaderboard','leaderboard-dialog','close-leaderboard'],['notifications','notifications-dialog','close-notifications'],['puzzles','puzzle-dialog','close-puzzles'],['mobile-history','history-dialog','close-history'],['touch-turn-bias','touch-bias-dialog','close-touch-bias']]){
  $(button).onclick=()=>{homeReplay?.stop();controls.cancelAll();$(dialog).showModal();pauseSession();};
  $(close).onclick=()=>$(dialog).close();
 }
+$('leaderboard-rules').onclick=()=>{homeReplay?.stop();controls.cancelAll();$('leaderboard-rules-dialog').showModal();pauseSession();};
+$('close-leaderboard-rules').onclick=()=>$('leaderboard-rules-dialog').close();
 $('touch-bias-dialog').addEventListener('close',saveSettings);
 function markSplit(){
  if(session.status==='running'&&phaseTracker.manual(session.elapsed(),pendingTimeline().past.length-undoFloor)){save();renderTimer();}
@@ -662,7 +672,9 @@ homeReplay=new HomeReplay({pause:pauseSession,onStart:()=>{$('solve-summary').se
 const recordingUI=new RecordingUI({album,confirm:confirmPaused,isReplaying:()=>homeReplay.active,pauseForShare:()=>{if(homeReplay.active)homeReplay.pause();else pauseSession();},current:()=>homeReplay.active?homeReplay.sharedData:recorder.last,getSize:()=>size,getRecordings:()=>({last:recorder.last,pb:recorder.pb}),pause:()=>{homeReplay.stop();pauseSession();},play:data=>homeReplay.start(data)});
 averageUI=new AverageRecordingUI({album,getSession:()=>session,getSize:()=>size,pause:pauseSession,play:data=>homeReplay.start(data)});recordingUI.averages=averageUI;
 for(const id of ['share-current','share-pb','mobile-share-current','history-share-pb','home-replay-share'])$(id).innerHTML=icon('share');
-const solveReview=new SolveReview({rpc:networkRPC,isAdmin:accountIsAdmin,play:data=>homeReplay.start(data),pause:()=>{homeReplay.pause();pauseSession();}});
+let recoveryUI;
+const solveReview=new SolveReview({rpc:networkRPC,isAdmin:accountIsAdmin,play:data=>homeReplay.start(data),pause:()=>{homeReplay.pause();pauseSession();},recover:()=>recoveryUI.open()});
+recoveryUI=new LeaderboardRecovery({rpc:networkRPC,isAdmin:accountIsAdmin,play:data=>homeReplay.start(data),pause:()=>{homeReplay.pause();pauseSession();},onRecovered:()=>{if(!solveReview.panel.hidden)solveReview.loadQueue();}});
 document.addEventListener('ftoers-review',()=>solveReview.open());
 function archiveAttempt(recording){album.remember(recording,{size,entry:session.times.at(-1),pb:!!recording&&session.newBest,averagePB:newlyBestAverages(session.times,averageWindow)}).catch(error=>{$('album-message').textContent='Couldn’t retain recordings: '+error.message;});}
 function archivePB(recording,completedAt){
