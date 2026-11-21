@@ -1,4 +1,20 @@
 import { formatTime } from './solve-timer.js';
+export function ineligibilityText(row) {
+  const messages = {
+    insufficient_online_solves: `Needs ${row.required_count} consecutive online attempts with complete recordings (${row.window_count} recorded in this sequence).`,
+    leaderboard_dnfs:
+      'This window contains two or more leaderboard DNFs. Undo, pause and skipped scrambles count as DNF.',
+    missing_recordings: 'One or more recordings in the current window are missing or invalid.',
+    result_unavailable:
+      'The current window has no matching submission record. Start a new solve or contact Abid if this looks wrong.',
+    undo: 'This solve used undo and counts as DNF for the leaderboard.',
+    pause: 'This solve was paused and counts as DNF for the leaderboard.',
+    skipped: 'Skipped scrambles count as DNF for leaderboard averages.',
+    abandoned: 'This attempt was abandoned and counts as DNF for the leaderboard.',
+    dnf: 'This solve counts as DNF for the leaderboard.',
+  };
+  return messages[row.ineligible_reason] ?? 'The current result is ineligible for the leaderboard.';
+}
 export function mountOnlineNotices(network) {
   const list = document.getElementById('online-pb-list');
   if (!list || list.dataset.mounted) return;
@@ -26,16 +42,22 @@ export function mountOnlineNotices(network) {
       actions = document.createElement('div');
     const title = document.createElement('strong'),
       comparison = document.createElement('small');
-    title.textContent = `${row.metric === 'single' ? 'Single' : row.metric} · ${formatTime(row.ms)}`;
-    comparison.textContent =
-      row.leaderboard_ms == null
+    const ineligible = !!row.ineligible_reason;
+    title.textContent = ineligible
+      ? `Current ${row.metric === 'single' ? 'single' : row.metric} · Ineligible`
+      : `${row.metric === 'single' ? 'Single' : row.metric} · ${formatTime(row.ms)}`;
+    comparison.textContent = ineligible
+      ? ineligibilityText(row)
+      : row.leaderboard_ms == null
         ? 'No leaderboard result yet'
         : `Faster than your leaderboard result · ${formatTime(row.leaderboard_ms)}`;
     text.append(title, comparison);
     if (row.pending_ms != null) {
       const pending = document.createElement('small');
       pending.className = 'pending-replacement';
-      pending.textContent = `Replaces your pending ${formatTime(row.pending_ms)} submission`;
+      pending.textContent = ineligible
+        ? `Pending submission · ${formatTime(row.pending_ms)}`
+        : `Replaces your pending ${formatTime(row.pending_ms)} submission`;
       text.append(pending);
     }
     actions.className = 'online-result-actions';
@@ -43,7 +65,7 @@ export function mountOnlineNotices(network) {
     button.textContent = row.busy ? 'Submitting…' : 'Submit to leaderboard';
     button.disabled = row.busy;
     button.onclick = () => network.submit(row.id);
-    actions.append(button);
+    if (!ineligible) actions.append(button);
     if (rows.length > 1) {
       const pager = document.createElement('nav'),
         count = document.createElement('span');

@@ -174,6 +174,7 @@ test('PB recording prepares candidates; only the explicit submit call enters the
       if (name === 'record_online_attempt')
         return {
           dnf: false,
+          ineligible: [],
           candidates: [{ id: 'pb', metric: 'single', ms: 1000, evidence_complete: true }],
         };
       if (name === 'submit_leaderboard')
@@ -256,7 +257,10 @@ test('account changes clear PB actions and ignore a stale candidate response', a
   const load = network.loadCandidates();
   profile = { id: 'second' };
   network.accountChanged();
-  resolve([{ id: 'private', metric: 'single', ms: 100, evidence_complete: true }]);
+  resolve({
+    candidates: [{ id: 'private', metric: 'single', ms: 100, evidence_complete: true }],
+    ineligible: [],
+  });
   await load;
   assert.deepEqual(rows.at(-1), []);
 });
@@ -289,13 +293,17 @@ test('timer-only legacy averages never expose a submit action', async () => {
       if (name === 'begin_attempt') return 'ticket';
       if (name === 'record_online_attempt')
         return {
+          ineligible: [],
           candidates: [
             { id: 'legacy', metric: 'ao5', ms: 1000 },
             { id: 'complete', metric: 'single', ms: 1200, evidence_complete: true },
           ],
         };
-      if (name === 'my_leaderboard_candidates')
-        return [{ id: 'legacy', metric: 'ao12', ms: 1000, evidence_complete: false }];
+      if (name === 'my_leaderboard_results')
+        return {
+          candidates: [{ id: 'legacy', metric: 'ao12', ms: 1000, evidence_complete: false }],
+          ineligible: [],
+        };
     },
   });
   network.arm(3);
@@ -386,9 +394,9 @@ test('new eligible solves replace stale candidates even when deliberately slower
     rpc: async (name) =>
       name === 'begin_attempt'
         ? 'ticket'
-        : name === 'my_leaderboard_candidates'
-          ? [result]
-          : { candidates: [result] },
+        : name === 'my_leaderboard_results'
+          ? { candidates: [result], ineligible: [] }
+          : { candidates: [result], ineligible: [] },
   });
   await network.loadCandidates();
   result = { ...result, id: 'new', ms: 32750 };
@@ -623,4 +631,87 @@ test('skipping a scramble during the grace period still records its hidden DNF',
   s.network.onlineAgain();
   await skipped;
   assert.equal(s.calls.at(-1).name, 'skip_online_scramble');
+});
+
+test('a new ineligible window clears the old offer immediately and retains its explanation', async () => {
+  let finish;
+  const updates = [];
+  const n = new OnlineAttempts({
+    getProfile: () => ({ id: 'user' }),
+    online: () => true,
+    onCandidates: (rows) => updates.push(rows),
+    rpc: async (name) =>
+      name === 'begin_attempt'
+        ? 'ticket'
+        : new Promise((resolve) => {
+            finish = resolve;
+          }),
+  });
+  n.replaceResults({
+    ineligible: [],
+    candidates: [{ id: 'old-average', metric: 'ao5', ms: 31610, evidence_complete: true }],
+  });
+  n.arm(3);
+  n.start();
+  const recorded = n.finish(replay);
+  assert.deepEqual(updates.at(-1), []);
+  await new Promise((resolve) => setImmediate(resolve));
+  finish({
+    candidates: [],
+    ineligible: [{ metric: 'ao5', ineligible_reason: 'leaderboard_dnfs', pending_ms: 28930 }],
+  });
+  await recorded;
+  assert.equal(n.candidates.size, 0);
+  assert.equal(updates.at(-1)[0].ineligible_reason, 'leaderboard_dnfs');
+  await n.submit('old-average');
+  n.replaceResults({
+    candidates: [
+      {
+        id: 'current-average',
+        metric: 'ao5',
+        ms: 29840,
+        evidence_complete: true,
+        pending_ms: 28930,
+      },
+    ],
+    ineligible: [],
+  });
+  assert.equal(updates.at(-1)[0].ms, 29840);
+  assert.equal(updates.at(-1).length, 1);
+});
+
+test('an ineligible current window is restored as an explanation after reload', async () => {
+  const n = new OnlineAttempts({
+    getProfile: () => ({ id: 'user' }),
+    online: () => true,
+    rpc: async (name) => {
+      assert.equal(name, 'my_leaderboard_results');
+      return {
+        candidates: [],
+        ineligible: [{ metric: 'ao12', ineligible_reason: 'missing_recordings' }],
+      };
+    },
+  });
+  await n.loadCandidates();
+  assert.equal(n.candidates.size, 0);
+  assert.equal(n.ineligible[0].ineligible_reason, 'missing_recordings');
+});
+
+test('older backends cannot revive a possibly stale submission offer', () => {
+  const s = setup();
+  s.network.replaceResults({
+    candidates: [{ id: 'old', metric: 'ao5', ms: 31610, evidence_complete: true }],
+  });
+  assert.equal(s.network.candidates.size, 0);
+  assert.match(s.messages.at(-1), /backend update/);
+});
+
+test('a current ineligibility explanation takes precedence over conflicting old candidate data', () => {
+  const s = setup();
+  s.network.replaceResults({
+    candidates: [{ id: 'stale', metric: 'ao5', ms: 31610, evidence_complete: true }],
+    ineligible: [{ metric: 'ao5', ineligible_reason: 'leaderboard_dnfs' }],
+  });
+  assert.equal(s.network.candidates.size, 0);
+  assert.equal(s.network.ineligible.length, 1);
 });

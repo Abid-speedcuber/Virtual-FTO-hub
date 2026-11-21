@@ -12,7 +12,7 @@ import { defaultConfig } from '../../src/keyboard-engine.js';
 
 const U = { normal: [1, 1, 1], layer: 'outer', dir: 1, name: 'U' },
   view = { rotation: [0, 0, 0, 1], radius: 10 };
-async function setup(page) {
+async function setup(page, { initialRows, nextResult } = {}) {
   const user = {
       id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       email: 'test@example.invalid',
@@ -30,7 +30,8 @@ async function setup(page) {
   const recorder = new SolveRecorder();
   recorder.arm({ size: 3, scramble: [U], view, keyboard: defaultConfig(3), colors: {} });
   const calls = [];
-  let rows = [
+  let ineligible = [];
+  let rows = initialRows ?? [
     { id: 'old', metric: 'single', ms: 40330, pending_ms: 32980, evidence_complete: true },
   ];
   await page.route('**/shared/config.js', (route) =>
@@ -47,7 +48,7 @@ async function setup(page) {
     if (name === 'user') data = user;
     if (name === 'my_profile') data = { id: user.id, username: 'Tester', admin: false };
     if (name === 'my_submission_notifications' || name === 'leaderboard') data = [];
-    if (name === 'my_leaderboard_candidates') data = rows;
+    if (name === 'my_leaderboard_results') data = { candidates: rows, ineligible };
     if (name === 'begin_attempt') data = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
     if (name === 'record_online_attempt') {
       if (args.replay && !args.replay.usedPause)
@@ -60,13 +61,28 @@ async function setup(page) {
             evidence_complete: true,
           })),
         ];
+      if (!args.replay || args.replay.usedPause) {
+        rows = [];
+        ineligible = [
+          { metric: 'single', ineligible_reason: args.replay?.usedPause ? 'pause' : 'abandoned' },
+        ];
+      }
+      if (nextResult) {
+        rows = nextResult.candidates;
+        ineligible = nextResult.ineligible;
+      }
       data = {
+        ineligible,
         dnf: !args.replay || !!args.replay.usedPause,
         invalid_reason: args.replay?.usedPause ? 'pause' : null,
         candidates: rows,
       };
     }
-    if (name === 'skip_online_scramble') data = { dnf: true, candidates: rows };
+    if (name === 'skip_online_scramble') {
+      rows = [];
+      ineligible = [{ metric: 'single', ineligible_reason: 'skipped' }];
+      data = { dnf: true, candidates: rows, ineligible };
+    }
     if (name === 'submit_leaderboard') {
       rows = rows.filter((row) => row.id !== args.submission);
       data = { status: 'pending' };
@@ -256,3 +272,62 @@ for (const duration of [400, 5000])
       expect(sent.usedPause).toBe(false);
     } else expect(sent).toBeNull();
   });
+
+const staleAverageRows = [
+  { id: 'old', metric: 'single', ms: 40330, evidence_complete: true },
+  { id: 'old-average', metric: 'ao5', ms: 31610, pending_ms: 28930, evidence_complete: true },
+];
+test('the current ineligible average explains the reason and never offers an older average', async ({
+  page,
+}) => {
+  await setup(page, {
+    initialRows: staleAverageRows,
+    nextResult: {
+      candidates: [],
+      ineligible: [{ metric: 'ao5', ineligible_reason: 'leaderboard_dnfs', pending_ms: 28930 }],
+    },
+  });
+  await page.getByRole('button', { name: 'Next result', exact: true }).click();
+  await expect(page.locator('#online-pb-list')).toContainText('ao5 · 31.61');
+  await page.keyboard.press('KeyF');
+  await expect(page.locator('#online-pb-list')).toContainText('Current ao5 · Ineligible');
+  await expect(page.locator('#online-pb-list')).toContainText('two or more leaderboard DNFs');
+  await expect(page.locator('#online-pb-list')).toContainText('Pending submission · 28.93');
+  await expect(page.locator('#online-pb-list')).not.toContainText('31.61');
+  await expect(
+    page.getByRole('button', { name: 'Submit to leaderboard', exact: true }),
+  ).toHaveCount(0);
+  await page.reload();
+  await waitForApp(page);
+  await expect(page.locator('#online-pb-list')).toContainText('Current ao5 · Ineligible');
+  await expect(
+    page.getByRole('button', { name: 'Submit to leaderboard', exact: true }),
+  ).toHaveCount(0);
+});
+test('a current eligible average replaces the old offer while allowing a faster pending result to be replaced', async ({
+  page,
+}) => {
+  const calls = await setup(page, {
+    initialRows: staleAverageRows,
+    nextResult: {
+      candidates: [
+        {
+          id: 'current-average',
+          metric: 'ao5',
+          ms: 29840,
+          pending_ms: 28930,
+          evidence_complete: true,
+        },
+      ],
+      ineligible: [],
+    },
+  });
+  await page.keyboard.press('KeyF');
+  await expect(page.locator('#online-pb-list')).toContainText('ao5 · 29.84');
+  await expect(page.locator('#online-pb-list')).toContainText('Replaces your pending 28.93');
+  await expect(page.locator('#online-pb-list')).not.toContainText('31.61');
+  await page.getByRole('button', { name: 'Submit to leaderboard', exact: true }).click();
+  await expect
+    .poll(() => calls.filter((c) => c.name === 'submit_leaderboard').map((c) => c.args.submission))
+    .toEqual(['current-average']);
+});

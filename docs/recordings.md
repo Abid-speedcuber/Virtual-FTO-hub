@@ -125,3 +125,15 @@ Playback shows rolling TPS using accepted manual moves and the solver’s record
 TPS window. Rotations, suffixes and undo/redo are excluded; seeking and playback
 speed use source solve time. The marked tick on the progress bar jumps to the
 first solve event after scrambling, reorientation and the introduction pauses.
+
+## Leaderboard offers
+
+Submission cards describe the current online result and its current ao5/ao12 windows.
+An ineligible window shows its reason instead of offering an older eligible average.
+Local averages can differ: undo, pause and skipped scrambles count as leaderboard DNFs,
+and a broken online sequence requires enough new consecutive attempts.
+
+A current eligible result may replace a faster pending submission, but it must still
+beat the solver's approved leaderboard result. An ineligible result leaves the pending
+submission unchanged. The backend rechecks the current evidence window at submission,
+so a cached older draft cannot bypass the UI.

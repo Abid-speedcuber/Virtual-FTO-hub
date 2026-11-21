@@ -44,14 +44,47 @@ export class OnlineAttempts {
     this.attempt = null;
     this.queue = Promise.resolve();
     this.candidates = new Map();
+    this.ineligible = [];
     this.submitting = new Map();
     this.owner = getProfile()?.id;
     this.candidateRevision = 0;
   }
   notify() {
     this.onCandidates(
-      [...this.candidates.values()].map((row) => ({ ...row, busy: this.submitting.has(row.id) })),
+      [...this.candidates.values(), ...this.ineligible].map((row) => ({
+        ...row,
+        busy: this.submitting.has(row.id),
+      })),
     );
+  }
+  clearResults() {
+    this.candidateRevision++;
+    this.candidates.clear();
+    this.ineligible = [];
+    this.notify();
+  }
+  replaceResults(result) {
+    if (result.candidates?.length && !Array.isArray(result.ineligible)) {
+      this.clearResults();
+      this.status(
+        'Current-result submissions need the backend update. Your local times are saved.',
+      );
+      return false;
+    }
+    this.candidateRevision++;
+    this.ineligible = (result.ineligible ?? []).filter(
+      (row) =>
+        ['single', 'ao5', 'ao12'].includes(row?.metric) &&
+        typeof row.ineligible_reason === 'string',
+    );
+    const blocked = new Set(this.ineligible.map((row) => row.metric));
+    this.candidates = new Map(
+      (result.candidates ?? [])
+        .filter((row) => eligibleCandidate(row) && !blocked.has(row.metric))
+        .map((row) => [row.metric, row]),
+    );
+    this.notify();
+    return true;
   }
   arm(size) {
     this.attempt = {
@@ -79,6 +112,7 @@ export class OnlineAttempts {
       this.owner = owner;
       this.candidateRevision++;
       this.candidates.clear();
+      this.ineligible = [];
       this.notify();
       this.status('');
     }
@@ -176,6 +210,7 @@ export class OnlineAttempts {
       a.finished = true;
       a.interruptedAtFinish = this.connection.since !== null;
     }
+    if ((a?.size ?? recording?.size) === 3) this.clearResults();
     const paused = !!(a?.paused || recording?.usedPause);
     if (paused)
       this.status(
@@ -224,11 +259,7 @@ export class OnlineAttempts {
         a.owner,
       );
       if (a.owner !== this.getProfile()?.id) return result;
-      this.candidateRevision++;
-      this.candidates = new Map(
-        (result.candidates ?? []).filter(eligibleCandidate).map((row) => [row.metric, row]),
-      );
-      this.notify();
+      if (!this.replaceResults(result)) return result;
       const invalid = result.invalid_pb || (localPB && replay?.usedUndo);
       this.status(
         paused || result.invalid_reason === 'pause'
@@ -266,6 +297,7 @@ export class OnlineAttempts {
     this.attempt = null;
     const owner = this.getProfile()?.id;
     if (!a || a.started || a.size !== 3 || !owner) return Promise.resolve();
+    this.clearResults();
     const request_id = crypto.randomUUID();
     const task = this.queue.then(async () => {
       if (owner !== this.getProfile()?.id) {
@@ -278,11 +310,7 @@ export class OnlineAttempts {
         owner,
       );
       if (owner !== this.getProfile()?.id) return;
-      this.candidateRevision++;
-      this.candidates = new Map(
-        (result.candidates ?? []).filter(eligibleCandidate).map((row) => [row.metric, row]),
-      );
-      this.notify();
+      if (!this.replaceResults(result)) return result;
       this.status(
         'Skipped scramble counts as DNF in leaderboard averages. Your local times are unchanged.',
       );
@@ -301,14 +329,20 @@ export class OnlineAttempts {
       revision = ++this.candidateRevision;
     if (!owner || !this.online()) return;
     try {
-      const rows = await this.rpc('my_leaderboard_candidates');
+      const result = await this.rpc('my_leaderboard_results');
       if (revision !== this.candidateRevision || owner !== this.getProfile()?.id) return;
-      this.candidates = new Map(
-        (rows ?? []).filter(eligibleCandidate).map((row) => [row.metric, row]),
-      );
-      this.notify();
-    } catch {
-      /* An older backend must not trigger a legacy auto-submit fallback. */
+      this.replaceResults(result ?? {});
+    } catch (error) {
+      if (
+        revision === this.candidateRevision &&
+        owner === this.getProfile()?.id &&
+        String(error.message).includes('my_leaderboard_results')
+      ) {
+        this.clearResults();
+        this.status(
+          'Current-result submissions need the backend update. Your local times are saved.',
+        );
+      }
     }
   }
   submit(id) {

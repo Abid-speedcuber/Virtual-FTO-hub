@@ -71,7 +71,8 @@ async function setup(page) {
     let data = null;
     if (name === 'user') data = user;
     if (name === 'my_profile') data = { id: user.id, username: 'Owner', admin: true };
-    if (['my_leaderboard_candidates', 'review_queue'].includes(name)) data = [];
+    if (name === 'my_leaderboard_results') data = { candidates: [], ineligible: [] };
+    if (name === 'review_queue') data = [];
     if (name === 'leaderboard')
       data = [{ id: 'result', username: 'matt', ms: 22400, has_replay: true }];
     if (name === 'my_submission_notifications') data = rows;
