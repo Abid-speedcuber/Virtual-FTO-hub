@@ -81,7 +81,21 @@ async function setup(page, { legacyNotifications = false } = {}) {
         });
       data = legacyNotifications ? notices.filter((n) => n.decision !== 'held') : notices;
     }
-    if (name === 'review_queue') data = queue;
+    if (name === 'review_queue_page')
+      data = {
+        rows: queue.filter(
+          (r) =>
+            (args.category === 'all' || r.metric === args.category) &&
+            (args.review_state === 'all' ||
+              (args.review_state === 'held') === (r.status === 'investigating')),
+        ),
+        has_more: false,
+        next_cursor: null,
+        counts: {
+          pending: queue.filter((r) => r.status !== 'investigating').length,
+          held: queue.filter((r) => r.status === 'investigating').length,
+        },
+      };
     if (name === 'review_evidence') {
       const row = queue.find((r) => r.id === args.submission);
       data = [{ ms: 1000, dnf: false, recording: replay(row.username) }];
@@ -143,7 +157,7 @@ test('personal notifications and connection dot reflect online/offline state wit
   await expect(page.locator('#ft-account-trigger')).toHaveAttribute('data-connection', 'online');
   await expect(page.locator('.avatar-connection-dot')).toHaveAttribute(
     'aria-label',
-    'Connection: Online',
+    'Backend: Connected',
   );
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
@@ -156,7 +170,7 @@ test('personal notifications and connection dot reflect online/offline state wit
   await expect(page.locator('.avatar-connection-dot')).toHaveCount(1);
   await expect(page.locator('.avatar-connection-dot')).toHaveAttribute(
     'aria-label',
-    'Connection: Offline',
+    'Backend: Unreachable or device offline',
   );
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
@@ -173,9 +187,6 @@ test('personal notifications and connection dot reflect online/offline state wit
   await expect(page.locator('#submission-notifications-list')).toContainText(
     'We are investigating possible macro use',
   );
-  await page
-    .locator('#notifications-dialog')
-    .screenshot({ path: '/tmp/fto-investigation-notifications.png' });
 });
 test('admin writes hold/rejection explanations and can complete a held investigation later', async ({
   page,

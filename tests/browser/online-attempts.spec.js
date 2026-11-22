@@ -235,7 +235,9 @@ for (const cause of ['manual', 'blur'])
     expect(await page.evaluate(() => window.fto.snapshot().timer.times.at(-1).dnf)).toBeUndefined();
     expect(
       await page.evaluate(
-        () => JSON.parse(localStorage.getItem('master-fto-v1')).solves[3].recordings.last.usedPause,
+        async () =>
+          JSON.parse((await window.fto.exportData()).entries['master-fto-v1']).solves[3].recordings
+            .last.usedPause,
       ),
     ).toBe(true);
   });

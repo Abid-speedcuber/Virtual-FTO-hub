@@ -76,3 +76,33 @@ test('connection retries exclude permission, validation and quota errors', () =>
   ])
     assert.equal(isConnectionError(Error(message)), false);
 });
+
+test('a hung request is aborted at its absolute deadline and late success cannot reset availability', async () => {
+  const clock = fakeClock();
+  const c = new ConnectionGrace({ ...clock, online: () => true });
+  let signal, complete;
+  const request = c.run((s) => {
+    signal = s;
+    return new Promise((resolve) => {
+      complete = resolve;
+    });
+  });
+  const rejected = assert.rejects(request, /timed out/i);
+  await Promise.resolve();
+  clock.advance(5000);
+  await rejected;
+  assert.equal(signal.aborted, true);
+  assert.equal(c.connected, false);
+  complete('late');
+  await Promise.resolve();
+  assert.equal(c.connected, false);
+  assert.equal(await c.run(async () => 'next'), 'next');
+});
+test('a browser online hint alone cannot turn the backend indicator green', () => {
+  const c = new ConnectionGrace({ online: () => true });
+  c.offline();
+  c.online({ confirmed: false });
+  assert.equal(c.connected, false);
+  c.online();
+  assert.equal(c.connected, true);
+});

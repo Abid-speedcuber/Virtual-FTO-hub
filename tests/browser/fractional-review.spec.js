@@ -36,8 +36,8 @@ for (const metric of ['single', 'ao5', 'ao12'])
           pause: () => {},
           play: () => {},
           rpc: async (name) =>
-            name === 'review_queue'
-              ? [row]
+            name === 'review_queue_page'
+              ? { rows: [row], has_more: false, next_cursor: null, counts: { pending: 1, held: 0 } }
               : Array.from({ length: count }, () => ({ ms: row.ms, dnf: false, recording })),
         });
         await window.review.open();

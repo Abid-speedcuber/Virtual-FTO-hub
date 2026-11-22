@@ -255,6 +255,7 @@ test('account changes clear PB actions and ignore a stale candidate response', a
       }),
   });
   const load = network.loadCandidates();
+  await Promise.resolve();
   profile = { id: 'second' };
   network.accountChanged();
   resolve({
@@ -714,4 +715,20 @@ test('a current ineligibility explanation takes precedence over conflicting old 
   });
   assert.equal(s.network.candidates.size, 0);
   assert.equal(s.network.ineligible.length, 1);
+});
+
+test('signing out and back in between completed attempts breaks average continuity', async () => {
+  const s = setup();
+  s.network.arm(3);
+  s.network.start();
+  await s.network.finish(replay);
+  const session = s.calls[0].args.session;
+  s.setProfile(null);
+  s.network.accountChanged();
+  s.setProfile({ id: 'user', username: 'Abid' });
+  s.network.accountChanged();
+  s.network.arm(3);
+  s.network.start();
+  await s.network.finish(replay);
+  assert.notEqual(s.calls.findLast((c) => c.name === 'begin_attempt').args.session, session);
 });

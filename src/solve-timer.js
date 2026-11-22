@@ -117,7 +117,7 @@ export class SolveTimer {
     this.startedAt = null;
     this.newBest = false;
   }
-  serialize() {
+  serialize({ includeTimes = true } = {}) {
     return {
       scrambleText: this.scrambleText,
       lastDnf: this.lastDnf,
@@ -128,7 +128,7 @@ export class SolveTimer {
       completed: this.completed,
       lastMs: this.lastMs,
       newBest: this.newBest,
-      times: structuredClone(this.times),
+      ...(includeTimes ? { times: structuredClone(this.times) } : {}),
     };
   }
   snapshot() {

@@ -376,11 +376,15 @@ export class SolveRecorder {
   discard() {
     this.attempt = null;
   }
-  serialize() {
+  serialize({ includeCompleted = true } = {}) {
     if (this.attempt) this.attempt.checkpointAt = this.clock();
     return {
-      last: this.last,
-      ...(this.pb === this.last && this.pb ? { pbIsLast: true } : { pb: this.pb }),
+      ...(includeCompleted
+        ? {
+            last: this.last,
+            ...(this.pb === this.last && this.pb ? { pbIsLast: true } : { pb: this.pb }),
+          }
+        : {}),
       attempt: this.attempt,
     };
   }

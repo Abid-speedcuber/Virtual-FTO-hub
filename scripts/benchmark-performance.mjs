@@ -186,7 +186,7 @@ try {
       return dispose.call(this);
     };
     Storage.prototype.setItem = function (key, value) {
-      if (key === 'master-fto-v1') {
+      if (key.startsWith('master-fto-journal-v2:')) {
         writes++;
         bytes += value.length;
       }
@@ -232,11 +232,15 @@ try {
     window.dispatchEvent(new Event('pagehide'));
     return results;
   });
-  await page.addInitScript(() => {
+  await page.evaluate(async () => {
+    const { SolveStorage, recoverLegacy } = await import('/src/solve-storage.js');
     const record = JSON.parse(sessionStorage.getItem('benchmark-recording'));
-    const saved = JSON.parse(localStorage.getItem('master-fto-v1'));
+    const backup = await window.fto.exportData(),
+      saved = JSON.parse(backup.entries['master-fto-v1']);
     saved.solves[saved.size].recordings = { last: record };
-    localStorage.setItem('master-fto-v1', JSON.stringify(saved));
+    const storage = new SolveStorage();
+    await storage.load();
+    await storage.restore(recoverLegacy(JSON.stringify(saved)));
   });
   await page.reload();
   await page.waitForFunction(() => window.fto?.snapshot().ready);
@@ -248,7 +252,7 @@ try {
       bytes = 0;
     const setItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function (key, value) {
-      if (key === 'master-fto-v1') {
+      if (key.startsWith('master-fto-journal-v2:')) {
         writes++;
         bytes += value.length;
       }

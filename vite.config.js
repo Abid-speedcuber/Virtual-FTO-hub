@@ -5,6 +5,7 @@ export default defineConfig({
     allowedHosts: ['vanita-coextensive-zoraida.ngrok-free.dev'],
   },
   build: {
+    target: 'es2022',
     rollupOptions: {
       output: {
         manualChunks: {

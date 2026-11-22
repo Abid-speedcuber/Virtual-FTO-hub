@@ -239,8 +239,8 @@ test('full user backup restores bindings, named methods, PB recordings, times an
     other.locator('#confirm-accept').click(),
   ]);
   await ready(other);
-  const restored = await other.evaluate(() => ({
-    app: JSON.parse(localStorage.getItem('master-fto-v1')),
+  const restored = await other.evaluate(async () => ({
+    app: JSON.parse((await window.fto.exportData()).entries['master-fto-v1']),
     settings: JSON.parse(localStorage.getItem('master-fto-settings-v1')),
     keyboard: JSON.parse(localStorage.getItem('master-fto-keyboard-v2')),
     future: localStorage.getItem('master-fto-future'),
@@ -296,7 +296,9 @@ test('inspection motion and inputs are not recorded; the first turn captures the
   await page.keyboard.press('KeyF');
   await expect.poll(async () => (await snap(page)).timer.status).toBe('finished');
   const data = await page.evaluate(
-    () => JSON.parse(localStorage.getItem('master-fto-v1')).solves[3].recordings.last,
+    async () =>
+      JSON.parse((await window.fto.exportData()).entries['master-fto-v1']).solves[3].recordings
+        .last,
   );
   expect(data.duration).toBeLessThan(1000);
   expect(data.events.find((e) => e.type === 'start').at).toBe(0);
@@ -434,7 +436,9 @@ test('a live solve recording omits a long manual pause', async ({ page }) => {
   await page.keyboard.press('KeyF');
   await expect.poll(async () => (await snap(page)).timer.status).toBe('finished');
   const data = await page.evaluate(
-    () => JSON.parse(localStorage.getItem('master-fto-v1')).solves[3].recordings.last,
+    async () =>
+      JSON.parse((await window.fto.exportData()).entries['master-fto-v1']).solves[3].recordings
+        .last,
   );
   expect(data.duration).toBeLessThan(1000);
   expect(data.solveMs).toBeLessThan(1000);

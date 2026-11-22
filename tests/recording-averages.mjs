@@ -156,22 +156,24 @@ try {
   }, fixtures);
 
   // Seed a real timer session, then use production statistics and album UI.
-  await page.addInitScript(({ times }) => {
-    if (window.name === 'average-seeded') return;
-    window.name = 'average-seeded';
-    localStorage.setItem(
-      'master-fto-v1',
-      JSON.stringify({
-        size: 3,
-        solves: {
-          3: {
-            history: [],
-            redo: [],
-            undoFloor: 0,
-            timer: { times, bestMs: 1000, status: 'idle', elapsedMs: 0, completed: 12 },
+  await page.evaluate(async ({ times }) => {
+    const { SolveStorage, recoverLegacy } = await import('/__src/solve-storage.js');
+    const storage = new SolveStorage();
+    await storage.load();
+    await storage.restore(
+      recoverLegacy(
+        JSON.stringify({
+          size: 3,
+          solves: {
+            3: {
+              history: [],
+              redo: [],
+              undoFloor: 0,
+              timer: { times, bestMs: 1000, status: 'idle', elapsedMs: 0, completed: 12 },
+            },
           },
-        },
-      }),
+        }),
+      ),
     );
   }, result);
   await page.reload();

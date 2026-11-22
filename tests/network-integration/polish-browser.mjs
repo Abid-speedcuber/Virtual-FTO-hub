@@ -91,7 +91,7 @@ async function context(admin = false, broken = false) {
     if (name === 'my_profile') data = admin ? { id: user.id, username: 'Abid', admin: true } : null;
     if (name === 'user') data = user;
     if (name === 'leaderboard') data = [];
-    if (name === 'review_queue')
+    if (name === 'review_queue_page')
       data = decided
         ? []
         : [
@@ -102,6 +102,13 @@ async function context(admin = false, broken = false) {
               ms: 998,
             },
           ];
+    if (name === 'review_queue_page')
+      data = {
+        rows: data,
+        has_more: false,
+        next_cursor: null,
+        counts: { pending: data.length, held: 0 },
+      };
     if (name === 'review_evidence')
       data = broken ? [{ ms: 1, dnf: false, recording: { format: 'invalid' } }] : evidence;
     if (name === 'review_submission') {

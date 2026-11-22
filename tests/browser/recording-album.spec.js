@@ -203,15 +203,17 @@ test('historical PBs remain in the album after a new PB and the complete album m
     keyboard: defaultConfig(3),
     colors: { U: '#ffffff' },
   });
-  await page.addInitScript(
-    ({ recordings, U, R, view }) => {
-      if (window.name === 'album-seeded-second') return;
-      window.name = 'album-seeded-second';
-      const saved = JSON.parse(localStorage.getItem('master-fto-v1')),
+  await page.evaluate(
+    async ({ recordings, U, R, view }) => {
+      const { SolveStorage, recoverLegacy } = await import('/src/solve-storage.js');
+      const backup = await window.fto.exportData(),
+        saved = JSON.parse(backup.entries['master-fto-v1']),
         solve = saved.solves[3];
       Object.assign(solve, { history: [U, R], redo: [], undoFloor: 2, recordings, view });
       Object.assign(solve.timer, { status: 'ready', elapsedMs: 0 });
-      localStorage.setItem('master-fto-v1', JSON.stringify(saved));
+      const storage = new SolveStorage();
+      await storage.load();
+      await storage.restore(recoverLegacy(JSON.stringify(saved)));
     },
     { recordings: recorder.serialize(), U, R, view },
   );

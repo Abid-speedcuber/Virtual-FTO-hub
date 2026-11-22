@@ -198,26 +198,37 @@ test('legacy timed saves gain a scramble boundary without losing player progress
   await page.goto('/');
   await ready(page);
   await selectSize(page, 4);
-  await withSettings(page, () => page.locator('#animate').uncheck());
+  await withSettings(page, async () => {
+    await page.locator('#animate').uncheck();
+    await page.locator('#animate-scrambling').uncheck();
+  });
   await scramble(page);
   const base = await snap(page);
   await page.keyboard.press('KeyF');
   await page.keyboard.press('KeyR');
+  await page.waitForFunction(() => {
+    const s = window.fto.snapshot();
+    return !s.busy && !s.queued;
+  });
   const progressed = await snap(page);
   await expect
     .poll(() =>
       page.evaluate(
-        () => JSON.parse(localStorage.getItem('master-fto-v1')).solves[4].history.length,
+        async () =>
+          JSON.parse((await window.fto.exportData()).entries['master-fto-v1']).solves[4].history
+            .length,
       ),
     )
     .toBe(progressed.history.length);
-  const legacy = await page.evaluate(() => JSON.parse(localStorage.getItem('master-fto-v1')));
+  const legacy = await page.evaluate(async () =>
+    JSON.parse((await window.fto.exportData()).entries['master-fto-v1']),
+  );
   delete legacy.solves[4].undoFloor;
-  await page.addInitScript((data) => {
-    if (!sessionStorage.getItem('boundary-seeded')) {
-      localStorage.setItem('master-fto-v1', JSON.stringify(data));
-      sessionStorage.setItem('boundary-seeded', 'yes');
-    }
+  await page.evaluate(async (data) => {
+    const { SolveStorage, recoverLegacy } = await import('/src/solve-storage.js');
+    const storage = new SolveStorage();
+    await storage.load();
+    await storage.restore(recoverLegacy(JSON.stringify(data)));
   }, legacy);
   await page.reload();
   await ready(page);

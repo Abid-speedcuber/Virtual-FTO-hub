@@ -53,8 +53,8 @@ async function seed(page, size) {
   );
 }
 async function records(page) {
-  return page.evaluate(() => {
-    const saved = JSON.parse(localStorage.getItem('master-fto-v1'));
+  return page.evaluate(async () => {
+    const saved = JSON.parse((await window.fto.exportData()).entries['master-fto-v1']);
     return saved.solves[saved.size].recordings;
   });
 }

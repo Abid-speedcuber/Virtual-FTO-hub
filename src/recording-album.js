@@ -1,16 +1,40 @@
+import {
+  internKeyboard,
+  hydrateKeyboard,
+  putKeyboards,
+  readKeyboard,
+} from './recording-keyboards.js';
+import { statisticsCache } from './solve-statistics.js';
 import { AVERAGE_FORMAT, validateAverage, averageID, makeAverage } from './recording-average.js';
 import { encodeRecording, decodeRecording, recordingID } from './recording-codec.js';
 export const ALBUM_FORMAT = 'fto-recording-album-v1';
-const metadata = ({ payload: _payload, ...entry }) => entry;
-export function newlyBestAverages(times, averageWindow) {
-  return [5, 12].filter((count) => {
-    const current = averageWindow(times, count);
-    if (!current || !Number.isFinite(current.value)) return false;
-    for (let end = count; end < times.length; end++) {
-      if (averageWindow(times, count, end).value <= current.value) return false;
-    }
-    return true;
-  });
+const metadata = ({ payload: _payload, nodes: _nodes, ...entry }) => entry;
+export function newlyBestAverages(times) {
+  return statisticsCache(times)
+    .rows.filter(
+      (row) =>
+        [5, 12].includes(row.count) &&
+        row.best?.end === times.length &&
+        Number.isFinite(row.best.value),
+    )
+    .map((row) => row.count);
+}
+const metadataStore = 'recording-metadata';
+const keyboardStore = 'keyboard-snapshots';
+function albumTransaction(db, names, mode) {
+  names = typeof names === 'string' ? [names] : [...names];
+  if (mode === 'readwrite' && names.includes('recordings'))
+    names.push(metadataStore, keyboardStore);
+  return db.transaction(names, mode);
+}
+function putRecording(store, { nodes = [], ...row }) {
+  putKeyboards(store.transaction.objectStore(keyboardStore), nodes);
+  store.put(row);
+  store.transaction.objectStore(metadataStore).put(metadata(row));
+}
+function deleteRecording(store, id) {
+  store.delete(id);
+  store.transaction.objectStore(metadataStore).delete(id);
 }
 const validDate = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value));
 export function validateAlbumEnvelope(data) {
@@ -133,8 +157,23 @@ export class RecordingAlbum extends EventTarget {
   open() {
     if (!this.database) return Promise.reject(Error('Recording album storage is unavailable'));
     return (this.opened ??= new Promise((resolve, reject) => {
-      const request = this.database.open('master-fto-album-v1', 4);
+      const request = this.database.open('master-fto-album-v1', 6);
       request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(keyboardStore))
+          request.result.createObjectStore(keyboardStore, { keyPath: 'id' });
+        if (!request.result.objectStoreNames.contains(metadataStore)) {
+          const summaries = request.result.createObjectStore(metadataStore, { keyPath: 'id' });
+          if (request.result.objectStoreNames.contains('recordings')) {
+            const cursor = request.transaction.objectStore('recordings').openCursor();
+            cursor.onsuccess = () => {
+              if (cursor.result) {
+                summaries.put(metadata(cursor.result.value));
+                cursor.result.continue();
+              }
+            };
+          }
+        }
+
         if (!request.result.objectStoreNames.contains('average-groups'))
           request.result.createObjectStore('average-groups', { keyPath: 'id' });
         if (!request.result.objectStoreNames.contains('solve-windows'))
@@ -150,13 +189,67 @@ export class RecordingAlbum extends EventTarget {
           db.close();
           this.opened = null;
         };
-        resolve(db);
+        this.migrateKeyboards(db).then(() => resolve(db), reject);
       };
       request.onerror = () => {
         this.opened = null;
         reject(request.error ?? Error('Could not open recording album'));
       };
     }));
+  }
+  async localPayload(recording) {
+    const { record, nodes } = await internKeyboard(recording);
+    const payload = await new Response(
+      new Blob([JSON.stringify(record)]).stream().pipeThrough(new CompressionStream('gzip')),
+    ).arrayBuffer();
+    return { payload, payloadFormat: 'keyboard-v1', nodes };
+  }
+  async decodeLocal(row, db) {
+    if (row.payloadFormat !== 'keyboard-v1') return decodeRecording(row.payload);
+    const record = JSON.parse(
+      await new Response(
+        new Blob([row.payload]).stream().pipeThrough(new DecompressionStream('gzip')),
+      ).text(),
+    );
+    return hydrateKeyboard(record, (id) => readKeyboard(db, keyboardStore, id));
+  }
+  async portable(row, db) {
+    const { payloadFormat: _format, ...entry } = row;
+    return { ...entry, payload: await encodeRecording(await this.decodeLocal(row, db)) };
+  }
+  async migrateKeyboards(db) {
+    const read = (key) =>
+      new Promise((resolve, reject) => {
+        const store = db.transaction('recordings').objectStore('recordings');
+        const r = key === undefined ? store.getAllKeys() : store.get(key);
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+      });
+    const summaries = await new Promise((resolve, reject) => {
+      const r = db.transaction(metadataStore).objectStore(metadataStore).getAll();
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+    for (const { id } of summaries.filter((row) => row.payloadFormat !== 'keyboard-v1')) {
+      const old = await read(id);
+      if (!old || old.payloadFormat === 'keyboard-v1') continue;
+      let local;
+      try {
+        local = await this.localPayload(await decodeRecording(old.payload));
+      } catch {
+        continue;
+      } // Keep damaged legacy rows available for backup/recovery.
+      await new Promise((resolve, reject) => {
+        const tx = albumTransaction(db, 'recordings', 'readwrite'),
+          store = tx.objectStore('recordings'),
+          get = store.get(id);
+        get.onsuccess = () => {
+          if (get.result?.payload === old.payload) putRecording(store, { ...get.result, ...local });
+        };
+        tx.oncomplete = resolve;
+        tx.onabort = () => reject(tx.error);
+      });
+    }
   }
   add(recording, { pb = false, completedAt, shouldSave = () => true, automatic = false } = {}) {
     const promise = this.save(recording, { pb, completedAt, shouldSave, automatic });
@@ -165,9 +258,9 @@ export class RecordingAlbum extends EventTarget {
     return promise;
   }
   async save(recording, { pb, completedAt, shouldSave, automatic }) {
-    const [id, payload, db] = await Promise.all([
+    const [id, local, db] = await Promise.all([
       recordingID(recording),
-      encodeRecording(recording),
+      this.localPayload(recording),
       this.open(),
     ]);
     if (!shouldSave()) return null;
@@ -184,10 +277,10 @@ export class RecordingAlbum extends EventTarget {
       manual: !automatic,
       averagePB: [],
       recent: false,
-      payload,
+      ...local,
     };
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction(['recordings', 'deleted-recordings'], 'readwrite'),
+      const transaction = albumTransaction(db, ['recordings', 'deleted-recordings'], 'readwrite'),
         store = transaction.objectStore('recordings'),
         deleted = transaction.objectStore('deleted-recordings'),
         getDeleted = deleted.get(id);
@@ -204,7 +297,7 @@ export class RecordingAlbum extends EventTarget {
                 manual: (previous.manual ?? true) || row.manual,
               }
             : { ...row, pb: row.pb || !!getDeleted.result?.pb };
-          store.put(result);
+          putRecording(store, result);
           deleted.delete(id);
         };
       };
@@ -231,10 +324,11 @@ export class RecordingAlbum extends EventTarget {
   async rememberNow(recording, { size, entry, pb, averagePB }) {
     const db = await this.open(),
       id = recording ? await recordingID(recording) : null,
-      payload = recording ? await encodeRecording(recording) : null,
+      local = recording ? await this.localPayload(recording) : null,
       now = new Date().toISOString();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(
+      const tx = albumTransaction(
+          db,
           ['recordings', 'deleted-recordings', 'solve-windows', 'average-groups'],
           'readwrite',
         ),
@@ -266,7 +360,7 @@ export class RecordingAlbum extends EventTarget {
             get.onsuccess = () => {
               const row = get.result;
               if (row)
-                store.put({
+                putRecording(store, {
                   ...row,
                   averagePB: [...new Set([...(row.averagePB ?? []), ...counts])],
                 });
@@ -289,8 +383,8 @@ export class RecordingAlbum extends EventTarget {
                   row.averagePB?.length ||
                   groupPins.has(evicted)
                 )
-                  store.put({ ...row, recent: false });
-                else store.delete(evicted);
+                  putRecording(store, { ...row, recent: false });
+                else deleteRecording(store, evicted);
               };
             }
           };
@@ -309,7 +403,8 @@ export class RecordingAlbum extends EventTarget {
           const get = store.get(id);
           get.onsuccess = () => {
             const old = get.result;
-            store.put(
+            putRecording(
+              store,
               old
                 ? { ...old, pb: old.pb || pb, recent: true }
                 : {
@@ -323,7 +418,7 @@ export class RecordingAlbum extends EventTarget {
                     manual: false,
                     averagePB: [],
                     recent: true,
-                    payload,
+                    ...local,
                   },
             );
             finalize();
@@ -343,7 +438,7 @@ export class RecordingAlbum extends EventTarget {
   async rows(store = 'recordings') {
     const db = await this.open();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(store),
+      const tx = albumTransaction(db, store),
         request = tx.objectStore(store).getAll();
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
@@ -351,30 +446,28 @@ export class RecordingAlbum extends EventTarget {
   }
   async list() {
     await this.flush();
-    return (await this.rows())
-      .map(metadata)
-      .sort(
-        (a, b) =>
-          Date.parse(b.completedAt) - Date.parse(a.completedAt) ||
-          Date.parse(b.savedAt) - Date.parse(a.savedAt) ||
-          a.id.localeCompare(b.id),
-      );
+    return (await this.rows(metadataStore)).sort(
+      (a, b) =>
+        Date.parse(b.completedAt) - Date.parse(a.completedAt) ||
+        Date.parse(b.savedAt) - Date.parse(a.savedAt) ||
+        a.id.localeCompare(b.id),
+    );
   }
   async get(id) {
     const db = await this.open();
     const row = await new Promise((resolve, reject) => {
-      const request = db.transaction('recordings').objectStore('recordings').get(id);
+      const request = albumTransaction(db, 'recordings').objectStore('recordings').get(id);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
     if (!row) throw Error('Recording is no longer in the album');
-    return decodeRecording(row.payload);
+    return this.decodeLocal(row, db);
   }
   async has(id) {
     await this.flush();
     const db = await this.open();
     return new Promise((resolve, reject) => {
-      const request = db.transaction('recordings').objectStore('recordings').getKey(id);
+      const request = albumTransaction(db, 'recordings').objectStore('recordings').getKey(id);
       request.onsuccess = () => resolve(request.result !== undefined);
       request.onerror = () => reject(request.error);
     });
@@ -397,7 +490,8 @@ export class RecordingAlbum extends EventTarget {
     await this.flush();
     const db = await this.open();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(
+      const tx = albumTransaction(
+          db,
           ['recordings', 'deleted-recordings', 'average-groups', 'solve-windows'],
           'readwrite',
         ),
@@ -454,7 +548,7 @@ export class RecordingAlbum extends EventTarget {
                 row.averagePB?.length)
             )
               return;
-            store.delete(id);
+            deleteRecording(store, id);
             removed++;
             if (explicit)
               tx.objectStore('deleted-recordings').put({
@@ -489,8 +583,13 @@ export class RecordingAlbum extends EventTarget {
     );
   }
   async getGroup(id) {
-    const groups = await this.listGroups(),
-      group = groups.find((g) => g.id === id);
+    await this.flush();
+    const db = await this.open();
+    const group = await new Promise((resolve, reject) => {
+      const request = db.transaction('average-groups').objectStore('average-groups').get(id);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
     if (!group) throw Error('This average is no longer in the album');
     return group;
   }
@@ -501,7 +600,7 @@ export class RecordingAlbum extends EventTarget {
       throw Error('Only the latest ao5 and ao12 can be saved from statistics.');
     const db = await this.open();
     const members = await new Promise((resolve, reject) => {
-      const tx = db.transaction(['solve-windows', 'recordings']),
+      const tx = albumTransaction(db, ['solve-windows', 'recordings']),
         request = tx.objectStore('solve-windows').get(size);
       let members = [],
         failure;
@@ -553,7 +652,7 @@ export class RecordingAlbum extends EventTarget {
     await this.flush();
     const db = await this.open();
     const task = new Promise((resolve, reject) => {
-      const tx = db.transaction(['recordings', 'average-groups'], 'readwrite');
+      const tx = albumTransaction(db, ['recordings', 'average-groups'], 'readwrite');
       let failure;
       for (const member of group.members) {
         if (!member.id) continue;
@@ -588,11 +687,29 @@ export class RecordingAlbum extends EventTarget {
     return this.removeMany({ groupIDs: [id] });
   }
   async exportGroup(group) {
-    const backup = await this.export(),
-      ids = new Set(group.members.map((m) => m.id).filter(Boolean));
-    const entries = backup.entries
-      .filter((row) => ids.has(row.id))
-      .map((row) => ({ ...row, pb: false, manual: false, averagePB: [], recent: false }));
+    await this.flush();
+    const db = await this.open(),
+      ids = [...new Set(group.members.map((m) => m.id).filter(Boolean))];
+    const entries = await new Promise((resolve, reject) => {
+      const tx = db.transaction('recordings'),
+        found = [];
+      for (const id of ids) {
+        const request = tx.objectStore('recordings').get(id);
+        request.onsuccess = () => {
+          if (request.result)
+            found.push({
+              ...request.result,
+              pb: false,
+              manual: false,
+              averagePB: [],
+              recent: false,
+            });
+        };
+      }
+      tx.oncomplete = () => resolve(found);
+      tx.onabort = () => reject(tx.error ?? Error('Could not read average recordings'));
+    });
+    for (let i = 0; i < entries.length; i++) entries[i] = await this.portable(entries[i], db);
     await validateAlbumBackup({ format: ALBUM_FORMAT, entries, groups: [group] });
     return { format: AVERAGE_FORMAT, group, entries };
   }
@@ -611,19 +728,26 @@ export class RecordingAlbum extends EventTarget {
       groups: [data.group],
     });
     if (!shouldSave()) return null;
+    const localEntries = await Promise.all(
+      data.entries.map(async (row) => ({
+        ...row,
+        ...(await this.localPayload(await decodeRecording(row.payload))),
+      })),
+    );
     await this.flush();
     const db = await this.open();
     const task = new Promise((resolve, reject) => {
-      const tx = db.transaction(
+      const tx = albumTransaction(
+          db,
           ['recordings', 'average-groups', 'deleted-recordings'],
           'readwrite',
         ),
         store = tx.objectStore('recordings');
-      for (const row of data.entries) {
+      for (const row of localEntries) {
         const get = store.get(row.id);
         get.onsuccess = () => {
           if (!get.result)
-            store.put({ ...row, pb: false, manual: false, averagePB: [], recent: false });
+            putRecording(store, { ...row, pb: false, manual: false, averagePB: [], recent: false });
           tx.objectStore('deleted-recordings').delete(row.id);
         };
       }
@@ -645,9 +769,9 @@ export class RecordingAlbum extends EventTarget {
   async export() {
     await this.flush();
     const db = await this.open();
-    return new Promise((resolve, reject) => {
+    const data = await new Promise((resolve, reject) => {
       const names = ['recordings', 'deleted-recordings', 'solve-windows', 'average-groups'],
-        tx = db.transaction(names),
+        tx = albumTransaction(db, names),
         values = {};
       for (const name of names) {
         const get = tx.objectStore(name).getAll();
@@ -665,19 +789,29 @@ export class RecordingAlbum extends EventTarget {
         });
       tx.onabort = () => reject(tx.error ?? Error('Could not export album'));
     });
+    data.entries = await Promise.all(data.entries.map((row) => this.portable(row, db)));
+    return data;
   }
   async restoreValidated(data) {
     validateAlbumEnvelope(data);
+    const localEntries = await Promise.all(
+      data.entries.map(async (row) => ({
+        ...row,
+        ...(await this.localPayload(await decodeRecording(row.payload))),
+      })),
+    );
     await this.flush();
     const db = await this.open();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(
+      const tx = albumTransaction(
+          db,
           ['recordings', 'deleted-recordings', 'solve-windows', 'average-groups'],
           'readwrite',
         ),
         store = tx.objectStore('recordings'),
         deleted = tx.objectStore('deleted-recordings');
       store.clear();
+      tx.objectStore(metadataStore).clear();
       deleted.clear();
       const windows = tx.objectStore('solve-windows');
       windows.clear();
@@ -685,7 +819,7 @@ export class RecordingAlbum extends EventTarget {
       groups.clear();
       for (const group of data.groups ?? []) groups.put(group);
       for (const row of data.windows ?? []) windows.put(row);
-      for (const row of data.entries) store.put(row);
+      for (const row of localEntries) putRecording(store, row);
       for (const row of data.deleted ?? []) deleted.put(row);
       tx.oncomplete = () => {
         resolve();

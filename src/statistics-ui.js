@@ -1,4 +1,9 @@
-import { statistics, statisticsReport, statisticsCSV, resultText } from './solve-statistics.js';
+import {
+  statisticsCache,
+  statisticsReport,
+  statisticsCSV,
+  resultText,
+} from './solve-statistics.js';
 import { formatTime } from './solve-timer.js';
 const $ = (id) => document.getElementById(id);
 export class StatisticsUI {
@@ -15,7 +20,7 @@ export class StatisticsUI {
       const entry = this.getSession().times[this.window.start];
       if (!entry) return;
       entry.comment = $('statistics-comment').value.slice(0, 2000);
-      save();
+      save(this.window.start);
       this.report();
       $('statistics-message').textContent = 'Comment saved';
     };
@@ -61,9 +66,9 @@ export class StatisticsUI {
     if (this.key === key) return;
     this.key = key;
     const times = this.getSession().times;
-    this.rows = statistics(times);
-    $('statistics-count').textContent =
-      `${times.filter((t) => !t.dnf).length} / ${times.length} solved`;
+    const cache = statisticsCache(times);
+    this.rows = cache.rows;
+    $('statistics-count').textContent = `${cache.solved} / ${times.length} solved`;
     $('statistics-rows').replaceChildren();
     for (const row of this.rows) {
       const tr = document.createElement('tr'),

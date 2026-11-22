@@ -148,7 +148,21 @@ await context.route('https://backend.test/**', async (route) => {
     candidates = candidates.filter((row) => row.id !== args.submission);
     data = { status: 'pending' };
   }
-  if (name === 'review_queue') data = queue;
+  if (name === 'review_queue_page')
+    data = {
+      rows: queue.filter(
+        (r) =>
+          (args.category === 'all' || r.metric === args.category) &&
+          (args.review_state === 'all' ||
+            (args.review_state === 'held') === (r.status === 'investigating')),
+      ),
+      has_more: false,
+      next_cursor: null,
+      counts: {
+        pending: queue.filter((r) => r.status !== 'investigating').length,
+        held: queue.filter((r) => r.status === 'investigating').length,
+      },
+    };
   if (name === 'review_evidence')
     data = args.submission.startsWith('111')
       ? [{ ms: 900, dnf: false, recording: single }]

@@ -13,6 +13,7 @@ export class SolveReview {
   constructor({ rpc, isAdmin, play, pause, recover }) {
     Object.assign(this, { rpc, isAdmin, play, pause, recover });
     this.revision = 0;
+    this.queueRevision = 0;
     this.rows = [];
     this.current = null;
     this.evidence = null;
@@ -24,11 +25,25 @@ export class SolveReview {
     panel.id = 'solve-review-panel';
     panel.hidden = true;
     panel.setAttribute('aria-label', 'Review solves');
-    panel.innerHTML = `<header><div><h2>Review solves</h2><span data-count></span></div><div><button data-refresh aria-label="Refresh submissions">↻</button><button data-collapse aria-label="Collapse review" aria-expanded="true">−</button><button data-close aria-label="Close review">×</button></div></header><div data-body><div class="review-tools"><button data-recover>Recover single</button><span>Check a recording affected by a submission problem.</span></div><details data-queue open><summary>Submissions awaiting a decision</summary><div class="review-state-filters" role="group" aria-label="Review status"><button data-review-state="active" aria-pressed="true">To review</button><button data-review-state="held" aria-pressed="false">On hold</button><button data-review-state="all" aria-pressed="false">All pending</button></div><div class="review-filters" role="group" aria-label="Filter submissions"><button data-filter="all" aria-pressed="true">All</button><button data-filter="single" aria-pressed="false">Single</button><button data-filter="ao5" aria-pressed="false">ao5</button><button data-filter="ao12" aria-pressed="false">ao12</button></div><ol data-queue-list aria-label="Pending submissions"></ol></details><section data-detail hidden><div class="review-result"><div><h3 data-solver></h3><p data-submitted></p></div><div><strong data-result></strong><span data-metric></span></div></div><p data-investigation hidden></p><p data-check class="review-check"></p><div class="review-evidence-heading"><h3>Recordings <small data-progress></small></h3><button data-watch-next>Watch next</button></div><ol data-evidence></ol><p class="review-help">Parentheses mark the trimmed solves. Opening a replay does not approve it.</p><label>Message to solver<textarea data-note maxlength="500" rows="2" placeholder="Explain a rejection or investigation hold. Approval notes are optional."></textarea></label><div class="review-decision"><button data-reject>Reject & next</button><button data-hold>Hold & next</button><button data-approve class="primary">Approve & next</button></div></section></div><p data-message role="status"></p>`;
+    panel.innerHTML = `<header><div><h2>Review solves</h2><span data-count></span></div><div><button data-refresh aria-label="Refresh submissions">↻</button><button data-collapse aria-label="Collapse review" aria-expanded="true">−</button><button data-close aria-label="Close review">×</button></div></header><div data-body><div class="review-tools"><button data-recover>Recover single</button><span>Check a recording affected by a submission problem.</span></div><details data-queue open><summary>Submissions awaiting a decision</summary><div class="review-state-filters" role="group" aria-label="Review status"><button data-review-state="active" aria-pressed="true">To review</button><button data-review-state="held" aria-pressed="false">On hold</button><button data-review-state="all" aria-pressed="false">All pending</button></div><div class="review-filters" role="group" aria-label="Filter submissions"><button data-filter="all" aria-pressed="true">All</button><button data-filter="single" aria-pressed="false">Single</button><button data-filter="ao5" aria-pressed="false">ao5</button><button data-filter="ao12" aria-pressed="false">ao12</button></div><ol data-queue-list aria-label="Pending submissions"></ol><nav class="review-pages" aria-label="Submission pages"><button data-prev-page>Previous</button><span data-page></span><button data-next-page>Next</button></nav></details><section data-detail hidden><div class="review-result"><div><h3 data-solver></h3><p data-submitted></p></div><div><strong data-result></strong><span data-metric></span></div></div><p data-investigation hidden></p><p data-check class="review-check"></p><div class="review-evidence-heading"><h3>Recordings <small data-progress></small></h3><button data-watch-next>Watch next</button></div><ol data-evidence></ol><p class="review-help">Parentheses mark the trimmed solves. Opening a replay does not approve it.</p><label>Message to solver<textarea data-note maxlength="500" rows="2" placeholder="Explain a rejection or investigation hold. Approval notes are optional."></textarea></label><div class="review-decision"><button data-reject>Reject & next</button><button data-hold>Hold & next</button><button data-approve class="primary">Approve & next</button></div></section></div><p data-message role="status"></p>`;
     document.body.append(panel);
     this.$ = (selector) => panel.querySelector(selector);
     this.filter = 'all';
     this.reviewState = 'active';
+    this.cursors = [null];
+    this.pageIndex = 0;
+    this.$('[data-prev-page]').onclick = () => {
+      if (!this.saving && !this.loading && this.pageIndex > 0) {
+        this.pageIndex--;
+        this.loadQueue();
+      }
+    };
+    this.$('[data-next-page]').onclick = () => {
+      if (!this.saving && !this.loading && this.hasMore) {
+        this.cursors[++this.pageIndex] = this.nextCursor;
+        this.loadQueue();
+      }
+    };
     const decisions = this.$('.review-decision');
     panel.insertBefore(decisions, this.$('[data-message]'));
     decisions.hidden = true;
@@ -62,10 +77,9 @@ export class SolveReview {
         this.filter = button.dataset.filter;
         for (const b of panel.querySelectorAll('[data-filter]'))
           b.setAttribute('aria-pressed', String(b === button));
-        this.renderQueue();
-        const rows = this.filtered();
-        if (!rows.some((r) => r.id === this.current?.id))
-          rows.length ? this.loadEvidence(rows[0]) : this.clearDetail();
+        this.pageIndex = 0;
+        this.cursors = [null];
+        this.loadQueue();
       };
     this.$('[data-watch-next]').onclick = () => {
       const next = this.recordings.findIndex((r, i) => r && !this.opened.has(i));
@@ -80,10 +94,9 @@ export class SolveReview {
         this.reviewState = button.dataset.reviewState;
         for (const b of panel.querySelectorAll('[data-review-state]'))
           b.setAttribute('aria-pressed', String(b === button));
-        this.renderQueue();
-        const rows = this.filtered();
-        if (!rows.some((r) => r.id === this.current?.id))
-          rows.length ? this.loadEvidence(rows[0]) : this.clearDetail();
+        this.pageIndex = 0;
+        this.cursors = [null];
+        this.loadQueue();
       };
     document.addEventListener('ftoers-identity-change', () => {
       if (!this.isAdmin()) this.close();
@@ -133,9 +146,12 @@ export class SolveReview {
     await this.loadQueue();
   }
   renderQueue() {
-    const held = this.rows.filter((r) => r.status === 'investigating').length;
-    this.$('[data-count]').textContent =
-      `${this.rows.length - held} pending${held ? ` · ${held} on hold` : ''}`;
+    const held = this.counts?.held ?? this.rows.filter((r) => r.status === 'investigating').length;
+    const pending = this.counts?.pending ?? this.rows.length - held;
+    this.$('[data-count]').textContent = `${pending} pending${held ? ` · ${held} on hold` : ''}`;
+    this.$('[data-prev-page]').disabled = this.saving || this.loading || this.pageIndex === 0;
+    this.$('[data-next-page]').disabled = this.saving || this.loading || !this.hasMore;
+    this.$('[data-page]').textContent = `Page ${this.pageIndex + 1}`;
     this.$('[data-queue-list]').replaceChildren();
     for (const row of this.filtered()) {
       const li = document.createElement('li'),
@@ -163,13 +179,32 @@ export class SolveReview {
     }
   }
   async loadQueue(preferredID, index = 0) {
-    const version = ++this.revision;
+    ++this.revision;
+    this.loading = true;
+    this.clearDetail();
+    const queueVersion = ++this.queueRevision;
+    this.renderQueue();
     this.controls(false);
     this.$('[data-refresh]').disabled = true;
     this.$('[data-message]').textContent = 'Loading submissions…';
     try {
-      const rows = await this.rpc('review_queue');
-      if (version !== this.revision || !this.isAdmin() || this.panel.hidden) return;
+      const page = await this.rpc('review_queue_page', {
+        review_state: this.reviewState,
+        category: this.filter,
+        after_cursor: this.cursors[this.pageIndex],
+      });
+      const rows = page.rows;
+      if (!Array.isArray(rows))
+        throw Error('The review queue needs the local backend update before it can load.');
+      if (queueVersion !== this.queueRevision || !this.isAdmin() || this.panel.hidden) return;
+      this.loading = false;
+      this.counts = page.counts;
+      this.hasMore = page.has_more;
+      this.nextCursor = page.next_cursor;
+      if (!rows.length && this.pageIndex > 0) {
+        this.pageIndex--;
+        return this.loadQueue();
+      }
       this.rows = rows;
       this.renderQueue();
       const filtered = this.filtered(),
@@ -184,9 +219,16 @@ export class SolveReview {
           : 'No pending submissions.';
       }
     } catch (error) {
-      if (version === this.revision) this.$('[data-message]').textContent = error.message;
+      if (queueVersion === this.queueRevision)
+        this.$('[data-message]').textContent = /review_queue_page|PGRST202/.test(error.message)
+          ? 'The review queue needs the local backend update before it can load.'
+          : error.message;
     } finally {
-      this.$('[data-refresh]').disabled = this.saving;
+      if (queueVersion === this.queueRevision) {
+        this.loading = false;
+        this.renderQueue();
+        this.$('[data-refresh]').disabled = this.saving;
+      }
     }
   }
   async loadEvidence(row) {

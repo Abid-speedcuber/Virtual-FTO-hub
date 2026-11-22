@@ -118,3 +118,17 @@ test('reports without scrambles use a compact time list and exported windows num
   assert.doesNotMatch(detailed, /\n8\./);
   assert.match(statisticsCSV(times, window), /\r\n"1","4.00"/);
 });
+
+test('incremental statistics match the reference for appended ties and DNFs and reset on replacement', async () => {
+  const { StatisticsCache } = await import('../src/solve-statistics.js');
+  const cache = new StatisticsCache(),
+    times = [];
+  for (let i = 0; i < 1050; i++) {
+    times.push({ ms: 1000 + ((i * 7919) % 31000), dnf: i % 19 === 0 });
+    if ([0, 4, 11, 24, 99, 299, 999, 1049].includes(i))
+      assert.deepEqual(cache.update(times).rows, statistics(times));
+  }
+  times.pop();
+  assert.deepEqual(cache.update(times).rows, statistics(times));
+  assert.deepEqual(cache.update(times.slice(-12)).rows, statistics(times.slice(-12)));
+});

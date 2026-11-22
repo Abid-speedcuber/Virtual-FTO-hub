@@ -107,7 +107,10 @@ export class OnlineAttempts {
   }
   accountChanged() {
     const owner = this.getProfile()?.id;
-    if (this.attempt && this.attempt.owner !== owner) this.invalidate();
+    if (owner !== this.owner || (this.attempt && this.attempt.owner !== owner)) {
+      this.invalidate();
+      for (const attempt of this.outstanding) attempt.valid = false;
+    }
     if (owner !== this.owner) {
       this.owner = owner;
       this.candidateRevision++;
@@ -135,11 +138,11 @@ export class OnlineAttempts {
   }
   onlineAgain() {
     const interrupted = this.connection.since !== null,
-      allowed = this.connection.online();
+      allowed = this.connection.online({ confirmed: false });
     if (interrupted && !this.attempt?.paused)
       this.status(
         allowed
-          ? 'Connection restored.'
+          ? 'Checking backend connection…'
           : 'Connection restored. Leaderboard averages start with a new sequence.',
       );
   }
@@ -186,12 +189,16 @@ export class OnlineAttempts {
         throw Error('Attempt is no longer eligible');
       const session = this.sequence;
       return this.request(
-        () =>
-          this.rpc('begin_attempt', {
-            session,
-            request_id: a.requestId,
-            start_delay_ms: Math.min(5000, Math.max(0, this.now() - a.startedAt)),
-          }),
+        (signal) =>
+          this.rpc(
+            'begin_attempt',
+            {
+              session,
+              request_id: a.requestId,
+              start_delay_ms: Math.min(5000, Math.max(0, this.now() - a.startedAt)),
+            },
+            { signal },
+          ),
         a.owner,
       );
     });
@@ -255,7 +262,12 @@ export class OnlineAttempts {
       if (!(await this.connection.wait())) return;
       // Never fall back to finish_attempt: old backends auto-submit that RPC.
       const result = await this.request(
-        () => this.rpc('record_online_attempt', { attempt, replay: a.valid ? replay : null }),
+        (signal) =>
+          this.rpc(
+            'record_online_attempt',
+            { attempt, replay: a.valid ? replay : null },
+            { signal },
+          ),
         a.owner,
       );
       if (a.owner !== this.getProfile()?.id) return result;
@@ -306,7 +318,7 @@ export class OnlineAttempts {
       }
       const session = this.sequence;
       const result = await this.request(
-        () => this.rpc('skip_online_scramble', { session, request_id }),
+        (signal) => this.rpc('skip_online_scramble', { session, request_id }, { signal }),
         owner,
       );
       if (owner !== this.getProfile()?.id) return;
@@ -329,7 +341,10 @@ export class OnlineAttempts {
       revision = ++this.candidateRevision;
     if (!owner || !this.online()) return;
     try {
-      const result = await this.rpc('my_leaderboard_results');
+      const result = await this.connection.run((signal) =>
+        this.rpc('my_leaderboard_results', {}, { signal }),
+      );
+      this.connection.online();
       if (revision !== this.candidateRevision || owner !== this.getProfile()?.id) return;
       this.replaceResults(result ?? {});
     } catch (error) {
@@ -385,7 +400,7 @@ let account = null,
   avatarConnection = null;
 const sharedModule = (name) => new URL('./shared/' + name + '.js', document.baseURI).href;
 export const network = new OnlineAttempts({
-  rpc: (...args) => account.rpc(...args),
+  rpc: (...args) => backendRPC(...args),
   onConnectionChange: (connected) => avatarConnection?.setOnline(connected),
   getProfile: () => account?.profile,
   status: (text) => {
@@ -412,7 +427,7 @@ export async function initNetwork() {
     });
     avatarConnection = mountAvatarConnection(document.getElementById('network-account'));
     const notifications = mountSubmissionNotifications({
-      rpc: account.rpc,
+      rpc: networkRPC,
       getProfile: () => account.profile,
       onSignIn: () => account.openAccount(),
     });
@@ -424,14 +439,26 @@ export async function initNetwork() {
     });
     const { mountLeaderboard } = await import('./leaderboard.js');
     mountLeaderboard(document.getElementById('leaderboard-dialog'), {
-      rpc: account.rpc,
+      rpc: networkRPC,
       configured: account.configured,
     });
     await account.ready;
     network.accountChanged();
     await Promise.all([network.loadCandidates(), notifications.refresh()]);
     window.addEventListener('offline', () => network.offline());
-    window.addEventListener('online', () => network.onlineAgain());
+    const probe = async () => {
+      if (!account.configured || !navigator.onLine) return;
+      try {
+        await networkRPC('leaderboard', { kind: 'single' });
+      } catch {
+        /* The indicator stays gray until a backend response confirms availability. */
+      }
+    };
+    if (!account.profile) probe();
+    window.addEventListener('online', () => {
+      network.onlineAgain();
+      probe();
+    });
   } catch {
     console.warn('FTOers account controls are unavailable.');
   }
@@ -457,7 +484,21 @@ export async function getCloudRecording(kind, value) {
 }
 
 export const accountIsAdmin = () => !!account?.profile?.admin;
-export async function networkRPC(...args) {
+async function backendRPC(name, args = {}, options) {
+  try {
+    const value = await account.rpc(name, args, options);
+    if (options?.signal?.aborted)
+      throw Object.assign(Error('Request aborted'), { name: 'AbortError' });
+    network.connection.online();
+    return value;
+  } catch (error) {
+    if (options?.signal?.aborted) throw error;
+    if (isConnectionError(error) || error.name === 'AbortError') network.connection.offline();
+    else network.connection.online(); // Permission/validation errors still confirm a responding backend.
+    throw error;
+  }
+}
+export async function networkRPC(name, args = {}) {
   if (!account) throw Error('FTOers accounts are unavailable.');
-  return account.rpc(...args);
+  return network.connection.run((signal) => backendRPC(name, args, { signal }));
 }

@@ -72,7 +72,8 @@ async function setup(page) {
     if (name === 'user') data = user;
     if (name === 'my_profile') data = { id: user.id, username: 'Owner', admin: true };
     if (name === 'my_leaderboard_results') data = { candidates: [], ineligible: [] };
-    if (name === 'review_queue') data = [];
+    if (name === 'review_queue_page')
+      data = { rows: [], has_more: false, next_cursor: null, counts: { pending: 0, held: 0 } };
     if (name === 'leaderboard')
       data = [{ id: 'result', username: 'matt', ms: 22400, has_replay: true }];
     if (name === 'my_submission_notifications') data = rows;

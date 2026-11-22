@@ -5046,3 +5046,56 @@ html.reviewing:not(.compact-ui) #solve-review-panel:has(> [data-body][hidden]) {
 #network-account [data-connection='offline'] .avatar-connection-dot {
   background: #909a96;
 }
+
+/* Fixed row metrics allow large histories to render only the visible range. */
+#solve-times li,
+#history-times li {
+  height: 34px;
+  box-sizing: border-box;
+}
+#solve-times li.history-spacer,
+#history-times li.history-spacer {
+  display: block;
+  padding: 0;
+  border: 0;
+  pointer-events: none;
+}
+
+#storage-recovery:not([hidden]) {
+  position: fixed;
+  z-index: 500;
+  bottom: 12px;
+  left: 12px;
+  width: min(440px, calc(100vw - 24px));
+  padding: 14px;
+  border: 1px solid #a59662;
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 8px 30px #0007;
+}
+#storage-recovery p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+#storage-recovery > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+#storage-recovery button {
+  font-size: 12px;
+}
+.review-pages {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.review-pages button {
+  padding: 6px 10px;
+}

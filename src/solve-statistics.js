@@ -132,3 +132,87 @@ export function scrambleText(moves) {
     })
     .join(' ');
 }
+
+// Keep rolling windows and previous bests across appended results. The pure
+// statistics() function remains the reference implementation for imports/tools.
+export class StatisticsCache {
+  constructor() {
+    this.reset();
+  }
+  reset() {
+    this.times = null;
+    this.processed = 0;
+    this.values = [];
+    this.solved = 0;
+    this.bestIndex = -1;
+    this.windows = AVERAGE_SIZES.map((count) => ({ count, sorted: [], current: null, best: null }));
+  }
+  update(times) {
+    if (
+      this.times !== times ||
+      times.length < this.processed ||
+      (this.processed && resultValue(times[this.processed - 1]) !== this.values[this.processed - 1])
+    )
+      this.reset();
+    this.times = times;
+    for (let i = this.processed; i < times.length; i++) {
+      const value = resultValue(times[i]);
+      this.values.push(value);
+      if (!times[i].dnf) this.solved++;
+      if (this.bestIndex < 0 || value < this.values[this.bestIndex]) this.bestIndex = i;
+      for (const window of this.windows) {
+        const { count, sorted } = window;
+        if (i >= count) sorted.splice(sorted.indexOf(i - count), 1);
+        let low = 0,
+          high = sorted.length;
+        while (low < high) {
+          const mid = (low + high) >> 1;
+          if ((this.values[sorted[mid]] - value || sorted[mid] - i) < 0) low = mid + 1;
+          else high = mid;
+        }
+        sorted.splice(low, 0, i);
+        if (i + 1 < count) continue;
+        const trim = Math.ceil(count * 0.05);
+        let total = 0;
+        for (let k = trim; k < count - trim; k++) total += this.values[sorted[k]];
+        window.current = { value: total / (count - 2 * trim), start: i + 1 - count, end: i + 1 };
+        if (!window.best || window.current.value < window.best.value) window.best = window.current;
+      }
+    }
+    this.processed = times.length;
+    const last = times.length - 1;
+    this.rows = [
+      {
+        label: 'Single',
+        count: 1,
+        current:
+          last < 0 ? null : { value: this.values[last], start: last, end: last + 1, excluded: [] },
+        best:
+          this.bestIndex < 0
+            ? null
+            : {
+                value: this.values[this.bestIndex],
+                start: this.bestIndex,
+                end: this.bestIndex + 1,
+                excluded: [],
+              },
+      },
+      ...this.windows.map((w) => ({
+        label: `ao${w.count}`,
+        count: w.count,
+        current: w.current,
+        best: w.best,
+      })),
+    ];
+    return this;
+  }
+}
+const cachedStatistics = new WeakMap();
+export function statisticsCache(times) {
+  let cache = cachedStatistics.get(times);
+  if (!cache) {
+    cache = new StatisticsCache();
+    cachedStatistics.set(times, cache);
+  }
+  return cache.update(times);
+}

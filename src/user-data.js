@@ -3,7 +3,7 @@ import { validateConfig } from './keyboard-engine.js';
 import { validateRecording } from './solve-recording.js';
 import { FACES } from './puzzle.js';
 export const BACKUP_FORMAT = 'fto-user-data-v1';
-const ownKey = (key) => key.startsWith('master-fto-');
+const ownKey = (key) => key.startsWith('master-fto-') && !key.startsWith('master-fto-journal-v2:');
 export function exportUserData(storage) {
   const entries = {};
   for (let i = 0; i < storage.length; i++) {

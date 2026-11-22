@@ -1,3 +1,4 @@
+import { SolveStorage, LEGACY_KEY, recoverLegacy } from './solve-storage.js';
 import { renderTimeHistory } from './time-history-ui.js';
 import { LeaderboardRecovery } from './leaderboard-recovery.js';
 import { SolveReview } from './solve-review.js';
@@ -5,7 +6,7 @@ import { network, currentSolver, initNetwork, networkRPC, accountIsAdmin } from 
 import { rotationPairForMove } from './rotation-actions.js';
 import { AverageRecordingUI } from './recording-average-ui.js';
 import { StatisticsUI } from './statistics-ui.js';
-import { scrambleText, resultText, averageWindow } from './solve-statistics.js';
+import { scrambleText, resultText, averageWindow, statisticsCache } from './solve-statistics.js';
 import * as THREE from 'three';
 import { icon, puzzleIcon } from './icons.js';
 import { PuzzleSounds } from './sounds.js';
@@ -47,7 +48,7 @@ import {
   defaultCifRotation,
 } from './orientation.js';
 const $ = (id) => document.getElementById(id);
-const storageKey = 'master-fto-v1';
+const storageKey = LEGACY_KEY;
 const album = new RecordingAlbum();
 let homeReplay = null,
   replayActive = false;
@@ -78,107 +79,42 @@ let state = solvedState(size),
   active = null,
   frame,
   scheduled = false;
-function findSolveEnd(history, size, floor) {
-  let restored = solvedState(size);
-  for (let i = 0; i < history.length; i++) {
-    restored = applyMove(restored, history[i]);
-    if (i + 1 >= floor && isSolved(restored)) return i + 1;
-  }
-  return history.length;
-}
 let storageOK = true,
   solveWasStored = false,
-  storageCleared = false;
-try {
-  const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
-  if (saved) {
-    solveWasStored = true;
-    const valid = (m) =>
-      m &&
-      FACES.some((f) => f.normal.every((v, i) => v === m.normal?.[i])) &&
-      ['outer', 'inner', 'wide', 'ultra', 'slice'].includes(m.layer) &&
-      [1, -1].includes(m.dir) &&
-      typeof m.name === 'string' &&
-      (m.layer !== 'slice' ||
-        (Number.isInteger(m.depth) &&
-          m.depth >= 1 &&
-          m.depth <= 20 &&
-          Number.isInteger(m.count) &&
-          m.count >= 1 &&
-          m.count <= 21 - m.depth));
-    if (saved.solves) {
-      if (!Number.isInteger(saved.size) || saved.size < 2 || saved.size > 20)
-        throw Error('Invalid size');
-      solves = saved.solves;
-      size = saved.size;
-      pointerMode = saved.pointerMode === 'legacy' ? 'legacy' : 'swipe';
-    } else {
-      size = 4;
-      solves[4] = saved;
-    }
-    for (const [key, solve] of Object.entries(solves)) {
-      if (
-        !Number.isInteger(+key) ||
-        +key < 2 ||
-        +key > 20 ||
-        !Array.isArray(solve.history) ||
-        !Array.isArray(solve.redo) ||
-        !solve.history.every(valid) ||
-        !solve.redo.every(valid)
-      )
-        throw Error('Invalid saved solve');
-      if (
-        solve.undoFloor !== undefined &&
-        (!Number.isInteger(solve.undoFloor) ||
-          solve.undoFloor < 0 ||
-          solve.undoFloor > solve.history.length)
-      )
-        throw Error('Invalid scramble boundary');
-      if (solve.undoFloor === undefined) {
-        const timeline = [...solve.history, ...solve.redo.toReversed()];
-        const timed = ['scrambling', 'ready', 'running', 'paused', 'finished'].includes(
-          solve.timer?.status,
-        );
-        solve.undoFloor = timed ? Math.min(timeline.length, Math.max(50, Number(key) * 10)) : 0;
-        while (solve.history.length < solve.undoFloor) solve.history.push(solve.redo.pop());
-      }
-      if (solve.timer?.status === 'finished') {
-        // Recover the boundary in older saves, including post-solve free-play moves.
-        if (
-          !Number.isInteger(solve.solveEnd) ||
-          solve.solveEnd < 0 ||
-          solve.solveEnd > solve.history.length
-        )
-          solve.solveEnd = findSolveEnd(solve.history, +key, solve.undoFloor);
-        solve.undoFloor = Math.max(solve.undoFloor, solve.solveEnd);
-      }
-      if (
-        solve.pending !== undefined &&
-        (!Array.isArray(solve.pending) ||
-          solve.pending.length > 600 ||
-          !solve.pending.every(
-            (a) =>
-              a &&
-              (['undo', 'redo'].includes(a.type) || (a.type === 'move' && valid(a.move))) &&
-              (a.source === undefined || ['scramble', 'pointer'].includes(a.source)),
-          ))
-      )
-        throw Error('Invalid pending turns');
-    }
-    history = structuredClone(solves[size]?.history ?? []);
-    redo = structuredClone(solves[size]?.redo ?? []);
-    undoFloor = solves[size]?.undoFloor ?? 0;
-    solveEnd = solves[size]?.solveEnd ?? null;
-    state = history.reduce(applyMove, solvedState(size));
+  storageCleared = false,
+  storageConflict = false,
+  storageFailure = '';
+function showStorageIssue(message, conflict = false) {
+  storageFailure = message;
+  storageConflict ||= conflict;
+  $('storage-recovery-message').textContent = message;
+  $('storage-recovery').hidden = false;
+  if (conflict && initialized) {
+    network.invalidate();
+    pauseSession();
   }
-} catch {
-  storageOK = false;
-  size = 3;
-  solves = {};
-  history = [];
-  redo = [];
-  state = solvedState(size);
 }
+const persistence = new SolveStorage({
+  onError: (error) => {
+    storageOK = false;
+    showStorageIssue(`Saving is unavailable: ${error.message}. Export your data before leaving.`);
+  },
+  onConflict: (message) => showStorageIssue(message, true),
+  getRecovery: () =>
+    initialized ? { size, solves: { ...solves, [size]: currentSolve() }, pointerMode } : null,
+});
+const restored = await persistence.load();
+size = restored.size;
+solves = restored.solves;
+pointerMode = restored.pointerMode;
+storageOK = persistence.available;
+solveWasStored = Object.keys(solves).length > 0;
+if (restored.errors.length) showStorageIssue(restored.errors.join(' '));
+history = structuredClone(solves[size]?.history ?? []);
+redo = structuredClone(solves[size]?.redo ?? []);
+undoFloor = solves[size]?.undoFloor ?? 0;
+solveEnd = solves[size]?.solveEnd ?? null;
+state = history.reduce(applyMove, solvedState(size));
 let recorder = new SolveRecorder(solves[size]?.recordings, () => Date.now(), {
   elapsedMs: solves[size]?.timer?.elapsedMs,
 });
@@ -319,7 +255,7 @@ for (const id of ['label-switch-angle', 'label-switch-angle-value'])
 function renderSaveStatus() {
   const ok = storageOK && settingsOK && keyboard?.storageOK !== false;
   $('save-status').hidden = ok;
-  $('save-status').textContent = ok ? '' : 'Local storage unavailable';
+  $('save-status').textContent = ok ? '' : storageFailure || 'Local storage unavailable';
 }
 function saveSettings() {
   if (detectClearedSolve()) return;
@@ -376,7 +312,8 @@ for (const id of [
   };
 statisticsUI = new StatisticsUI({
   getSession: () => session,
-  save: () => {
+  save: (index) => {
+    persistence.edit(size, index);
     timesKey = '';
     save();
     renderTimer();
@@ -562,9 +499,9 @@ function resizeViewport() {
   requestDraw();
 }
 new ResizeObserver(resizeViewport).observe(viewport);
-function currentSolve() {
+function currentSolve({ checkpoint = false } = {}) {
   return {
-    recordings: recorder.serialize(),
+    recordings: recorder.serialize({ includeCompleted: !checkpoint }),
     splits: phaseTracker.serialize({ diagnostics: true }),
     history,
     redo,
@@ -572,30 +509,27 @@ function currentSolve() {
     solveEnd,
     view: { rotation: controls.rotation.toArray(), radius: controls.radius },
     manualPaused,
-    timer: session.serialize(),
+    timer: session.serialize({ includeTimes: !checkpoint }),
     pending: [...(active?.turns.map((turn) => turn.action) ?? []), ...queue],
   };
 }
-// DevTools can remove storage without notifying this document. Check before every
-// write too, so an open tab cannot restore cleared times on blur or pagehide.
 function detectClearedSolve() {
-  if (storageCleared) return true;
-  try {
-    if (solveWasStored && localStorage.getItem(storageKey) === null) {
-      storageCleared = true;
-      location.reload();
-      return true;
-    }
-  } catch {
-    // Storage access may be denied; save() reports that state separately.
-  }
-  return false;
+  return storageCleared || storageConflict || persistence.frozen;
 }
 window.addEventListener('storage', (event) => {
-  if (event.storageArea === localStorage && (event.key === storageKey || event.key === null))
-    detectClearedSolve();
+  if (event.storageArea === localStorage && event.key === storageKey && event.newValue) {
+    // Old releases write the legacy key. Preserve that branch instead of importing it over current data.
+    pauseSession();
+    persistence.frozen = true;
+    persistence
+      .archiveLegacy(event.newValue, 'Changes from an older simulator tab')
+      .catch((error) => showStorageIssue(error.message));
+    showStorageIssue(
+      'An older simulator tab saved different data. A recovery copy was kept; reload to continue.',
+      true,
+    );
+  }
 });
-setInterval(detectClearedSolve, 1000);
 // Coalesce rapid turns; explicit saves and pagehide/visibility handlers flush
 // immediately, including completed solves and pending animation actions.
 let solveSaveTimer = null;
@@ -615,14 +549,16 @@ function save() {
   solveSaveTimer = null;
   if (detectClearedSolve()) return;
   try {
-    localStorage.setItem(
-      storageKey,
-      JSON.stringify({ size, solves: { ...solves, [size]: currentSolve() }, pointerMode }),
+    storageOK = persistence.save(
+      size,
+      currentSolve({ checkpoint: true }),
+      { times: session.times, last: recorder.last, pb: recorder.pb },
+      pointerMode,
     );
-    storageOK = true;
     solveWasStored = true;
-  } catch {
+  } catch (error) {
     storageOK = false;
+    showStorageIssue(`Could not save: ${error.message}. Export your work before leaving.`);
   }
   renderSaveStatus();
 }
@@ -723,7 +659,7 @@ function renderTimer() {
       : status === 'finished'
         ? session.newBest
           ? 'New PB'
-          : `${session.times.filter((t) => !t.dnf).length} solved`
+          : `${statisticsCache(session.times).solved} solved`
         : '';
   if (status !== 'paused') manualPaused = false;
   $('pause').hidden = !['running', 'paused'].includes(status);
@@ -781,6 +717,7 @@ function toggleManualPause() {
 }
 function resumeManualPause() {
   if (
+    detectClearedSolve() ||
     scrambleRequest ||
     session.status !== 'paused' ||
     document.hidden ||
@@ -868,6 +805,7 @@ function armRecording() {
   });
 }
 function enqueue(action) {
+  if (detectClearedSolve()) return false;
   if (action.type === 'undo' && ['ready', 'running', 'paused'].includes(session.status)) {
     network.markUndo();
     if (recorder.attempt) recorder.attempt.usedUndo = true;
@@ -1137,6 +1075,7 @@ function abandonAttempt() {
   return true;
 }
 async function startScramble({ skipConfirmation = false } = {}) {
+  if (detectClearedSolve()) return;
   if (isScrambling()) return;
   const timed = ['ready', 'running', 'paused'].includes(session.status);
   const title = timed ? 'Replace this solve?' : 'Start a new timed solve?';
@@ -1244,6 +1183,7 @@ window.addEventListener('blur', () => {
   scrambleEscapes = [];
 });
 async function resetSolve() {
+  if (detectClearedSolve()) return;
   const timed = ['ready', 'running', 'paused'].includes(session.status);
   if (
     (history.length || active || queue.length) &&
@@ -1326,9 +1266,14 @@ for (let value = 2; value <= 20; value++) {
   button.type = 'button';
   button.dataset.size = String(value);
   button.textContent = puzzleName(value);
-  button.onclick = () => {
-    selectSize(value);
-    $('puzzle-dialog').close();
+  button.onclick = async () => {
+    for (const choice of $('puzzle-choices').children) choice.disabled = true;
+    try {
+      await selectSize(value);
+    } finally {
+      for (const choice of $('puzzle-choices').children) choice.disabled = false;
+      $('puzzle-dialog').close();
+    }
   };
   $('puzzle-choices').append(button);
 }
@@ -1339,7 +1284,8 @@ function renderSize() {
   $('puzzles').querySelector('.puzzle-button-name').textContent = puzzleName(size);
   keyboard?.render();
 }
-function selectSize(nextSize) {
+async function selectSize(nextSize) {
+  if (detectClearedSolve()) return;
   network.invalidate();
   network.attempt = null;
   cancelScrambleRequest();
@@ -1348,6 +1294,15 @@ function selectSize(nextSize) {
   if (session.pause()) recorder.event('pause');
   manualPaused = session.status === 'paused';
   solves[size] = structuredClone(currentSolve());
+  save();
+  try {
+    await persistence.flush();
+    if (persistence.available) solves[nextSize] = await persistence.readSize(nextSize);
+  } catch (error) {
+    showStorageIssue(error.message);
+    return;
+  }
+
   queue = [];
   viewTween = null;
   pacing.reset();
@@ -1366,6 +1321,7 @@ function selectSize(nextSize) {
     elapsedMs: saved.timer?.elapsedMs,
   });
   phaseTracker = new PhaseTracker(size, profileForSave(saved), saved.splits);
+  persistence.bind(size, { times: session.times, last: recorder.last, pb: recorder.pb });
   manualPaused = session.status === 'paused';
   queue = saved.pending ?? [];
   controls.rotation.copy(defaultCifRotation());
@@ -1679,6 +1635,11 @@ update();
 requestDraw();
 // Read-only diagnostics for verifying geometry and input behavior in a browser.
 window.fto = {
+  exportData: () => exportCompleteData(),
+  flush: () => {
+    save();
+    return persistence.flush();
+  },
   snapshot: () => ({
     size,
     inspectionProjection: {
@@ -1752,6 +1713,7 @@ window.fto = {
 };
 
 function executeMove(move) {
+  if (detectClearedSolve()) return false;
   const face = FACES.find((f) => f.name === move.face);
   if (move.rotation) {
     if (replayActive || isScrambling() || session.status === 'paused') return false;
@@ -2006,6 +1968,63 @@ function archivePB(recording, completedAt) {
       $('album-message').textContent = `Couldn’t save PB to the album: ${error.message}`;
     });
 }
+async function exportCompleteData() {
+  if (!detectClearedSolve()) save();
+  let flushed = false,
+    durable = null;
+  if (persistence.available) {
+    try {
+      await persistence.flush();
+      flushed = true;
+    } catch {
+      /* Preserve live work even after a failed write. */
+    }
+    try {
+      durable = await persistence.document();
+    } catch {
+      /* Storage may have been cleared. */
+    }
+  }
+  const data = exportUserData(localStorage),
+    original = data.entries[storageKey];
+  const document =
+    flushed && durable
+      ? durable
+      : { size, solves: { ...solves, [size]: currentSolve() }, pointerMode };
+  data.entries[storageKey] = JSON.stringify(document);
+  if (persistence.db) {
+    try {
+      data.recovery = await persistence.recoveryData({ flush: false });
+    } catch {
+      /* The live export must still work when storage fails. */
+    }
+  }
+  const preserve = (source, reason) => {
+    (data.recovery ??= []).push({
+      id: `export:${crypto.randomUUID()}`,
+      kind: 'export-recovery',
+      reason,
+      backup: { format: data.format, createdAt: data.createdAt, entries: { [storageKey]: source } },
+    });
+  };
+  if (!flushed && durable)
+    preserve(JSON.stringify(durable), 'Last durable data before a failed write');
+  if (original && original !== data.entries[storageKey]) preserve(original, 'Original legacy save');
+  return data;
+}
+$('storage-recovery-export').onclick = async () => {
+  try {
+    const data = await exportCompleteData();
+    data.album = await album.export();
+    downloadJSON(data, 'fto-recovery-data.json');
+  } catch (error) {
+    $('storage-recovery-message').textContent = error.message;
+  }
+};
+$('storage-recovery-reload').onclick = () => location.reload();
+$('storage-recovery-dismiss').onclick = () => {
+  $('storage-recovery').hidden = true;
+};
 $('export-user-data').onclick = async () => {
   $('export-user-data').disabled = true;
   $('user-data-message').textContent = 'Preparing complete backup…';
@@ -2013,7 +2032,7 @@ $('export-user-data').onclick = async () => {
     pauseSession();
     saveSettings();
     keyboard.save();
-    const data = exportUserData(localStorage);
+    const data = await exportCompleteData();
     data.album = await album.export();
     downloadJSON(data, 'fto-user-data.json');
     $('user-data-message').textContent = 'Backup downloaded, including your recording album.';
@@ -2065,14 +2084,26 @@ async function importUserDataFile(file) {
       ))
     )
       return;
-    const before = exportUserData(localStorage);
+    const before = await exportCompleteData();
+    const previousAlbum = data.album ? await album.export() : null;
+    await persistence.preserveImportBackup(before, previousAlbum);
+    let previousRoot;
     storageCleared = true;
     try {
-      restoreUserData(localStorage, data);
       if (data.album) await album.restoreValidated(data.album);
+      previousRoot = await persistence.restore(
+        recoverLegacy(data.entries[storageKey]),
+        data.recovery ?? [],
+        before.entries,
+      );
+      restoreUserData(localStorage, data);
+      localStorage.removeItem(storageKey);
     } catch (error) {
       try {
+        if (previousRoot) await persistence.rollbackRestore(previousRoot);
+        if (previousAlbum) await album.restoreValidated(previousAlbum);
         restoreUserData(localStorage, before);
+        if (persistence.available) localStorage.removeItem(storageKey);
       } finally {
         storageCleared = false;
       }
@@ -2113,6 +2144,7 @@ for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 
     },
     { capture: true, passive: true },
   );
+persistence.bind(size, { times: session.times, last: recorder.last, pb: recorder.pb });
 initialized = true;
 resizeViewport();
 resumeSession();
