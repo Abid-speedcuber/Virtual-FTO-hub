@@ -2,13 +2,31 @@ name: Check simulator
 on:
   push:
   pull_request:
+  workflow_dispatch:
+  schedule:
+    # Sunday 09:17 in Bangladesh (03:17 UTC).
+    - cron: '17 3 * * 0'
 permissions:
   contents: read
 concurrency:
-  group: checks-${{ github.ref }}
+  group: checks-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+  browser:
+    name: Weekly browser checks
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -19,9 +37,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run check
+      - id: build
+        run: npm run build
       - run: npm run test:browser
       - run: npm run test:built
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
