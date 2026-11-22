@@ -165,10 +165,6 @@
 #notifications-dialog #submission-notifications-list {
   max-height: none;
 }
-#notifications-dialog .submission-notification-actions {
-  margin: 0 0 14px;
-  gap: 8px;
-}
 #notifications-dialog #submission-notifications-message:empty {
   display: none;
 }
@@ -364,15 +360,6 @@
 
 #notifications-dialog #submission-notifications-list li {
   font-size: 14px;
-}
-.submission-notification-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.submission-notification-actions button {
-  font-size: 14px;
-  padding: 8px 12px;
 }
 #submission-notifications-message {
   font-size: 14px;

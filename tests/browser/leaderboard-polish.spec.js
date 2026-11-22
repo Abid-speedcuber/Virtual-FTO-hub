@@ -160,7 +160,8 @@ test('bell, modal headers and separate rules work on desktop and phone', async (
   await expect(page.locator('#notifications-dialog')).toBeVisible();
   await expect(page.locator('#submission-notifications-list li')).toHaveCount(2);
   await expect(page.locator('#submission-notifications-list img')).toHaveCount(0);
-  await page.locator('#submission-notifications-read').click();
+  await expect(page.locator('#submission-notifications-refresh')).toHaveCount(0);
+  await expect(page.locator('#submission-notifications-read')).toHaveCount(0);
   await expect(page.locator('#notifications')).not.toHaveAttribute('data-unread');
   await page.locator('#close-notifications').click();
   await page.locator('#leaderboard').click();

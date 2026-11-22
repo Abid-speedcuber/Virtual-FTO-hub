@@ -323,7 +323,6 @@ try {
     /Your 1.00 ao5 submission has been rejected.*Please show the ending <img src=x>/,
   );
   assert.equal(await page.locator('#submission-notifications-list img').count(), 0);
-  await page.locator('#submission-notifications-read').click();
   await page.waitForFunction(
     () => !document.getElementById('notifications').hasAttribute('data-unread'),
   );

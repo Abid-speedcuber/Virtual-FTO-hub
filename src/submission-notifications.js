@@ -12,8 +12,6 @@ export function mountSubmissionNotifications({ rpc, getProfile, onSignIn = () =>
     list = document.getElementById('submission-notifications-list'),
     message = document.getElementById('submission-notifications-message'),
     count = document.getElementById('submission-notifications-count'),
-    mark = document.getElementById('submission-notifications-read'),
-    refreshButton = document.getElementById('submission-notifications-refresh'),
     board = document.getElementById('notifications'),
     signIn = document.getElementById('submission-notifications-signin');
   if (!section) return { refresh: async () => {} };
@@ -27,8 +25,6 @@ export function mountSubmissionNotifications({ rpc, getProfile, onSignIn = () =>
     const unread = rows.filter((row) => !row.read_at).length;
     count.textContent = unread ? `${unread} unread` : '';
     if (signIn) signIn.hidden = !!getProfile();
-    mark.disabled = !unread || busy;
-    refreshButton.disabled = busy || !getProfile();
     list.replaceChildren();
     if (board) {
       if (unread) board.dataset.unread = String(unread);
@@ -97,6 +93,7 @@ export function mountSubmissionNotifications({ rpc, getProfile, onSignIn = () =>
       rows = Array.isArray(data) ? data : [];
       message.textContent = rows.length ? '' : 'No submission decisions yet.';
       render();
+      if (dialog?.open) await markRead();
     } catch (error) {
       if (version === revision) {
         message.textContent = String(error.message).includes('my_submission_notifications')
@@ -105,11 +102,7 @@ export function mountSubmissionNotifications({ rpc, getProfile, onSignIn = () =>
       }
     }
   }
-  refreshButton.onclick = () => {
-    supportsHolds = null;
-    return refresh();
-  };
-  mark.onclick = async () => {
+  async function markRead() {
     const profile = getProfile(),
       ids = rows.filter((row) => !row.read_at).map((row) => row.id);
     if (!profile || !ids.length || busy) return;
@@ -121,7 +114,6 @@ export function mountSubmissionNotifications({ rpc, getProfile, onSignIn = () =>
       if (profile.id !== getProfile()?.id) return;
       const now = new Date().toISOString();
       rows = rows.map((row) => (ids.includes(row.id) ? { ...row, read_at: now } : row));
-      message.textContent = 'Notifications marked as read.';
     } catch {
       message.textContent = 'Could not mark notifications as read. Try again.';
     } finally {
@@ -129,7 +121,7 @@ export function mountSubmissionNotifications({ rpc, getProfile, onSignIn = () =>
       render();
       if (profile.id !== getProfile()?.id) refresh();
     }
-  };
+  }
   const dialog = document.getElementById('notifications-dialog');
   if (dialog)
     new MutationObserver(() => {
