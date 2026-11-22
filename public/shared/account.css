@@ -43,3 +43,10 @@ dialog.ft-auth #ft-password-mismatch{color:#f4b4b7}
 
 dialog.ft-auth input[name=code]{height:54px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:23px;letter-spacing:.16em;text-align:center}
 dialog.ft-auth input[name=code]::placeholder{font-family:system-ui,sans-serif;font-size:14px;letter-spacing:normal}
+
+/* OAuth actions follow each surface's existing account palette. */
+dialog.ft-auth .ft-wca{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;min-height:46px;margin-top:10px;background:var(--ft-input);border-color:var(--ft-border)}
+dialog.ft-auth .ft-wca:hover{background:var(--ft-hover)}
+dialog.ft-auth .ft-wca img{width:20px;height:20px;object-fit:contain}
+dialog.ft-auth .ft-optional{color:var(--ft-muted);font-size:12px;font-weight:400}
+dialog.ft-auth [data-wca-details]{margin:0;padding:14px;border:1px solid var(--ft-border);border-radius:9px;overflow-wrap:anywhere}

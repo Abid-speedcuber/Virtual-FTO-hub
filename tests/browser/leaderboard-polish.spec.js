@@ -74,8 +74,25 @@ async function setup(page) {
     if (name === 'my_leaderboard_results') data = { candidates: [], ineligible: [] };
     if (name === 'review_queue_page')
       data = { rows: [], has_more: false, next_cursor: null, counts: { pending: 0, held: 0 } };
-    if (name === 'leaderboard')
-      data = [{ id: 'result', username: 'matt', ms: 22400, has_replay: true }];
+    if (name === 'leaderboard' || name === 'leaderboard_profiles')
+      data = [
+        {
+          id: 'result',
+          username: 'matt',
+          ms: 22400,
+          has_replay: true,
+          wca_id: '2015TEST01',
+          wca_verified: true,
+        },
+        {
+          id: 'other',
+          username: 'Solver',
+          ms: 23000,
+          has_replay: false,
+          wca_id: '2024ASHR02',
+          wca_verified: false,
+        },
+      ];
     if (name === 'my_submission_notifications') data = rows;
     if (name === 'mark_submission_notifications_read')
       rows = rows.map((row) => ({ ...row, read_at: new Date().toISOString() }));
@@ -148,6 +165,16 @@ test('bell, modal headers and separate rules work on desktop and phone', async (
   await page.locator('#close-notifications').click();
   await page.locator('#leaderboard').click();
   await expect(page.locator('#leaderboard-dialog #submission-notifications')).toHaveCount(0);
+  await expect(page.locator('.board-wca').first()).toHaveAttribute(
+    'href',
+    'https://www.worldcubeassociation.org/persons/2015TEST01',
+  );
+  await expect(page.locator('.board-wca').first()).toHaveAccessibleName(
+    '2015TEST01, verified WCA account',
+  );
+  await expect(page.locator('.board-wca').nth(1)).toHaveAccessibleName(
+    '2024ASHR02, self-reported WCA ID',
+  );
   await page.locator('#leaderboard-rules').click();
   await expect(page.locator('#leaderboard-rules-dialog')).toBeVisible();
   await expect(page.locator('#leaderboard-rules-dialog')).toContainText('home-row keys');

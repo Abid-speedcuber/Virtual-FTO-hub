@@ -90,7 +90,7 @@ async function context(admin = false, broken = false) {
     let data = null;
     if (name === 'my_profile') data = admin ? { id: user.id, username: 'Abid', admin: true } : null;
     if (name === 'user') data = user;
-    if (name === 'leaderboard') data = [];
+    if (name === 'leaderboard' || name === 'leaderboard_profiles') data = [];
     if (name === 'review_queue_page')
       data = decided
         ? []

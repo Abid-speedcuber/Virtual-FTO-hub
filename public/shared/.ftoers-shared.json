@@ -1,10 +1,11 @@
 {
   "source": "FTOers public/shared",
   "files": {
-    "account.js": "7b2a0b03e6e6cda1293ef54e58048e7315788f6b572c31e545862c74716f32b7",
-    "account.css": "e65c8aa8471ff8ef357caac31eb028ea2236b5b9680dbe50a52de5de16bc6ea0",
+    "account.js": "0465025491c68ea006b947a366f004fffd0498a3729796652f001d0b2c271bd2",
+    "account.css": "9d5275e28fbd2f347edb6bca3684ef7be578a7fafd252cf433d70902f0dc2aca",
     "config.js": "8c4922438e23f679390172eaa14c9269bdaaa7abe3a7054b40572231e9e958cd",
     "supabase.js": "50ff31c051b43bc4cb24b5ca17921494f57bfb0bd6e418a2ed827e009f9342a8",
-    "SUPABASE-LICENSE": "334dd6820e2eaeab2064e7c59001b810566728a28a41a7c1dbf69bbee17d0936"
+    "SUPABASE-LICENSE": "334dd6820e2eaeab2064e7c59001b810566728a28a41a7c1dbf69bbee17d0936",
+    "wca.svg": "640c4577e20aaa92ad3b4c69f7af23487ae950b61bf094fb4041ff48318445fd"
   }
 }

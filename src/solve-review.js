@@ -8,6 +8,10 @@ export const evidenceTimeMatches = (recorded, claimed) =>
   recorded > 0 &&
   claimed > 0 &&
   Math.abs(recorded - claimed) <= 0.000001;
+const solverIdentity = (row) =>
+  /^[0-9]{4}[A-Z]{4}[0-9]{2}$/.test(row.wca_id ?? '')
+    ? `${row.username} · ${row.wca_id}${row.wca_verified ? ' ✓' : ' (self-reported)'}`
+    : row.username;
 // Review uses the simulator's one replay viewer. Queue navigation never decides.
 export class SolveReview {
   constructor({ rpc, isAdmin, play, pause, recover }) {
@@ -158,7 +162,7 @@ export class SolveReview {
         button = document.createElement('button'),
         name = document.createElement('strong'),
         time = document.createElement('span');
-      name.textContent = row.username;
+      name.textContent = solverIdentity(row);
       time.textContent = `${row.metric} · ${formatTime(row.ms)}`;
       button.append(name, time);
       if (row.status === 'investigating') {
@@ -254,7 +258,7 @@ export class SolveReview {
         : '';
     this.$('.review-decision').hidden = true;
     this.$('[data-detail]').hidden = false;
-    this.$('[data-solver]').textContent = row.username;
+    this.$('[data-solver]').textContent = solverIdentity(row);
     this.$('[data-result]').textContent = formatTime(row.ms);
     this.$('[data-metric]').textContent = row.metric;
     const date = row.submitted_at ?? row.created_at;

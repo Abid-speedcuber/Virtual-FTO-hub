@@ -470,3 +470,11 @@
 #leaderboard-recovery-dialog [data-flags] li {
   overflow-wrap: anywhere;
 }
+
+.ft-leaderboard .board-wca {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 400;
+  margin-left: 6px;
+  white-space: nowrap;
+}

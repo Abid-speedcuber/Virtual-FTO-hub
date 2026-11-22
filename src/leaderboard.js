@@ -17,7 +17,19 @@ export function mountLeaderboard(dialog, { rpc, configured }) {
     body.replaceChildren();
     message.textContent = 'Loading leaderboard…';
     try {
-      const rows = await rpc('leaderboard', { kind });
+      let rows;
+      try {
+        rows = await rpc('leaderboard_profiles', { kind });
+      } catch (error) {
+        // Older backends can still display rankings while the new migration awaits approval.
+        if (
+          !/could not find the function.*leaderboard_profiles|function.*leaderboard_profiles.*does not exist/i.test(
+            error.message,
+          )
+        )
+          throw error;
+        rows = await rpc('leaderboard', { kind });
+      }
       if (version !== revision) return;
       message.textContent = rows.length ? '' : 'No approved results yet.';
       rows.forEach((row, i) => {
@@ -26,6 +38,23 @@ export function mountLeaderboard(dialog, { rpc, configured }) {
           const td = document.createElement('td');
           td.textContent = text;
           tr.append(td);
+        }
+        const identity = tr.children[1];
+        if (/^[0-9]{4}[A-Z]{4}[0-9]{2}$/.test(row.wca_id ?? '')) {
+          const wca = document.createElement('a');
+          wca.className = 'board-wca';
+          wca.href = 'https://www.worldcubeassociation.org/persons/' + row.wca_id;
+          wca.target = '_blank';
+          wca.rel = 'noopener noreferrer';
+          wca.textContent = row.wca_id + (row.wca_verified ? ' ✓' : '');
+          wca.title = row.wca_verified
+            ? 'Verified through WCA sign-in'
+            : 'Self-reported WCA ID; account not connected';
+          wca.setAttribute(
+            'aria-label',
+            row.wca_id + (row.wca_verified ? ', verified WCA account' : ', self-reported WCA ID'),
+          );
+          identity.append(' ', wca);
         }
         const td = document.createElement('td');
         if (kind === 'single' && i < 10 && row.has_replay) {

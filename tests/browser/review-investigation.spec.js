@@ -67,7 +67,7 @@ async function setup(page, { legacyNotifications = false } = {}) {
     if (name === 'user') data = user;
     if (name === 'my_profile') data = { id: user.id, username: 'Owner', admin: true };
     if (name === 'my_leaderboard_results') data = { candidates: [], ineligible: [] };
-    if (name === 'leaderboard') data = [];
+    if (name === 'leaderboard' || name === 'leaderboard_profiles') data = [];
     if (name === 'my_submission_notifications') {
       if (legacyNotifications && args.include_investigations)
         return route.fulfill({

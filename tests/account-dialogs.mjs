@@ -48,7 +48,9 @@ async function setup(base, recovery = false, failVerify = true) {
     errors = [];
   let failRecovery = true,
     failLogin = true,
-    missingProfile = recovery;
+    missingProfile = recovery,
+    wcaConnected = false,
+    failLink = true;
   page.on('pageerror', (e) => errors.push(e.message));
   if (recovery)
     await context.addInitScript(() =>
@@ -91,11 +93,33 @@ async function setup(base, recovery = false, failVerify = true) {
     if (name === 'user') data = user;
     if (name === 'my_profile') {
       if (recovery) await new Promise((r) => setTimeout(r, 200));
-      data = missingProfile ? null : { id: user.id, username: 'Solver', admin: false };
+      data = missingProfile
+        ? null
+        : {
+            id: user.id,
+            username: 'Solver',
+            admin: false,
+            wca_connected: wcaConnected,
+            wca_id: wcaConnected ? '2015TEST01' : null,
+            wca_name: wcaConnected ? 'WCA Solver' : null,
+            wca_verified: wcaConnected,
+          };
     }
-    if (name === 'claim_username') {
+    if (name === 'claim_profile') {
       missingProfile = false;
       data = { id: user.id, username: body.name, admin: false };
+    }
+    if (url.pathname.includes('/user/identities/authorize')) {
+      if (failLink) {
+        failLink = false;
+        status = 409;
+        data = { msg: 'Identity already exists', error_code: 'identity_already_exists' };
+      } else {
+        wcaConnected = true;
+        data = { url: 'https://auth-test.supabase.co/wca-connected' };
+      }
+      await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
+      return;
     }
     if (name === 'authorize') {
       await route.fulfill({ contentType: 'text/html', body: 'Google OAuth started' });
@@ -170,6 +194,7 @@ try {
     await signIn(page);
     await checkEye(page);
     assert.equal(await page.locator('.ft-google svg').count(), 1);
+    assert.equal(await page.locator('.ft-wca').isVisible(), true);
     await page.screenshot({ path: `${out}/${site}-login.png` });
     for (const width of [390, 320]) {
       await page.setViewportSize({ width, height: 844 });
@@ -183,6 +208,8 @@ try {
     await page.getByRole('button', { name: 'Create an account', exact: true }).click();
     await page.locator('[name=email]').fill(user.email);
     await page.locator('[name=username]').fill('Solver');
+    assert.equal(await page.locator('[name=wca_id]').getAttribute('required'), null);
+    await page.locator('[name=wca_id]').fill('2024ashr02');
     await page.locator('[name=password]').fill('new-password-123');
     await page.locator('[name=confirm]').fill('wrong-password');
     assert.equal(await page.locator('#ft-password-mismatch').isVisible(), false);
@@ -200,6 +227,7 @@ try {
     await page.locator('.ft-submit').click();
     await page.getByRole('heading', { name: 'Confirm your email', exact: true }).waitFor();
     assert.equal(calls.find((c) => c.name === 'signup').body.data.requested_username, 'Solver');
+    assert.equal(calls.find((c) => c.name === 'signup').body.data.requested_wca_id, '2024ASHR02');
     assert.equal(await page.locator('[name=password]').isEnabled(), false);
     assert.deepEqual(
       await page.evaluate(() => JSON.parse(sessionStorage.getItem('ftoers.email-verification.v1'))),
@@ -253,6 +281,31 @@ try {
     await page.locator('.ft-auth[data-state=error]').waitFor();
     await page.locator('.ft-submit').click();
     await page.locator('.ft-auth').waitFor({ state: 'hidden' });
+    await page.locator('#ft-account-trigger').click();
+    assert.deepEqual(
+      await page
+        .locator('#ft-account-menu button')
+        .allTextContents()
+        .then((items) => items.slice(-2)),
+      ['Connect WCA account', 'Log out'],
+    );
+    await page.getByRole('menuitem', { name: 'Connect WCA account', exact: true }).click();
+    await page.locator('.ft-auth[data-state=error]').waitFor();
+    assert.match(
+      await page.locator('.ft-notice').textContent(),
+      /already connected to another FTOers profile/,
+    );
+    const linkCall = calls.find((call) => call.name === 'authorize' && call.method === 'GET');
+    assert.ok(linkCall);
+    await page.locator('[data-connect-wca]').click();
+    await page.waitForURL('https://auth-test.supabase.co/wca-connected');
+    await page.goto('https://ftoers.test' + base);
+    await page.locator('#ft-account-trigger[data-signed-in=true]').waitFor();
+    await page.locator('#ft-account-trigger').click();
+    await page.getByRole('menuitem', { name: 'WCA account', exact: true }).click();
+    await page.locator('[data-wca-details]').filter({ hasText: '2015TEST01 (verified)' }).waitFor();
+    assert.equal(await page.locator('.ft-submit').isVisible(), false);
+    await mobile(page, site + '-wca-connected');
     assert.deepEqual(errors, []);
     await context.close();
     const signup = await setup(base, false, false);
@@ -296,8 +349,14 @@ try {
     await r.page.locator('.ft-auth h2').filter({ hasText: 'Choose your username' }).waitFor();
     await mobile(r.page, site + '-username');
     await r.page.locator('[name=username]').fill('Solver');
+    assert.equal(await r.page.locator('[name=wca_id]').getAttribute('required'), null);
+    await r.page.locator('[name=wca_id]').fill('2015test01');
     await r.page.locator('.ft-submit').click();
     await r.page.locator('.ft-auth').waitFor({ state: 'hidden' });
+    assert.deepEqual(r.calls.find((call) => call.name === 'claim_profile').body, {
+      name: 'Solver',
+      wca_id: '2015TEST01',
+    });
     assert.deepEqual(r.errors, []);
     await r.context.close();
     const oauth = await setup(base);
@@ -310,6 +369,16 @@ try {
       'https://ftoers.test' + base,
     );
     await oauth.context.close();
+    const wca = await setup(base);
+    await signIn(wca.page);
+    await wca.page.getByRole('button', { name: 'Continue with WCA', exact: true }).click();
+    await wca.page.waitForURL('https://auth-test.supabase.co/auth/v1/authorize**');
+    assert.equal(new URL(wca.page.url()).searchParams.get('provider'), 'custom:wca');
+    assert.equal(
+      new URL(wca.page.url()).searchParams.get('redirect_to'),
+      'https://ftoers.test' + base,
+    );
+    await wca.context.close();
   }
   console.log(
     'Account dialogs passed on both sites: mobile layouts, password eyes/matching, signup/recovery email codes, resend/errors, cross-page pending verification, password updates, PKCE callbacks, username onboarding and Google redirect. No real email or credentials used.',

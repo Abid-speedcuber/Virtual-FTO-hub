@@ -141,7 +141,7 @@ await context.route('https://backend.test/**', async (route) => {
   }
   if (name === 'my_profile') data = { id: user.id, username: 'Owner', admin: true };
   if (name === 'user') data = user;
-  if (name === 'leaderboard') data = [];
+  if (name === 'leaderboard' || name === 'leaderboard_profiles') data = [];
   if (name === 'my_leaderboard_results') data = { candidates, ineligible: [] };
   if (name === 'submit_leaderboard') {
     await new Promise((r) => setTimeout(r, 50));

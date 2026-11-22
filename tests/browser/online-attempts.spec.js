@@ -47,7 +47,12 @@ async function setup(page, { initialRows, nextResult } = {}) {
     let data = null;
     if (name === 'user') data = user;
     if (name === 'my_profile') data = { id: user.id, username: 'Tester', admin: false };
-    if (name === 'my_submission_notifications' || name === 'leaderboard') data = [];
+    if (
+      name === 'my_submission_notifications' ||
+      name === 'leaderboard' ||
+      name === 'leaderboard_profiles'
+    )
+      data = [];
     if (name === 'my_leaderboard_results') data = { candidates: rows, ineligible };
     if (name === 'begin_attempt') data = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
     if (name === 'record_online_attempt') {
