@@ -255,7 +255,7 @@ try {
   await signedHome.goto('https://ftoers.test/');
   await signedHome.locator('#ft-account-trigger[data-signed-in=true]').waitFor();
   await menu(signedHome);
-  assert.deepEqual(await signedHome.getByRole('menuitem').allTextContents(), ['Log out']);
+  assert.deepEqual(await signedHome.getByRole('menuitem').allTextContents(), ['Profile']);
   await signedHome.keyboard.press('Escape');
   await signedHome.locator('#home-about').click();
   await signedHome.screenshot({ path: '/tmp/ftoers-polish/home-about.png' });
@@ -266,10 +266,10 @@ try {
   await page.locator('#ft-account-trigger[data-signed-in=true]').waitFor();
   await menu(page);
   assert.deepEqual(await page.getByRole('menuitem').allTextContents(), [
+    'Profile',
     'Settings',
     'About us',
     'Review solves',
-    'Log out',
   ]);
   await page.screenshot({ path: '/tmp/ftoers-polish/simulator-menu.png' });
   await page.getByRole('menuitem', { name: 'Review solves' }).click();
@@ -290,7 +290,8 @@ try {
   assert.equal(admin.decisions[0].approve, true);
   assert.equal(admin.decisions[0].note, 'Reviewed');
   await menu(page);
-  await page.getByRole('menuitem', { name: 'Log out' }).click();
+  await page.getByRole('menuitem', { name: 'Profile' }).click();
+  await page.locator('.ft-profile [data-sign-out]').click();
   await page.locator('#ft-account-trigger[data-signed-in=false]').waitFor();
   await page.locator('#solve-review-panel').waitFor({ state: 'hidden' });
   assert.deepEqual(admin.errors, []);

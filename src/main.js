@@ -36,7 +36,15 @@ import {
 } from './inspection-projection.js';
 import { swipeCandidates, chooseSwipeMove } from './swipe.js';
 import { pickSurface, pickFaceNormal } from './picking.js';
-import { FACES, solvedState, applyMove, inverse, isSolved, scrambleMoves } from './puzzle.js';
+import {
+  FACES,
+  solvedState,
+  applyMove,
+  inverse,
+  isSolved,
+  scrambleMoves,
+  signature,
+} from './puzzle.js';
 import {
   HOME_POSITION,
   frameForRotationPair,
@@ -104,6 +112,23 @@ const persistence = new SolveStorage({
     initialized ? { size, solves: { ...solves, [size]: currentSolve() }, pointerMode } : null,
 });
 const restored = await persistence.load();
+// A restored inspection has already exposed its scramble. Never reuse it in
+// a reloaded or duplicated tab, including a partially animated scramble.
+const restoredInspections = new Map(
+  Object.entries(restored.solves)
+    .filter(([, solve]) => ['ready', 'scrambling'].includes(solve.timer?.status))
+    .map(([n, solve]) => [
+      +n,
+      signature(
+        [
+          ...solve.history,
+          ...(solve.pending ?? [])
+            .filter((a) => a.source === 'scramble' && a.type === 'move')
+            .map((a) => a.move),
+        ].reduce(applyMove, solvedState(+n)),
+      ),
+    ]),
+);
 size = restored.size;
 solves = restored.solves;
 pointerMode = restored.pointerMode;
@@ -122,8 +147,7 @@ let session = new SolveTimer(solves[size]?.timer);
 manualPaused = session.status === 'paused';
 queue = structuredClone(solves[size]?.pending ?? []);
 if (session.status === 'scrambling' && !queue.length) session.reset();
-// A restored inspection has not started yet and can obtain a fresh online ticket.
-if (session.status === 'ready') network.arm(size);
+const startupInspection = discardRestoredInspection();
 const settingsKey = 'master-fto-settings-v1';
 let preferences = {},
   settingsOK = true,
@@ -1074,7 +1098,32 @@ function abandonAttempt() {
   requestDraw();
   return true;
 }
-async function startScramble({ skipConfirmation = false } = {}) {
+function discardRestoredInspection() {
+  if (!restoredInspections.has(size)) return null;
+  const previous = restoredInspections.get(size);
+  restoredInspections.delete(size);
+  if (!['ready', 'scrambling', 'idle'].includes(session.status)) return null;
+  network.attempt = null;
+  recorder.discard();
+  queue = [];
+  active = null;
+  history = [];
+  redo = [];
+  undoFloor = 0;
+  solveEnd = null;
+  state = solvedState(size);
+  session.status = 'idle';
+  session.elapsedMs = 0;
+  session.startedAt = null;
+  session.scrambleText = '';
+  manualPaused = false;
+  return previous;
+}
+async function startScramble({
+  skipConfirmation = false,
+  animate = null,
+  excludedState = null,
+} = {}) {
   if (detectClearedSolve()) return;
   if (isScrambling()) return;
   const timed = ['ready', 'running', 'paused'].includes(session.status);
@@ -1093,11 +1142,18 @@ async function startScramble({ skipConfirmation = false } = {}) {
   update();
   let moves;
   try {
-    if (size === 3) moves = await randomStateFtoScramble(request.signal);
-    else
-      do {
-        moves = scrambleMoves(Math.max(50, size * 10), Math.random, size);
-      } while (isSolved(moves.reduce(applyMove, solvedState(size))));
+    let attempts = 0;
+    do {
+      if (++attempts > 5) throw Error('Could not generate a different scramble');
+      if (size === 3) moves = await randomStateFtoScramble(request.signal);
+      else
+        do {
+          moves = scrambleMoves(Math.max(50, size * 10), Math.random, size);
+        } while (isSolved(moves.reduce(applyMove, solvedState(size))));
+    } while (
+      excludedState !== null &&
+      signature(moves.reduce(applyMove, solvedState(size))) === excludedState
+    );
   } catch {
     if (scrambleRequest !== request) return;
     scrambleRequest = null;
@@ -1122,7 +1178,7 @@ async function startScramble({ skipConfirmation = false } = {}) {
   session.scramble();
   session.scrambleText = scrambleText(moves);
   phaseTracker = new PhaseTracker(size, phaseProfile(size, phaseProfiles[size]));
-  if ($('animate-scrambling').checked) {
+  if (animate ?? $('animate-scrambling').checked) {
     build();
     queue = moves.map((move) => ({ type: 'move', move, source: 'scramble' }));
     save();
@@ -1327,6 +1383,7 @@ async function selectSize(nextSize) {
   controls.rotation.copy(defaultCifRotation());
   controls.radius = HOME_POSITION.length();
   controls.update();
+  const restoredInspection = discardRestoredInspection();
   if (session.status === 'scrambling' && !queue.length) session.reset();
   if (session.status === 'ready') network.arm(size);
   state = history.reduce(applyMove, solvedState(size));
@@ -1334,6 +1391,15 @@ async function selectSize(nextSize) {
   build();
   renderSize();
   resumeSession();
+  if (restoredInspection !== null) {
+    saveSettings();
+    await startScramble({
+      skipConfirmation: true,
+      animate: false,
+      excludedState: restoredInspection,
+    });
+    return;
+  }
   save();
   saveSettings();
   update();
@@ -2148,7 +2214,9 @@ persistence.bind(size, { times: session.times, last: recorder.last, pb: recorder
 initialized = true;
 resizeViewport();
 resumeSession();
-pump();
+if (startupInspection !== null)
+  startScramble({ skipConfirmation: true, animate: false, excludedState: startupInspection });
+else pump();
 draw();
 prepareFtoScramble();
 for (const saved of Object.values(solves)) {

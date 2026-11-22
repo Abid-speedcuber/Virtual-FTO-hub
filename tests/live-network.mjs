@@ -45,7 +45,8 @@ try {
   await simulator.locator('#ft-account-trigger[data-signed-in=true]').waitFor();
   console.log('PASS email login, username onboarding, homepage → simulator session');
   await home.locator('#account button').click();
-  await home.getByRole('menuitem', { name: 'Log out' }).click();
+  await home.getByRole('menuitem', { name: 'Profile' }).click();
+  await home.locator('.ft-profile [data-sign-out]').click();
   await home.locator('#ft-account-trigger[data-signed-in=false]').waitFor();
   await simulator.locator('#ft-account-trigger[data-signed-in=false]').waitFor();
   console.log('PASS cross-tab sign-out');

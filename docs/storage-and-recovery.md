@@ -39,6 +39,11 @@ boundaries, preserves existing recording fingerprints and short codes, includes
 snapshots in the storage quota and collects unreferenced snapshots. This and
 review pagination are local migrations pending hand testing and deployment.
 
+Reloading or duplicating a tab replaces any unstarted inspection with a new
+scramble, applied without animation. A partially animated scramble is also
+replaced. Saved inspections on other puzzle sizes refresh when first opened
+after the reload; completed results and paused solves are preserved.
+
 ## Hand testing before deployment
 
 - Export a backup before testing; reload an existing installation and compare

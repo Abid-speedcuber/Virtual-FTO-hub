@@ -272,7 +272,8 @@ try {
     await page.getByRole('button', { name: 'Done', exact: true }).click();
     await page.locator('.ft-auth').waitFor({ state: 'hidden' });
     await page.locator('#ft-account-trigger').click();
-    await page.getByRole('menuitem', { name: 'Log out', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
+    await page.locator('.ft-profile [data-sign-out]').click();
     await page.locator('#ft-account-trigger[data-signed-in=false]').waitFor();
     await signIn(page);
     await page.locator('[name=identity]').fill(user.email);
@@ -286,26 +287,31 @@ try {
       await page
         .locator('#ft-account-menu button')
         .allTextContents()
-        .then((items) => items.slice(-2)),
-      ['Connect WCA account', 'Log out'],
+        .then((items) => items.slice(0, 1)),
+      ['Profile'],
     );
-    await page.getByRole('menuitem', { name: 'Connect WCA account', exact: true }).click();
-    await page.locator('.ft-auth[data-state=error]').waitFor();
-    assert.match(
-      await page.locator('.ft-notice').textContent(),
-      /already connected to another FTOers profile/,
-    );
+    await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
+    await page.locator('.ft-profile [data-connect="custom:wca"]').click();
+    await page.locator('.ft-profile .ft-notice').filter({ hasText: 'Merge accounts' }).waitFor();
     const linkCall = calls.find((call) => call.name === 'authorize' && call.method === 'GET');
     assert.ok(linkCall);
-    await page.locator('[data-connect-wca]').click();
+    await page.locator('.ft-profile [data-connect="custom:wca"]').click();
     await page.waitForURL('https://auth-test.supabase.co/wca-connected');
     await page.goto('https://ftoers.test' + base);
     await page.locator('#ft-account-trigger[data-signed-in=true]').waitFor();
     await page.locator('#ft-account-trigger').click();
-    await page.getByRole('menuitem', { name: 'WCA account', exact: true }).click();
-    await page.locator('[data-wca-details]').filter({ hasText: '2015TEST01 (verified)' }).waitFor();
+    await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
+    await page.locator('[data-verified-wca]').filter({ hasText: '2015TEST01' }).waitFor();
     assert.equal(await page.locator('.ft-submit').isVisible(), false);
-    await mobile(page, site + '-wca-connected');
+    await page.setViewportSize({ width: 320, height: 844 });
+    assert.equal(
+      await page
+        .locator('.ft-profile')
+        .evaluate((element) => element.scrollWidth > element.clientWidth),
+      false,
+    );
+    await page.screenshot({ path: out + '/' + site + '-profile-mobile.png' });
+    await page.setViewportSize({ width: 1200, height: 900 });
     assert.deepEqual(errors, []);
     await context.close();
     const signup = await setup(base, false, false);
