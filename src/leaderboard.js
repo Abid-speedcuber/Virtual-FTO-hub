@@ -4,7 +4,7 @@ const format = (ms) => {
     s = Math.floor(c / 100);
   return `${s >= 60 ? Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') : s}.${String(c % 100).padStart(2, '0')}`;
 };
-export function mountLeaderboard(dialog, { rpc, configured }) {
+export function mountLeaderboard(dialog, { rpc, configured, getProfile = () => null }) {
   if (!dialog || dialog.dataset.mounted) return;
   dialog.dataset.mounted = 'true';
   const $ = (selector) => dialog.querySelector(selector);
@@ -34,6 +34,11 @@ export function mountLeaderboard(dialog, { rpc, configured }) {
       message.textContent = rows.length ? '' : 'No approved results yet.';
       rows.forEach((row, i) => {
         const tr = document.createElement('tr');
+        const ownResult = !!getProfile()?.username && row.username === getProfile().username;
+        if (ownResult) {
+          tr.classList.add('board-current-user');
+          tr.setAttribute('aria-label', 'Your leaderboard result');
+        }
         for (const text of [i + 1, row.username, format(row.ms)]) {
           const td = document.createElement('td');
           td.textContent = text;
@@ -84,5 +89,8 @@ export function mountLeaderboard(dialog, { rpc, configured }) {
   new MutationObserver(() => {
     if (dialog.open) load();
   }).observe(dialog, { attributes: true, attributeFilter: ['open'] });
+  document.addEventListener('ftoers-identity-change', () => {
+    if (dialog.open) load();
+  });
   if (dialog.open) load();
 }

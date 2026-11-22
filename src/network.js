@@ -441,6 +441,7 @@ export async function initNetwork() {
     mountLeaderboard(document.getElementById('leaderboard-dialog'), {
       rpc: networkRPC,
       configured: account.configured,
+      getProfile: () => account.profile,
     });
     await account.ready;
     network.accountChanged();

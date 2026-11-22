@@ -27,6 +27,7 @@ export function mountSubmissionNotifications({ rpc, getProfile, onSignIn = () =>
     if (signIn) signIn.hidden = !!getProfile();
     list.replaceChildren();
     if (board) {
+      board.hidden = !getProfile();
       if (unread) board.dataset.unread = String(unread);
       else delete board.dataset.unread;
       board.setAttribute(

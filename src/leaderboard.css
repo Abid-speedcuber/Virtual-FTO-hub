@@ -465,3 +465,14 @@
   margin-left: 6px;
   white-space: nowrap;
 }
+
+.ft-leaderboard .board-current-user td {
+  background: #c6edae12;
+}
+.ft-leaderboard .board-current-user td:first-child {
+  box-shadow: inset 3px 0 var(--accent);
+}
+.ft-leaderboard .board-current-user td:nth-child(2) {
+  color: var(--accent);
+  font-weight: 600;
+}

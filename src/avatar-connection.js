@@ -6,6 +6,13 @@ export function mountAvatarConnection(host, { online = () => navigator.onLine } 
     const button = host.querySelector('#ft-account-trigger');
     if (!button) return;
     let dot = button.querySelector('.avatar-connection-dot');
+    if (button.dataset.signedIn !== 'true') {
+      dot?.remove();
+      delete button.dataset.connection;
+      if (button.getAttribute('aria-describedby') === 'avatar-connection-status')
+        button.removeAttribute('aria-describedby');
+      return;
+    }
     if (!dot) {
       dot = document.createElement('span');
       dot.className = 'avatar-connection-dot';
@@ -28,7 +35,12 @@ export function mountAvatarConnection(host, { online = () => navigator.onLine } 
     }
   }
   const observer = new MutationObserver(render);
-  observer.observe(host, { childList: true, subtree: true });
+  observer.observe(host, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['data-signed-in'],
+  });
   const setOnline = (value) => {
     connected = value === null ? null : !!value;
     render();
