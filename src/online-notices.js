@@ -96,7 +96,14 @@ export function mountOnlineNotices(network) {
   document.addEventListener('ftoers-online-pbs', (event) => {
     rows = ['single', 'ao5', 'ao12']
       .map((metric) => event.detail.find((row) => row.metric === metric))
-      .filter(Boolean);
+      .filter(
+        (row) =>
+          row &&
+          (!row.ineligible_reason ||
+            (Number.isFinite(row.ms) &&
+              row.ms > 0 &&
+              (row.leaderboard_ms == null || row.ms < row.leaderboard_ms))),
+      );
     const previous = rows.findIndex((row) => row.metric === selectedMetric);
     if (previous >= 0) index = previous;
     render();
