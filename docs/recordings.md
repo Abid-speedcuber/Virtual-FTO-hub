@@ -99,7 +99,7 @@ canonical UTF-8 recording JSON, gzip-compressed **before** Base64URL encoding.
 Compression happens locally and preserves inputs, camera samples, solver bindings,
 sounds, timing and split comparisons. The modal displays the resulting link
 length. The URL fragment carries the data without a recording upload or server
-shortener. Opening the link loads a paused replay; it never changes the viewer’s
+shortener. Opening a full recording link, short link, or leaderboard recording link automatically starts playback once the recording is loaded. This also applies to links opened by changing the URL fragment in an already open app. Playback still supports pause/resume and never changes the viewer’s
 times, PB or bindings. Pasted links, encoded payloads and JSON can also be opened
 through **Import recording to watch** in the album.
 

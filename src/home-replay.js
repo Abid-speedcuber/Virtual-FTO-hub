@@ -44,7 +44,7 @@ export class HomeReplay {
       }
     });
   }
-  start(data) {
+  start(data, { autoplay = false } = {}) {
     if (this.active) this.stop();
     this.pauseLive();
     this.sharedData = withoutInspection(data);
@@ -57,7 +57,7 @@ export class HomeReplay {
     clearTimeout(this.flashTimer);
     this.playedSounds = 0;
     this.active = true;
-    this.playing = false;
+    this.playing = autoplay;
     this.onStart(this.data);
     for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
     document.documentElement.classList.add('replaying');
@@ -97,6 +97,10 @@ export class HomeReplay {
     this.onLayout?.();
     this.render();
     this.viewer.resize();
+    if (this.playing) {
+      this.lastTick = performance.now();
+      this.tick(++this.token);
+    }
   }
   render() {
     if (!this.active) return;

@@ -1986,7 +1986,7 @@ const recordingUI = new RecordingUI({
     homeReplay.stop();
     pauseSession();
   },
-  play: (data) => homeReplay.start(data),
+  play: (data, options) => homeReplay.start(data, options),
 });
 averageUI = new AverageRecordingUI({
   album,

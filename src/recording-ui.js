@@ -601,7 +601,7 @@ export class RecordingUI {
         data = withoutInspection(validateRecording(data));
         if (data.size !== 3) throw Error('Only 3×3 recordings are supported here');
         if (version !== this.linkVersion) return;
-        this.play(data);
+        this.play(data, { autoplay: true });
         this.showLinkToast('Recording loaded', 'success');
       } catch (error) {
         if (version === this.linkVersion) this.showLinkToast(error.message, 'error');
@@ -633,7 +633,7 @@ export class RecordingUI {
     try {
       const data = await decodeRecording(payload);
       if (version !== this.linkVersion) return;
-      this.play(data);
+      this.play(data, { autoplay: true });
       this.showLinkToast('Recording loaded', 'success');
     } catch (error) {
       if (version !== this.linkVersion) return;
