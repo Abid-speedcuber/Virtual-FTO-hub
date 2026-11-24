@@ -2,6 +2,8 @@
 
 Enable **Show keyboard** in Settings. The overlay sits at the bottom of the timer column, below a scrollable solve-time list. ANSI and ISO retain real staggered rows and modifier/Enter/Space footprints. The 60% option shows only the 61-key main block; omitted function/navigation/numpad keys never light other positions. The overlay is also clickable.
 
+Whenever the recording keyboard cannot fit in the existing sidebar, including tablets and narrow desktop windows, watching a recording that contains keyboard input shows it in a full-width dock above the playback controls. Normal solving, pointer-only recordings, and layouts with room for the sidebar retain their usual presentation. Compact recordings show moves in a fixed-size overlay on the puzzle, so move flashes never resize the controls or keyboard.
+
 Keys display actions rather than physical letters. Unbound shortcut-prefix keys stay blank. Mode keys display destination names on one or two lines. Mode names allow at most two words of six characters each, separated by one space. Older long names are shortened without changing mode IDs or moves.
 
 ## Defaults

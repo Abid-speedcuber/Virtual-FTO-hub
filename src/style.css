@@ -4026,12 +4026,6 @@ html:not(.compact-ui).replaying #home-replay-time {
 .replaying #replay-keyboard .keycap.replay-move-highlight text {
   fill: #14251d;
 }
-.compact-ui.replaying #home-replay-keys:not(:empty) {
-  padding: 2px 0;
-  background: transparent;
-  color: var(--replay-move-color);
-  font-family: ui-monospace, Consolas, monospace;
-}
 
 .replay-pointer-overlay {
   position: absolute;
@@ -5098,4 +5092,81 @@ html.reviewing:not(.compact-ui) #solve-review-panel:has(> [data-body][hidden]) {
 }
 .review-pages button {
   padding: 6px 10px;
+}
+
+/* Dock a recorded keyboard whenever the existing sidebar cannot display it. */
+#keyboard-dock {
+  display: none;
+}
+.docked-replay-keyboard .app {
+  padding-bottom: var(--replay-controls-height);
+}
+.docked-replay-keyboard main.solve-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: calc(100dvh - var(--topbar-height) - var(--replay-controls-height));
+  min-height: 0;
+}
+.docked-replay-keyboard #viewport {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.docked-replay-keyboard #keyboard-dock {
+  display: block;
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.docked-replay-keyboard #keyboard-dock #replay-keyboard {
+  width: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left));
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
+.docked-replay-keyboard #keyboard-dock svg {
+  width: 100%;
+  height: auto;
+  max-height: calc(36dvh - 34px);
+  margin-inline: auto;
+}
+
+/* A fixed-size overlay cannot resize the transport, keyboard, or puzzle. */
+.compact-ui .replay-progress-track {
+  grid-column: 1 / -1;
+}
+.compact-ui.replaying #home-replay-keys {
+  position: absolute;
+  inset: auto;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 8ch;
+  max-width: calc(100% - 32px);
+  height: 44px;
+  min-height: 0;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid #344b42;
+  border-radius: 8px;
+  background: #14221ded;
+  color: var(--replay-move-color, var(--accent));
+  font:
+    600 26px/1 ui-monospace,
+    Consolas,
+    monospace;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 80ms ease;
+}
+.compact-ui.replaying #home-replay-keys[data-active='true'] {
+  opacity: 1;
 }

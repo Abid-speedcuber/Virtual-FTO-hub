@@ -781,10 +781,26 @@ window.addEventListener(
 function layoutSolveSpace() {
   const width = document.documentElement.clientWidth,
     height = window.innerHeight - document.querySelector('.topbar').getBoundingClientRect().height,
-    side = Math.min(width, height);
-  const keyboardFits = width >= 900 && width - side >= 360;
-  document.documentElement.classList.toggle('keyboard-unavailable', !keyboardFits);
-  const compact = width < 900 || width - side < 280;
+    side = Math.min(width, height),
+    sidebarKeyboardFits = width >= 900 && width - side >= 360;
+  const dockedReplay =
+    !sidebarKeyboardFits &&
+    document.documentElement.classList.contains('replaying') &&
+    document.documentElement.classList.contains('replay-has-keyboard');
+  document.documentElement.classList.toggle('docked-replay-keyboard', dockedReplay);
+  const replayHost = $(dockedReplay ? 'keyboard-dock' : 'solve-panel');
+  if ($('replay-keyboard').parentElement !== replayHost) replayHost.append($('replay-keyboard'));
+  document
+    .querySelector('.app')
+    .style.setProperty(
+      '--replay-controls-height',
+      `${dockedReplay ? $('home-replay-dock').getBoundingClientRect().height : 0}px`,
+    );
+  document.documentElement.classList.toggle(
+    'keyboard-unavailable',
+    !(dockedReplay || sidebarKeyboardFits),
+  );
+  const compact = dockedReplay || width < 900 || width - side < 280;
   document.documentElement.classList.toggle('compact-ui', compact);
   const notices = $('online-pb-notices'),
     host = $(compact ? 'history-dialog' : 'solve-panel'),
@@ -796,6 +812,7 @@ function layoutSolveSpace() {
 }
 window.addEventListener('resize', layoutSolveSpace);
 new ResizeObserver(layoutSolveSpace).observe(document.documentElement);
+new ResizeObserver(layoutSolveSpace).observe($('home-replay-dock'));
 layoutSolveSpace();
 function update() {
   renderTimer();
@@ -1888,6 +1905,7 @@ keyboard = new KeyboardUI({
 if (session.status === 'ready' && $('auto-default-mode').checked) keyboard.returnToDefault();
 homeReplay = new HomeReplay({
   pause: pauseSession,
+  onLayout: layoutSolveSpace,
   onStart: () => {
     $('solve-summary').setAttribute('aria-label', 'Recorded timer and key presses');
     $('statistics-panel').hidden = true;

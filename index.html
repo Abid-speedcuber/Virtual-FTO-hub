@@ -20,6 +20,37 @@
       }
     </style>
     <link rel="stylesheet" href="/src/style.css" />
+
+    <!-- Static metadata is readable by link-preview crawlers without JavaScript. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="FTOers" />
+    <meta property="og:title" content="FTO Simulator" />
+    <meta
+      property="og:description"
+      content="Virtual FTOs of all dimensions, with a timer, customizable keyboard controls, and solve recordings."
+    />
+    <meta property="og:url" content="https://ftoers.web.app/virtual/" />
+    <meta property="og:image" content="https://ftoers.web.app/virtual/social-preview.png" />
+    <meta
+      property="og:image:secure_url"
+      content="https://ftoers.web.app/virtual/social-preview.png"
+    />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="FTO Simulator logo and wordmark" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="FTO Simulator" />
+    <meta
+      name="twitter:description"
+      content="Virtual FTOs of all dimensions, with a timer, customizable keyboard controls, and solve recordings."
+    />
+    <meta name="twitter:image" content="https://ftoers.web.app/virtual/social-preview.png" />
+    <meta name="twitter:image:alt" content="FTO Simulator logo and wordmark" />
+    <meta
+      name="description"
+      content="Virtual FTOs of all dimensions, with a timer, customizable keyboard controls, and solve recordings."
+    />
   </head>
   <body>
     <header class="topbar">
@@ -78,6 +109,12 @@
           <div id="keyboard-notice" role="status" hidden></div>
           <div id="home-replay-view"></div>
           <div id="replay-scramble" aria-label="Replay scramble" hidden></div>
+          <output
+            id="home-replay-keys"
+            aria-label="Recorded move"
+            data-active="false"
+            aria-hidden="true"
+          ></output>
           <nav id="home-replay-dock" aria-label="Recording playback">
             <button id="home-replay-play" aria-label="Play recording" title="Play"></button>
             <div class="replay-progress-track">
@@ -109,8 +146,7 @@
               <option value="2">2×</option>
               <option value="4">4×</option></select
             ><button id="home-replay-exit" aria-label="Exit recording">✕</button
-            ><span id="home-replay-stage"></span
-            ><output id="home-replay-keys" aria-label="Recorded keys"></output>
+            ><span id="home-replay-stage"></span>
           </nav>
           <nav id="mobile-controls" aria-label="Solve controls">
             <button id="mobile-pause" aria-label="Pause" title="Pause"></button>
@@ -269,6 +305,7 @@
           </section>
           <section id="replay-keyboard" aria-label="Solver keyboard"></section>
         </aside>
+        <div id="keyboard-dock" aria-label="Input keyboard"></div>
       </main>
     </div>
 

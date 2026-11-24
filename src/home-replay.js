@@ -8,8 +8,8 @@ import { FACES } from './puzzle.js';
 import { formatTime } from './solve-timer.js';
 const $ = (id) => document.getElementById(id);
 export class HomeReplay {
-  constructor({ pause: pauseLive, onStart, onFrame, onExit, sound }) {
-    Object.assign(this, { pauseLive, onStart, onFrame, onExit, sound });
+  constructor({ pause: pauseLive, onStart, onFrame, onExit, onLayout, sound }) {
+    Object.assign(this, { pauseLive, onStart, onFrame, onExit, onLayout, sound });
     this.active = false;
     this.token = 0;
     $('home-replay-exit').innerHTML = icon('close');
@@ -61,6 +61,12 @@ export class HomeReplay {
     this.onStart(this.data);
     for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
     document.documentElement.classList.add('replaying');
+    document.documentElement.classList.toggle(
+      'replay-has-keyboard',
+      this.data.events.some(
+        (event) => event.type === 'key' || (event.type === 'accept' && event.source === 'keyboard'),
+      ),
+    );
     $('home-replay-stage').textContent = 'Scrambling';
     $('replay-scramble').replaceChildren(
       ...this.presentation.scrambleTokens.map((token, i) => {
@@ -88,6 +94,7 @@ export class HomeReplay {
       '--keyboard-aspect',
       String(this.keyboard.layout.width / this.keyboard.layout.height),
     );
+    this.onLayout?.();
     this.render();
     this.viewer.resize();
   }
@@ -151,6 +158,8 @@ export class HomeReplay {
     flash.dataset.active = String(active);
     flash.setAttribute('aria-hidden', String(!active));
     compact.textContent = active ? this.keyboard.visibleMove : '';
+    compact.dataset.active = String(active);
+    compact.setAttribute('aria-hidden', String(!active));
     if (move) {
       flash.style.setProperty('--replay-move-color', move.color);
       compact.style.setProperty('--replay-move-color', move.color);
@@ -163,6 +172,8 @@ export class HomeReplay {
     flash.dataset.active = 'false';
     flash.setAttribute('aria-hidden', 'true');
     $('home-replay-keys').textContent = '';
+    $('home-replay-keys').dataset.active = 'false';
+    $('home-replay-keys').setAttribute('aria-hidden', 'true');
     this.keyboard?.clearMoveHighlights();
   }
   tick(token) {
@@ -201,7 +212,8 @@ export class HomeReplay {
     this.viewer = null;
     $('replay-keyboard').replaceChildren();
     $('solve-panel').style.setProperty('--keyboard-aspect', this.previousAspect);
-    document.documentElement.classList.remove('replaying');
+    document.documentElement.classList.remove('replaying', 'replay-has-keyboard');
+    this.onLayout?.();
     this.onExit();
   }
 }
